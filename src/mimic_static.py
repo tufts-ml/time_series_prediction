@@ -1,23 +1,24 @@
 # mimic_static.py
 #
 # Converts raw MIMIC static data to the standardized format
-# Input: the MIMIC-III database in CSV format (pointed to by input_path)
+# Input: the MIMIC-III database in CSV format (pointed to by INPUT_PATH)
 # Output: static.csv
 
+# TODO: cohort selection
+
 import pandas as pd
-import os
 
 # TODO: change to actual (non-demo) data path
-input_path = 'datasets/mimic_demo/'
-output_path = 'datasets/mimic_demo_output/'
+INPUT_PATH = 'datasets/mimic_demo/'
+OUTPUT_PATH = 'datasets/mimic_demo_output/'
 
-icustays        = pd.read_csv(input_path + 'ICUSTAYS.csv')
-admissions      = pd.read_csv(input_path + 'ADMISSIONS.csv')
-patients        = pd.read_csv(input_path + 'PATIENTS.csv')
-# services        = pd.read_csv(input_path + 'SERVICES.csv')
-# diagnoses_icd   = pd.read_csv(input_path + 'DIAGNOSES_ICD.csv')
-# d_icd_diagnoses = pd.read_csv(input_path + 'D_ICD_DIAGNOSES.csv')
-# drgcodes        = pd.read_csv(input_path + 'DRGCODES.csv')
+icustays          = pd.read_csv(INPUT_PATH + 'ICUSTAYS.csv')
+admissions        = pd.read_csv(INPUT_PATH + 'ADMISSIONS.csv')
+patients          = pd.read_csv(INPUT_PATH + 'PATIENTS.csv')
+# services        = pd.read_csv(INPUT_PATH + 'SERVICES.csv')
+# diagnoses_icd   = pd.read_csv(INPUT_PATH + 'DIAGNOSES_ICD.csv')
+# d_icd_diagnoses = pd.read_csv(INPUT_PATH + 'D_ICD_DIAGNOSES.csv')
+# drgcodes        = pd.read_csv(INPUT_PATH + 'DRGCODES.csv')
 
 # Merge all data on the ICU stay level
 
@@ -49,6 +50,6 @@ merged['age_days'] = merged['age_dt'].apply(lambda x: x.days)
 # Keep needed variables and export (where are height and weight?)
 
 static = merged[['subject_id', 'age_days', 'gender']]
-static.to_csv(output_path + 'static.csv', index=False)
+static.to_csv(OUTPUT_PATH + 'static.csv', index=False)
 
 
