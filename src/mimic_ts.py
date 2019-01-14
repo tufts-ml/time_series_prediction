@@ -5,7 +5,7 @@
 # Output: ts.csv
 
 # TODO: cohort selection
-# TODO: lab measurements and urine output
+# TODO: urine output
 
 import pandas as pd
 
@@ -13,40 +13,61 @@ import pandas as pd
 INPUT_PATH = 'datasets/mimic_demo/'
 OUTPUT_PATH = 'datasets/mimic_demo_output/'
 
-# Dictionary where keys are Carevue and Metavision names for desired
-# measurements and values are our abbreviations
+# Dictionary where keys are Carevue and Metavision names for desired chart
+# variables and values are the column names for the output dataset
 # (note there are two source patient monitoring systems)
-MEASUREMENTS = {
+CHART_VARS = {
     'Heart Rate': 'hr',
     'Respiratory Rate': 'rr',
     'Arterial Blood Pressure mean': 'bp', 'Arterial BP Mean': 'bp',
     'Temperature Fahrenheit': 'temp', 'Temperature F': 'temp',
     'O2 saturation pulseoxymetry': 'spo2', 'SpO2': 'spo2',
     'Inspired O2 Fraction': 'fio2', 'FiO2 Set': 'fio2'}
-
+    
+# Dictionary where keys are MIMIC names for desired lab variables and values
+# are the column names for the output dataset
+LAB_VARS = {
+    'Urea Nitrogen': 'bun',
+    'Creatinine': 'creatinine',
+    'Glucose': 'glucose',
+    'Bicarbonate': 'bicarbonate',
+    'Hematocrit': 'hct',
+    'Lactate': 'lactate',
+    'Magnesium': 'magnesium',
+    'Platelet Count': 'platelet',
+    'Potassium': 'potassium',
+    'Sodium': 'sodium',
+    'White Blood Cells': 'wbc'}
 
 chartevents = pd.read_csv(INPUT_PATH + 'CHARTEVENTS.csv')
+labevents   = pd.read_csv(INPUT_PATH + 'LABEVENTS.csv')
 d_items     = pd.read_csv(INPUT_PATH + 'D_ITEMS.csv')
+d_labitems  = pd.read_csv(INPUT_PATH + 'D_LABITEMS.csv')
 
-# Merge data
-
-merged = chartevents.merge(d_items, how='inner', on='ITEMID')
-assert len(merged) == len(chartevents)
-merged.columns = merged.columns.str.lower()
-merged['charttime_dt'] = pd.to_datetime(merged['charttime'])
-
-# Keep only desired measurement types and needed columns
-
-merged = merged.loc[merged['label'].isin(MEASUREMENTS),
-                    ['subject_id', 'label', 'valuenum', 'charttime_dt']]
+# Merge chart data, keeping only desired variables
+chart_merge = chartevents.merge(d_items, how='inner', on='ITEMID')
+assert len(chart_merge) == len(chartevents)
+chart_merge.columns = chart_merge.columns.str.lower()
+chart_merge['time'] = pd.to_datetime(chart_merge['charttime'])
+chart_merge = chart_merge.loc[chart_merge['label'].isin(CHART_VARS),
+                              ['subject_id', 'label', 'valuenum', 'time']]
 
 # Standardize column names and value formats across Carevue and Metavision
-merged.loc[merged['label'] == 'FiO2 Set', 'valuenum'] *= 100
-merged['label'] = merged['label'].map(MEASUREMENTS)
+chart_merge.loc[chart_merge['label'] == 'FiO2 Set', 'valuenum'] *= 100
+chart_merge['label'] = chart_merge['label'].map(CHART_VARS)
+
+# Same for lab data
+lab_merge = labevents.merge(d_labitems, how='inner', on='ITEMID')
+assert len(lab_merge) == len(labevents)
+lab_merge.columns = lab_merge.columns.str.lower()
+lab_merge['time'] = pd.to_datetime(lab_merge['charttime'])
+lab_merge = lab_merge.loc[lab_merge['label'].isin(LAB_VARS),
+                          ['subject_id', 'label', 'valuenum', 'time']]
+lab_merge['label'] = lab_merge['label'].map(LAB_VARS)
 
 # Reshape data to wide format
 
-ts = merged.pivot_table(values='valuenum', columns='label',
-                          index=['subject_id', 'charttime_dt'])
-
+ts = chart_merge.append(lab_merge)
+ts = ts.pivot_table(values='valuenum', columns='label',
+                    index=['subject_id', 'time'])
 ts.to_csv(OUTPUT_PATH + 'ts.csv')
