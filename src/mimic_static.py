@@ -1,5 +1,7 @@
 # mimic_static.py
-#
+
+# NOTE: will not be used
+
 # Converts raw MIMIC static data to the standardized format
 # Input: the MIMIC-III database in CSV format (pointed to by INPUT_PATH)
 # Output: static.csv
