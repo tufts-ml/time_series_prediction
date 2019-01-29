@@ -22,7 +22,8 @@ df = df.rename({'time2': 'time'}, axis='columns')
 
 group_cols = list(df.columns[df.columns.str.endswith('_id')])
 
-aligned = df.groupby(group_cols).resample(sys.argv[2], on='time').mean()
+aligned = df.groupby(group_cols).resample(sys.argv[2], on='time', label='right',
+                                          closed='left').mean()
 aligned = aligned.drop(group_cols, axis='columns')
 
 aligned.to_csv('aligned.csv')
