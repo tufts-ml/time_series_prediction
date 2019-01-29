@@ -1,0 +1,22 @@
+{
+    "fields": [
+        {
+            "name": "subject_id",
+            "description": "Unique identifier for individual",
+            "type": "integer",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "age_days",
+            "description": "Age of the individual in days",
+            "type": "integer"
+        },
+        {
+            "name": "female",
+            "description": "Indicator for whether individual is female",
+            "type": "boolean"
+        }
+    ]
+}
