@@ -1,0 +1,88 @@
+{
+    "fields": [
+        {
+            "name": "subject_id",
+            "description": "Unique identifier for individual",
+            "type": "integer",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "time",
+            "description": "Datetime at the end of the time-series window",
+            "type": "datetime",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "bicarbonate",
+            "type": "integer"
+        },
+        {
+            "name": "bp",
+            "type": "integer"
+        },
+        {
+            "name": "bun",
+            "type": "integer"
+        },
+        {
+            "name": "creatinine",
+            "type": "number"
+        },
+        {
+            "name": "fio2",
+            "type": "integer"
+        },
+        {
+            "name": "glucose",
+            "type": "integer"
+        },
+        {
+            "name": "hct",
+            "type": "number"
+        },
+        {
+            "name": "hr",
+            "type": "integer"
+        },
+        {
+            "name": "lactate",
+            "type": "number"
+        },
+        {
+            "name": "magnesium",
+            "type": "number"
+        },
+        {
+            "name": "platelet",
+            "type": "integer"
+        },
+        {
+            "name": "potassium",
+            "type": "number"
+        },
+        {
+            "name": "rr",
+            "type": "integer"
+        },
+        {
+            "name": "sodium",
+            "type": "integer"
+        },
+        {
+            "name": "spo2",
+            "type": "integer"
+        },
+        {
+            "name": "temp",
+            "type": "number"
+        },
+        {
+            "name": "wbc",
+            "type": "number"
+        }        
+    ]
+}
