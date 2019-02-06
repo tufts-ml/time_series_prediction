@@ -14,14 +14,11 @@ import sys
 import pandas as pd
 from sklearn.model_selection import GroupShuffleSplit
 
-#VALID_SIZE = float(sys.argv[2])
-VALID_SIZE = 0.1
-#TEST_SIZE = float(sys.argv[3])
-TEST_SIZE = 0.1
+VALID_SIZE = float(sys.argv[2])
+TEST_SIZE = float(sys.argv[3])
 SEED = 20190206
 
-#df = pd.read_csv(sys.argv[1])
-df = pd.read_csv('transformed.csv')
+df = pd.read_csv(sys.argv[1])
 train_test = None
 train = None
 test = None
