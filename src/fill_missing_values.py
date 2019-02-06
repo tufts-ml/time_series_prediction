@@ -31,7 +31,7 @@ def main():
 						choices=['pop_mean', 'carry_forward', 
 								 'similar_subject_mean', 'GRU_simple',
 								 'GRU_complex', 'nulls', 'None'])
-	parser.add_argument('--multiple_strategies'. type=bool, required=False,
+	parser.add_argument('--multiple_strategies', type=bool, required=False,
 					    default=True)
 	parser.add_argument('--second_strategy', type=str, required=False,
 						default='similar_subject_mean', 

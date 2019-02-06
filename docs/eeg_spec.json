@@ -1,0 +1,52 @@
+{
+    "fields": [
+        {
+            "name": "subj_id",
+            "description": "Unique identifier for individual",
+            "type": "string",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "chunk_id",
+            "description": "Identifies which chunk of time data belongs to",
+            "type": "integer",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "seq_num",
+            "description": "Sequential number of data reading within chunk",
+            "type": "integer",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "eeg_signal",
+            "description": "Value of EEG signal reading",
+            "type": "integer",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "seizure_binary",
+            "description": "Indicator for whether individual is having seizure at time of reading (category_label = 1)",
+            "type": "boolean",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "category_label",
+            "description": "Category of data reading (see documentation)",
+            "type": "string",
+            "constraints": {
+                "required": true
+            }
+        }
+    ]
+}
