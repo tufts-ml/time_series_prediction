@@ -17,7 +17,8 @@ data_dict = json.load(open(sys.argv[2]))
 
 for x in data_dict['fields']:
     col = x['name']
-    if col[-3:] != '_id' and x['type'] in ('integer', 'number'):
+    if (col[-3:] != '_id' and col != 'seq_num'
+            and x['type'] in ('integer', 'number')):
         df[col] = robust_scale(df[col])
 
 df.to_csv('normalized.csv', index=False)
