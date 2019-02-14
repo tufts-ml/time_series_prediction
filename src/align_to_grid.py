@@ -20,7 +20,6 @@
 
 # TODO: summary stat other than mean?
 
-import sys
 import pandas as pd
 import argparse
 import json
@@ -36,9 +35,9 @@ args = parser.parse_args()
 # Import data
 df = pd.read_csv(args.input_file)
 data_dict = json.load(open(args.data_dict))
-id_cols = [x['name'] for x in data_dict['fields'] if x['role'] == 'id']
-time_cols = [x['name'] for x in data_dict['fields'] if x['role'] == 'time']
-seq_cols = [x['name'] for x in data_dict['fields'] if x['role'] == 'sequence']
+id_cols = [c['name'] for c in data_dict['fields'] if c['role'] == 'id']
+time_cols = [c['name'] for c in data_dict['fields'] if c['role'] == 'time']
+seq_cols = [c['name'] for c in data_dict['fields'] if c['role'] == 'sequence']
 
 # Align data to grid
 if len(time_cols) + len(seq_cols) != 1:
@@ -53,7 +52,7 @@ elif len(time_cols) == 1:
     grouped = df.groupby(id_cols)
     aligned = grouped.resample(args.step_size, on=time_col, label='right',
                                closed='right').mean()
-    aligned=aligned.drop(id_cols, axis='columns')
+    aligned = aligned.drop(id_cols, axis='columns')
 elif len(seq_cols) == 1:
     seq_col = seq_cols[0]
     length = int(args.step_size)
