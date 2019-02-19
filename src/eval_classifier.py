@@ -5,9 +5,13 @@
 #                     and test.csv
 #         Argument 3: data dictionary for the above files
 #         --static_file: joins the indicated static file to the time-series data
-#                        on all columns in the static data of role 'id'
-#         - Other arguments are passed directly to the classifier (currently
-#           only --C for logistic regression is supported)
+#           on all columns in the static data of role 'id'
+#         --validation_size: fraction of the training data to be used for
+#           model selection (default 0.1)
+#         - Arguments starting with '_grid' specify the hyperparameter values
+#           to be tested as a list following the hyperparameter name: for
+#           example, "--grid_C 0.1 1 10". These arguments should go at the end.
+#         - Any other arguments are passed through to the classifier.
 # Output: TODO (currently prints the accuracy)
 
 import argparse
@@ -17,25 +21,51 @@ import pandas as pd
 
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
-from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import ParameterGrid, GridSearchCV, ShuffleSplit
 
-# Parse command line arguments
+# Parse pre-specified command line arguments
 
 parser = argparse.ArgumentParser()
 
 subparsers = parser.add_subparsers()
 logistic_parser = subparsers.add_parser('logistic')
-logistic_parser.add_argument('--C', type=float)
-logistic_parser.set_defaults(clf=LogisticRegression, solver='lbfgs', C=1)
+logistic_parser.add_argument('--grid_C', type=float, nargs='*', default=[1])
+logistic_parser.set_defaults(clf=LogisticRegression,
+                             default_clf_args={'solver': 'lbfgs'})
 
 for p in [logistic_parser]: # list of all supported classifiers
     p.add_argument('ts_folder')
-    p.add_argument('data_dict') 
+    p.add_argument('data_dict')
     p.add_argument('--static_file')
+    p.add_argument('--validation_size', type=float, default=0.1)
 
-args = parser.parse_args()
-clf_args = {key: vars(args)[key] for key in vars(args)
-            if key not in ('ts_folder', 'data_dict', 'static_file', 'clf')}
+args, unknown_args = parser.parse_known_args()
+generic_args = ('ts_folder', 'data_dict', 'static_file', 'validation_size',
+                 'clf', 'default_clf_args')
+# key[5:] strips the 'grid_' prefix from the argument
+param_grid = {key[5:]: vars(args)[key] for key in vars(args)
+              if key not in generic_args}
+
+# Parse unspecified arguments to be passed through to the classifier
+# [2:] strips the '--' prefix
+
+def convert_if_float(x):
+    try:
+        return float(x)
+    except ValueError:
+        return False
+    return True
+
+passthrough_args = {}
+for i in range(len(unknown_args)):
+    arg = unknown_args[i]
+    if arg.startswith('--'):
+        val = unknown_args[i+1]
+        try:
+            passthrough_args[arg[2:]] = float(unknown_args[i+1])
+        except ValueError:
+            passthrough_args[arg[2:]] = unknown_args[i+1]
+
 
 # Import data
 
@@ -52,6 +82,7 @@ if args.static_file:
     test = test.merge(static, on=static_id_cols)
 
 # Prepare data for classification
+
 feature_cols = [c['name'] for c in data_dict['fields']
                 if c['role'] == 'feature']
 outcome_col = [c['name'] for c in data_dict['fields']
@@ -65,18 +96,13 @@ y_valid = np.ravel(valid[outcome_col])
 x_test = test[feature_cols]
 y_test = np.ravel(test[outcome_col])
 
-# Train classifier (currently ignores validation data)
-
-clf = args.clf(**clf_args)
-clf.fit(x_train, y_train)
-y_test_pred = clf.predict(x_test)
-accuracy = accuracy_score(y_test, y_test_pred)
-print('Accuracy: {:.3f}'.format(accuracy))
-
 # Grid search (currently ignores validation data and prohibits customization)
 
-param_grid = {'C': [0.01, 0.1, 1, 10, 100]}
-grid = GridSearchCV(clf, param_grid, cv=5) # other options?
+clf = args.clf(**args.default_clf_args, **passthrough_args)
+# Despite using GridSearchCV, this uses a single validation set.
+# TODO: specify seed
+grid = GridSearchCV(clf, param_grid,
+                    cv=ShuffleSplit(test_size=args.validation_size, n_splits=1))
 grid.fit(x_train, y_train)
 print('Grid search results:')
 for x in grid.cv_results_:
