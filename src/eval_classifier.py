@@ -14,78 +14,72 @@
 #           They must be implemented for individual classifiers.
 #         - Any other arguments are passed through to the classifier.
 #
-#         Example: python eval_classifier.py logistic <ts_folder> <data_dict>
-#                  --static_file <static_file> --validation_size 0.1
-#                  --class_weight balanced --grid_C 0.1 1 10
+#         Example (with TS files in src directory):
+#             python eval_classifier.py logistic . ../docs/eeg_spec.json
+#                 --static_file ../datasets/eeg/eeg_static.csv
+#                 --validation_size 0.1
+#                 --class_weight balanced
+#                 --grid_C 0.1 1 10
 #
-# Output: TODO (currently prints the accuracy)
+# Output: TODO (currently prints results of grid search)
 
-# TODO: valid.csv as input, or create it here?
+# TODO: valid.csv as input, or create it here from train.csv?
+# TODO: allow specifying classifer settings implemented for grid search without
+#       applying to grid search. For example, '--C 1' instead of '--grid_C 1'.
+# TODO: clean up this file
 
 import argparse
+import ast
 import json
 import numpy as np
 import pandas as pd
 
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
+from sklearn.neural_network import MLPClassifier
+from sklearn.tree import DecisionTreeClassifier
+from custom_classifiers import LogisticRegressionWithThreshold
+
 from sklearn.metrics import (accuracy_score, average_precision_score,
                              roc_auc_score)
-from sklearn.model_selection import ParameterGrid, GridSearchCV, ShuffleSplit
-
-# Modify LogisticRegression to allow custom thresholds
-
-class LogisticRegressionWithThreshold(LogisticRegression):
-
-    # See LogisticRegression.__init__() in sklearn source code
-    # linear_model/logistic.py. This is not robust to changes in sklearn,
-    # but it won't let me pass through **kwargs to a subclass constructor.
-    def __init__(self, penalty='l2', dual=False, tol=1e-4, C=1.0,
-                 fit_intercept=True, intercept_scaling=1, class_weight=None,
-                 random_state=None, solver='warn', max_iter=100,
-                 multi_class='warn', verbose=0, warm_start=False, n_jobs=None,
-                 l1_ratio=None, threshold=0):
-        self.penalty = penalty
-        self.dual = dual
-        self.tol = tol
-        self.C = C
-        self.fit_intercept = fit_intercept
-        self.intercept_scaling = intercept_scaling
-        self.class_weight = class_weight
-        self.random_state = random_state
-        self.solver = solver
-        self.max_iter = max_iter
-        self.multi_class = multi_class
-        self.verbose = verbose
-        self.warm_start = warm_start
-        self.n_jobs = n_jobs
-        self.l1_ratio = l1_ratio
-        self.threshold = threshold
-
-    # Same as LinearClassifierMixin.predict() in sklearn source code 
-    # linear_model/base.py, but with a custom threshold rather than 0.
-    def predict(self, X):
-        scores = self.decision_function(X)
-        if len(scores.shape) == 1:
-            indices = (scores > self.threshold).astype(np.int)
-        else:
-            indices = scores.argmax(axis=1)
-        return self.classes_[indices]
+from sklearn.model_selection import GridSearchCV, ShuffleSplit
 
 # Parse pre-specified command line arguments
 
 parser = argparse.ArgumentParser()
-
 subparsers = parser.add_subparsers()
+
 logistic_parser = subparsers.add_parser('logistic')
+logistic_parser.set_defaults(clf=LogisticRegressionWithThreshold,
+                             default_clf_args={'solver': 'lbfgs'})
 logistic_parser.add_argument('--grid_C', type=float, nargs='*', default=[1])
 # Decision threshold uses the output of decision_function(), the signed distance
 # to the hyperplane (default 0), not predicted probabilities (default 0.5).
 logistic_parser.add_argument('--grid_threshold', type=float, nargs='*',
                              default=[0])
-logistic_parser.set_defaults(clf=LogisticRegressionWithThreshold,
-                             default_clf_args={'solver': 'lbfgs'})
 
-for p in [logistic_parser]: # list of all supported classifiers
+dtree_parser = subparsers.add_parser('dtree')
+dtree_parser.set_defaults(clf=DecisionTreeClassifier, default_clf_args={})
+dtree_parser.add_argument('--grid_max_depth', type=int, nargs='*', 
+                          default=[None])
+
+rforest_parser = subparsers.add_parser('rforest')
+rforest_parser.set_defaults(clf=RandomForestClassifier, default_clf_args={})
+rforest_parser.add_argument('--grid_n_estimators', type=int, nargs='*',
+                            default=[10])
+rforest_parser.add_argument('--grid_max_depth', type=int, nargs='*',
+                            default=[None])
+
+mlp_parser = subparsers.add_parser('mlp')
+mlp_parser.set_defaults(clf=MLPClassifier, default_clf_args={})
+# ast.literal_eval evaluates strings, converting to a tuple in this case
+# (may need to put tuples in quotes for command line)
+mlp_parser.add_argument('--grid_hidden_layer_sizes', type=ast.literal_eval,
+                        nargs='*', default=[(100,)])
+mlp_parser.add_argument('--grid_alpha', type=float, nargs='*', default=[0.0001])
+
+all_subparsers = (logistic_parser, dtree_parser, rforest_parser, mlp_parser)
+for p in all_subparsers:
     p.add_argument('ts_folder')
     p.add_argument('data_dict')
     p.add_argument('--static_file')
@@ -100,24 +94,23 @@ param_grid = {key[5:]: vars(args)[key] for key in vars(args)
 
 # Parse unspecified arguments to be passed through to the classifier
 
-def convert_if_float(x):
+def auto_convert_str(x):
     try:
-        return float(x)
+        x_float = float(x)
+        x_int = int(x_float)
+        if x_int == x_float:
+            return x_int
+        else:
+            return x_float
     except ValueError:
-        return False
-    return True
+        return x
 
 passthrough_args = {}
 for i in range(len(unknown_args)):
     arg = unknown_args[i]
     if arg.startswith('--'):
         val = unknown_args[i+1]
-        try:
-            # [2:] strips the '--' prefix
-            passthrough_args[arg[2:]] = float(unknown_args[i+1])
-        except ValueError:
-            passthrough_args[arg[2:]] = unknown_args[i+1]
-
+        passthrough_args[arg[2:]] = auto_convert_str(unknown_args[i+1])
 
 # Import data
 
