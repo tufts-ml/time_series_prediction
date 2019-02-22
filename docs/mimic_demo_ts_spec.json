@@ -4,6 +4,7 @@
             "name": "subject_id",
             "description": "Unique identifier for individual",
             "type": "integer",
+            "role": "id",
             "constraints": {
                 "required": true
             }
@@ -12,77 +13,95 @@
             "name": "time",
             "description": "Datetime at the end of the time-series window",
             "type": "datetime",
+            "role": "time",
             "constraints": {
                 "required": true
             }
         },
         {
             "name": "bicarbonate",
-            "type": "integer"
+            "type": "integer",
+            "role": "feature"
         },
         {
             "name": "bp",
-            "type": "integer"
+            "type": "integer",
+            "role": "feature"
         },
         {
             "name": "bun",
-            "type": "integer"
+            "type": "integer",
+            "role": "feature"
         },
         {
             "name": "creatinine",
-            "type": "number"
+            "type": "number",
+            "role": "feature"
         },
         {
             "name": "fio2",
-            "type": "integer"
+            "type": "integer",
+            "role": "feature"
         },
         {
             "name": "glucose",
-            "type": "integer"
+            "type": "integer",
+            "role": "feature"
         },
         {
             "name": "hct",
-            "type": "number"
+            "type": "number",
+            "role": "feature"
         },
         {
             "name": "hr",
-            "type": "integer"
+            "type": "integer",
+            "role": "feature"
         },
         {
             "name": "lactate",
-            "type": "number"
+            "type": "number",
+            "role": "feature"
         },
         {
             "name": "magnesium",
-            "type": "number"
+            "type": "number",
+            "role": "feature"
         },
         {
             "name": "platelet",
-            "type": "integer"
+            "type": "integer",
+            "role": "feature"
         },
         {
             "name": "potassium",
-            "type": "number"
+            "type": "number",
+            "role": "feature"
         },
         {
             "name": "rr",
-            "type": "integer"
+            "type": "integer",
+            "role": "feature"
         },
         {
             "name": "sodium",
-            "type": "integer"
+            "type": "integer",
+            "role": "feature"
         },
         {
             "name": "spo2",
-            "type": "integer"
+            "type": "integer",
+            "role": "feature"
         },
         {
             "name": "temp",
-            "type": "number"
+            "type": "number",
+            "role": "feature"
         },
         {
             "name": "wbc",
-            "type": "number"
+            "type": "number",
+            "role": "feature"
         }        
     ]
 }
