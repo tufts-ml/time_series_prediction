@@ -1,21 +1,16 @@
 # fill_missing_values.py
 
 # Input: a dataframe that may contain missing values, strategy for 
-#		 filling those values
-# Assumptions: subject_id and time values are present for every row,
-#			   all others can be filled, data file is sorted by 
-#			   subject_id and time
+#		 filling those values, meta data for that df's columns
+
 # Output: a dataframe that fills in missing values 
 
 import sys
 import pandas as pd
 import argparse
+import json
 
-# TODO: This information should come from elsewhere, ideally data dictionary?
-EXEMPT_COLS = ['subject_id', 'time']
-AGE_CUTOFFS = [6569, 10950, 18250, 25550, 32850] 
-# in years: 18 - 1 day, 30, 50, 70, 90
-GENDERS = ['F', 'M']
+EXEMPT_COLS = []
 
 def main():
 	parser = argparse.ArgumentParser(description="Script for filling in "
@@ -25,16 +20,20 @@ def main():
 
 	parser.add_argument('--data', type=str, required=True, 
 						help='Path to csv dataframe of readings')
-	parser.add_argument('--static', type=str, required=True, 
+	parser.add_argument('--static', type=str, required=False, 
 						help='Path to csv dataframe of static values')
+	parser.add_argument('--data_dict', type=str, required=True,
+						help='JSON dictionary describing data schema')
+	parser.add_argument('--static_dict', type=str, required=False,
+						help='JSON dictionary describing static schema')
 	parser.add_argument('--strategy', type=str, required=True,
 						choices=['pop_mean', 'carry_forward', 
 								 'similar_subject_mean', 'GRU_simple',
 								 'GRU_complex', 'nulls', 'None'])
 	parser.add_argument('--multiple_strategies', type=bool, required=False,
-					    default=True)
+					    default=True, help='Set to False to execute only one strategy')
 	parser.add_argument('--second_strategy', type=str, required=False,
-						default='similar_subject_mean', 
+						default='carry_forward', 
 						choices=['pop_mean', 'carry_forward', 
 								 'similar_subject_mean', 'GRU_simple',
 								 'GRU_complex', 'nulls', 'None'])
@@ -46,8 +45,11 @@ def main():
 
 	args = parser.parse_args()
 
+	# TODO: reorganize this control flow to better accomodate the different
+	# 		combinations of arguments needed. 
 	ts_df = pd.read_csv(args.data)
-	static_df = pd.read_csv(args.static)
+	get_exempt_cols(args.data_dict)
+	static_df = None
 
 	if ts_df.isnull().values.any():
 		ts_df = apply_strategy(ts_df, static_df, args.strategy)
@@ -68,6 +70,10 @@ def apply_strategy(ts_df, static_df, strategy):
 	elif strategy == 'carry_forward':
 		return carry_forward(ts_df)
 	elif strategy == 'similar_subject_mean':
+		try:
+			static_df = pd.read_csv(args.static)
+		except:
+			print('Could not open static file')
 		return similar_subject_mean(ts_df, static_df)
 	elif strategy == 'GRU_simple':
 		return GRU_simple(ts_df)
@@ -77,6 +83,16 @@ def apply_strategy(ts_df, static_df, strategy):
 		return nulls(ts_df)
 	else:
 		return ts_df
+
+def get_exempt_cols(data_dict_file):
+	with open(data_dict_file, 'r') as f:
+		data_dict = json.load(f)
+
+	for col in data_dict['fields']:
+		if 'role' in col and (col['role'] == 'id' or 
+		    				  col['role'] == 'sequence' or
+		    				  col['role'] == 'time'):
+			EXEMPT_COLS.append(col['name'])
 
 def pop_mean(ts_df):
 	data_cols = [c for c in ts_df.columns.values if c not in EXEMPT_COLS]
@@ -90,7 +106,11 @@ def carry_forward(ts_df):
 	ts_df = ts_df.groupby(['subject_id']).apply(lambda x: x.fillna(method='pad'))
 	return ts_df
 
+# Currently does not work due to changes necessary for more common cases. Will
+# return to fix soon. 
 def similar_subject_mean(ts_df, static_df):
+	return ts_df
+
 	data_cols = [c for c in ts_df.columns.values if c not in EXEMPT_COLS]
 	subject_groups = []
 
