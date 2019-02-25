@@ -1,13 +1,13 @@
 # align_to_grid.py
 
-# Input:  Argument 1: a time-series file. One or more columns must
-#               have role 'id', and there must be exactly one of the following:
+# Input:  --input: (required) a time-series file. One or more columns must
+#             have role 'id', and there must be exactly one of the following:
 #               - a column of role 'time' containing irregular timesteps
 #               - a column of role 'sequence' containing the numbers 1, ..., n
 #                 for each group
-#         Argument 2: data dictionary for that file
-#         Argument 3: step size (see below)
-#         Argument 4: output file path
+#         --data_dict: (required) data dictionary for that file
+#         --step_size: (required) time-series step size; see below
+#         --output: (required) output file path
 # Output: a time-series file with regular steps grouped by all columns with
 #         role 'id' in the data dictionary. If there is a
 #           - column of role 'time': the steps correspond to the syntax in
@@ -26,14 +26,14 @@ import json
 
 # Parse command line arguments
 parser = argparse.ArgumentParser()
-parser.add_argument('input_file')
-parser.add_argument('data_dict')
-parser.add_argument('step_size')
-parser.add_argument('output_file')
+parser.add_argument('--input', required=True)
+parser.add_argument('--data_dict', required=True)
+parser.add_argument('--step_size', required=True)
+parser.add_argument('--output', required=True)
 args = parser.parse_args()
 
 # Import data
-df = pd.read_csv(args.input_file)
+df = pd.read_csv(args.input)
 data_dict = json.load(open(args.data_dict))
 id_cols = [c['name'] for c in data_dict['fields'] if c['role'] == 'id']
 time_cols = [c['name'] for c in data_dict['fields'] if c['role'] == 'time']
@@ -60,4 +60,4 @@ elif len(seq_cols) == 1:
     aligned = df.groupby(id_cols + [seq_col]).mean()
 
 # Export data
-aligned.to_csv(args.output_file)
+aligned.to_csv(args.output)
