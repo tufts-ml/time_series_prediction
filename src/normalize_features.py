@@ -1,8 +1,9 @@
 # normalized_features.py
 
-# Input:  Argument 1: a time-series file with unnormalized feature values
-#         Argument 2: data dictionary for that flie
-#         Argument 3: output file path
+# Input:  --input: (required) a time-series file with unnormalized feature
+#             values
+#         --data_dict: (required) data dictionary for that flie
+#         --output: (required) output file path
 # Output: A time-series file with normalized feature values. Only fields of 
 #         role 'feature' and type 'integer' or 'number' (as specified in the
 #         data dictionary) are normalized. Scaling is based on each column's
@@ -15,13 +16,13 @@ from sklearn.preprocessing import robust_scale
 
 # Parse command line arguments
 parser = argparse.ArgumentParser()
-parser.add_argument('input_file')
-parser.add_argument('data_dict')
-parser.add_argument('output_file')
+parser.add_argument('--input', required=True)
+parser.add_argument('--data_dict', required=True)
+parser.add_argument('--output', required=True)
 args = parser.parse_args()
 
 # Import data
-df = pd.read_csv(args.input_file)
+df = pd.read_csv(args.input)
 data_dict = json.load(open(args.data_dict))
 
 # Normalize features
@@ -31,4 +32,4 @@ for c in data_dict['fields']:
         df[col] = robust_scale(df[col])
 
 # Export data
-df.to_csv(args.output_file, index=False)
+df.to_csv(args.output, index=False)

@@ -175,7 +175,7 @@ def update_data_dict_collapse(args):
 		# cuts out time columns
 		if 'role' in col and (col['role'] == 'id' or
 							  col['role'] == 'sequence' or
-							  col['role'] == 'outcowme' or 
+							  col['role'] == 'outcome' or 
 							  col['role'] == 'other'):
 			new_fields.append(col)
 		if 'role' in col and col['role'] == 'feature':

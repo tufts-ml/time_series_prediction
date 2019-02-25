@@ -1,9 +1,10 @@
 # eval_classifier.py
 
-# Input:  Argument 1: a classifier type (currently only 'logistic' is supported)
-#         Argument 2: a folder containing time-series files train.csv,
-#                     valid.csv, and test.csv
-#         Argument 3: data dictionary for the above files
+# Input:  First argument: a classifier type ('logistic', 'dtree', 'rforest',
+#             'mlp')
+#         --ts_dir: (required) a directory containing time-series files
+#             train.csv andtest.csv
+#         --data_dict: (required) data dictionary for the above files
 #         --static_file: joins the indicated static file to the time-series data
 #           on all columns in the static data of role 'id'
 #         --validation_size: fraction of the training data to be used for
@@ -15,7 +16,9 @@
 #         - Any other arguments are passed through to the classifier.
 #
 #         Example (with TS files in src directory):
-#             python eval_classifier.py logistic . ../docs/eeg_spec.json
+#             python eval_classifier.py logistic
+#                 --ts_dir .
+#                 --data_dict ../docs/eeg_spec.json
 #                 --static_file ../datasets/eeg/eeg_static.csv
 #                 --validation_size 0.1
 #                 --class_weight balanced
@@ -23,7 +26,6 @@
 #
 # Output: TODO (currently prints results of grid search)
 
-# TODO: valid.csv as input, or create it here from train.csv?
 # TODO: allow specifying classifer settings implemented for grid search without
 #       applying to grid search. For example, '--C 1' instead of '--grid_C 1'.
 # TODO: clean up this file
@@ -80,13 +82,13 @@ mlp_parser.add_argument('--grid_alpha', type=float, nargs='*', default=[0.0001])
 
 all_subparsers = (logistic_parser, dtree_parser, rforest_parser, mlp_parser)
 for p in all_subparsers:
-    p.add_argument('ts_folder')
-    p.add_argument('data_dict')
+    p.add_argument('--ts_dir', required=True)
+    p.add_argument('--data_dict', required=True)
     p.add_argument('--static_file')
     p.add_argument('--validation_size', type=float, default=0.1)
 
 args, unknown_args = parser.parse_known_args()
-generic_args = ('ts_folder', 'data_dict', 'static_file', 'validation_size',
+generic_args = ('ts_dir', 'data_dict', 'static_file', 'validation_size',
                  'clf', 'default_clf_args')
 # key[5:] strips the 'grid_' prefix from the argument
 param_grid = {key[5:]: vars(args)[key] for key in vars(args)
@@ -115,15 +117,13 @@ for i in range(len(unknown_args)):
 # Import data
 
 data_dict = json.load(open(args.data_dict))
-train = pd.read_csv(args.ts_folder + '/train.csv')
-valid = pd.read_csv(args.ts_folder + '/valid.csv')
-test = pd.read_csv(args.ts_folder + '/test.csv')
+train = pd.read_csv(args.ts_dir + '/train.csv')
+test = pd.read_csv(args.ts_dir + '/test.csv')
 if args.static_file:
     static = pd.read_csv(args.static_file)
     static_id_cols = [c['name'] for c in data_dict['fields']
                       if c['role'] == 'id' and c['name'] in static.columns]
     train = train.merge(static, on=static_id_cols)
-    valid = valid.merge(static, on=static_id_cols)
     test = test.merge(static, on=static_id_cols)
 
 # Prepare data for classification
@@ -136,12 +136,10 @@ if len(outcome_col) != 1:
     raise Exception('Data must have exactly one outcome column')
 x_train = train[feature_cols]
 y_train = np.ravel(train[outcome_col])
-x_valid = valid[feature_cols]
-y_valid = np.ravel(valid[outcome_col])
 x_test = test[feature_cols]
 y_test = np.ravel(test[outcome_col])
 
-# Grid search (currently ignores validation data and prohibits customization)
+# Grid search
 
 clf = args.clf(**args.default_clf_args, **passthrough_args)
 # Despite using GridSearchCV, this uses a single validation set.
