@@ -6,9 +6,11 @@
 #             train.csv andtest.csv
 #         --data_dict: (required) data dictionary for the above files
 #         --static_file: joins the indicated static file to the time-series data
-#           on all columns in the static data of role 'id'
+#             on all columns in the static data of role 'id'
 #         --validation_size: fraction of the training data to be used for
-#           model selection (default 0.1)
+#             model selection (default 0.1)
+#         --scoring: scoring parameter passed to GridSearchCV to determine
+#             best hyperparameters
 #         - Arguments starting with 'grid_' specify the hyperparameter values
 #           to be tested as a list following the hyperparameter name: for
 #           example, "--grid_C 0.1 1 10". These arguments should go at the end.
@@ -21,7 +23,8 @@
 #                 --data_dict ../docs/eeg_spec.json
 #                 --static_file ../datasets/eeg/eeg_static.csv
 #                 --validation_size 0.1
-#                 --class_weight balanced
+#                 --scoring balanced_accuracy
+#                 --max_iter 100
 #                 --grid_C 0.1 1 10
 #
 # Output: TODO (currently prints results of grid search)
@@ -35,6 +38,7 @@ import ast
 import json
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
@@ -43,7 +47,8 @@ from sklearn.tree import DecisionTreeClassifier
 from custom_classifiers import LogisticRegressionWithThreshold
 
 from sklearn.metrics import (accuracy_score, average_precision_score,
-                             roc_auc_score)
+                             roc_auc_score, roc_curve, precision_recall_curve,
+                             confusion_matrix)
 from sklearn.model_selection import GridSearchCV, ShuffleSplit
 
 # Parse pre-specified command line arguments
@@ -86,10 +91,11 @@ for p in all_subparsers:
     p.add_argument('--data_dict', required=True)
     p.add_argument('--static_file')
     p.add_argument('--validation_size', type=float, default=0.1)
+    p.add_argument('--scoring')
 
 args, unknown_args = parser.parse_known_args()
 generic_args = ('ts_dir', 'data_dict', 'static_file', 'validation_size',
-                 'clf', 'default_clf_args')
+                 'scoring', 'clf', 'default_clf_args')
 # key[5:] strips the 'grid_' prefix from the argument
 param_grid = {key[5:]: vars(args)[key] for key in vars(args)
               if key not in generic_args}
@@ -144,7 +150,7 @@ y_test = np.ravel(test[outcome_col])
 clf = args.clf(**args.default_clf_args, **passthrough_args)
 # Despite using GridSearchCV, this uses a single validation set.
 # TODO: specify seed
-grid = GridSearchCV(clf, param_grid,
+grid = GridSearchCV(clf, param_grid, scoring=args.scoring,
                     cv=ShuffleSplit(test_size=args.validation_size, n_splits=1))
 grid.fit(x_train, y_train)
 print('Grid search results:')
@@ -153,9 +159,28 @@ for x in grid.cv_results_:
         print(x, grid.cv_results_[x])
 y_test_pred = grid.predict(x_test)
 y_test_pred_proba = grid.predict_proba(x_test)[:, 1]
+
+# Evaluation
+
 accuracy = accuracy_score(y_test, y_test_pred)
 avg_precision = average_precision_score(y_test, y_test_pred_proba)
 auroc = roc_auc_score(y_test, y_test_pred_proba)
-print('Best accuracy: {:.3f}'.format(accuracy))
-print('Best average precision: {:.3f}'.format(avg_precision))
-print('Best AUROC: {:.3f}'.format(auroc))
+roc_fpr, roc_tpr, _ = roc_curve(y_test, y_test_pred_proba)
+pr_precision, pr_recall, _ = precision_recall_curve(y_test, y_test_pred_proba)
+confusion = confusion_matrix(y_test, y_test_pred)
+print('Accuracy of best model: {:.3f}'.format(accuracy))
+print('Average precision of best model: {:.3f}'.format(avg_precision))
+print('AUROC of best model: {:.3f}'.format(auroc))
+print('Confusion matrix of best model:\n', confusion)
+
+# Plots
+
+plt.plot(roc_fpr, roc_tpr)
+plt.xlabel('FPR')
+plt.ylabel('TPR')
+plt.savefig('roc.png')
+plt.clf()
+plt.plot(pr_recall, pr_precision)
+plt.xlabel('Recall')
+plt.ylabel('Precision')
+plt.savefig('pr.png')
