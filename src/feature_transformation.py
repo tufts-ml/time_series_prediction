@@ -30,6 +30,9 @@ def main():
 						help='Path to csv dataframe of readings')
 	parser.add_argument('--data_dict', type=str, required=True,
 						help='Path to json data dictionary file')
+	parser.add_argument('--output', type=str, required=False, default=None)
+	parser.add_argument('--data_dict_output', type=str, required=False, 
+						default=None)
 	
 	parser.add_argument('--collapse', default=False, action='store_true')
 	parser.add_argument('--collapse_features', type=str, required=False,
@@ -51,6 +54,7 @@ def main():
 	ts_df = pd.read_csv(args.data)
 	data_dict = None
 	
+	# transform data
 	if args.collapse:
 		ts_df = collapse(ts_df, args)
 		data_dict = update_data_dict_collapse(args)
@@ -58,8 +62,25 @@ def main():
 		ts_df = add_new_feature(ts_df, args)
 		data_dict = update_data_dict_add_feature(args)
 
-	ts_df.to_csv('ts_transformed.csv', index=False)
-	with open('transformed.json', 'w') as f:
+	# save data to file
+	if args.output is None:
+		file_name = args.data.split('/')[-1].split('.')[0]
+		data_output = '{}_transformed.csv'.format(file_name)
+	elif args.output[-4:] == '.csv':
+		data_output = args.output
+	else:
+		data_output = '{}.csv'.format(args.output)
+	ts_df.to_csv(data_output)
+
+	# save data dictionary to file
+	if args.data_dict_output is None:
+		file_name = args.data_dict.split('/')[-1].split('.')[0]
+		dict_output = '{}_transformed.json'.format(file_name)
+	elif args.data_dict_output[-5:] == '.json':
+		dict_output = args.data_dict_output
+	else:
+		dict_output = '{}.json'.format(args.data_dict_output)
+	with open(dict_output, 'w') as f:
 		json.dump(data_dict, f)
 	f.close()
 
@@ -69,47 +90,18 @@ def main():
 # TODO: Possibly rearrange this to be simpler, ie put most of collapse func
 #		in the recursive steps
 def collapse(ts_df, args): 
-	id_cols = parse_id_cols(args.data_dict)
-	non_time_cols = parse_non_time_cols(args.data_dict)
-	time_cols = parse_time_cols(args.data_dict)
+	id_and_output_cols = parse_id_and_output_cols(args.data_dict)
+	feature_cols = parse_feature_cols(args.data_dict)
 
-	# define new columns, apply every summary statistic to every
-	# value column
-	new_cols = []
-	for col in ts_df.columns.values:
-		if col in non_time_cols:
-			new_cols.append(col)
-		if col not in non_time_cols and col not in time_cols:
-			for operation in args.collapse_features.split(' '):
-				new_cols.append('{}_{}'.format(col, operation))
+	operations = []
+	for op in args.collapse_features.split(' '):
+		operations.append(get_summary_stat_func(op))
 
-	rows = []
-	# break down summary groups by id columns 
-	# (ie [[name1, chunk1], [name1, chunk2], ...])
-	id_groups = []
-	all_id_combinations(id_cols, ts_df, id_groups)
+	new_df = pd.pivot_table(ts_df, values=feature_cols, index=id_and_output_cols, aggfunc=operations)
 
-	for id_group in id_groups: 
-		query_string = ''
-		for id_col, id_value, i in zip(id_cols, id_group, range(len(id_group))):
-			query_string += '{} == "{}"'.format(id_col, id_value) 
-			if i + 1 < len(id_group):
-				query_string += ' and '
-		group_df = ts_df.query(query_string)
-
-		# add summary row 
-		new_row = []
-		for col in ts_df.columns.values:
-			if col in non_time_cols:
-				new_row.append(group_df[col].iloc[0])
-			if col not in non_time_cols and col not in time_cols:
-				for operation in args.collapse_features.split(' '):
-					new_row.append(convert_to_summary_stat(group_df, col, 
-												   	   	   operation))
-		rows.append(new_row)
-
-	new_ts_df = pd.DataFrame(data=rows, columns=new_cols)
-	return new_ts_df
+	# format columns in a clean fashion
+	new_df.columns = ['_'.join(str(s).strip() for s in col if s) for col in new_df.columns]
+	return new_df
 
 def all_id_combinations(cols, df, combos, ids=[]):
 	if len(cols) == 0:
@@ -122,23 +114,22 @@ def all_id_combinations(cols, df, combos, ids=[]):
 		all_id_combinations(cols[1:], df.loc[df[cols[0]] == i], 
 							combos, ids_copy)
 
-def convert_to_summary_stat(df, col, op):
+def get_summary_stat_func(op):
 	if op == 'mean':
-		return np.mean(df[col].tolist())
+		return np.mean
 	elif op == 'std_dev':
-		return np.std(df[col].tolist())
+		return np.std
 	elif op == 'median':
-		return np.median(df[col].tolist())
+		return np.median
 	elif op == 'min_val':
-		return np.amin(df[col].tolist())
+		return np.amin
 	elif op == 'max_val':
-		return np.amax(df[col].tolist())
-
+		return np.amax
 
 # ADD NEW FEATURE COLUMN
 
 def add_new_feature(ts_df, args):
-	new_col_name = '{}_{}'.format(args.add_from, args.new_feature) 
+	new_col_name = '{}_{}'.format(args.new_feature, args.add_from) 
 	original_values = ts_df[args.add_from].tolist()
 	new_values = None 
 
@@ -170,19 +161,25 @@ def update_data_dict_collapse(args):
 		data_dict = json.load(f)
 	f.close()
 
+	id_and_output_cols = parse_id_and_output_cols(args.data_dict)
+	feature_cols = parse_feature_cols(args.data_dict)
+
+	operations = []
+	for op in args.collapse_features.split(' '):
+		operations.append(get_summary_stat_func(op))
+
 	new_fields = []
-	for col in data_dict['fields']:
-		# cuts out time columns
-		if 'role' in col and (col['role'] == 'id' or
-							  col['role'] == 'sequence' or
-							  col['role'] == 'outcome' or 
-							  col['role'] == 'other'):
-			new_fields.append(col)
-		if 'role' in col and col['role'] == 'feature':
-			for operation in args.collapse_features.split(' '):
-				new_dict = dict(col)
-				new_dict['name'] = '{}_{}'.format(col['name'], operation)
-				new_fields.append(new_dict)
+	for name in id_and_output_cols:
+		for col in data_dict['fields']:
+			if col['name'] == name: 
+				new_fields.append(col)
+	for name in feature_cols:
+		for col in data_dict['fields']:
+			if col['name'] == name: 
+				for op in operations:
+					new_dict = dict(col)
+					new_dict['name'] = '{}_{}'.format(op, name)
+					new_fields.append(new_dict)
 
 	new_data_dict = dict()
 	new_data_dict['fields'] = new_fields
@@ -197,7 +194,7 @@ def update_data_dict_add_feature(args):
 	for col in data_dict['fields']:
 		if 'name' in col and col['name'] == args.add_from:
 			new_dict = dict(col)
-			new_dict['name'] = '{}_{}'.format(col['name'], args.new_feature)
+			new_dict['name'] = '{}_{}'.format(args.new_feature, col['name'])
 			new_fields.append(new_dict)
 		else: 
 			new_fields.append(col)
@@ -206,43 +203,29 @@ def update_data_dict_add_feature(args):
 	new_data_dict['fields'] = new_fields
 	return new_data_dict
 
-def parse_id_cols(data_dict_file):	
+def parse_id_and_output_cols(data_dict_file):	
 	cols = []
 	with open(data_dict_file, 'r') as f:
 		data_dict = json.load(f)
 	f.close()
 
 	for col in data_dict['fields']:
-		if 'role' in col and col['role'] == 'id':
+		if 'role' in col and (col['role'] == 'id' or 
+							  col['role'] == 'outcome' or 
+							  col['role'] == 'other'):
 			cols.append(col['name'])
 	return cols
 
-def parse_non_time_cols(data_dict_file):
+def parse_feature_cols(data_dict_file):
 	non_time_cols = []
 	with open(data_dict_file, 'r') as f:
 		data_dict = json.load(f)
 	f.close()
 
 	for col in data_dict['fields']:
-		# We don't care about time, we want to remove it
-		if 'role' in col and (col['role'] == 'id' or 
-		    				  col['role'] == 'sequence' or
-							  col['role'] == 'outcome' or 
-							  col['role'] == 'other'):
+		if 'role' in col and col['role'] == 'feature':
 			non_time_cols.append(col['name'])
 	return non_time_cols
-
-def parse_time_cols(data_dict_file):
-	time_cols = []
-	with open(data_dict_file, 'r') as f:
-		data_dict = json.load(f)
-	f.close()
-
-	for col in data_dict['fields']:
-		if 'role' in col and col['role'] == 'time':
-			time_cols.append(col['name'])
-	return time_cols
-
 
 if __name__ == '__main__':
     main()

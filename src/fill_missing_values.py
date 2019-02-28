@@ -24,14 +24,15 @@ def main():
 						help='Path to csv dataframe of static values')
 	parser.add_argument('--data_dict', type=str, required=True,
 						help='JSON dictionary describing data schema')
-	parser.add_argument('--static_dict', type=str, required=False,
-						help='JSON dictionary describing static schema')
+
+	parser.add_argument('--output', type=str, required=False, default=None)
+
 	parser.add_argument('--strategy', type=str, required=True,
 						choices=['pop_mean', 'carry_forward', 
 								 'similar_subject_mean', 'GRU_simple',
 								 'GRU_complex', 'nulls', 'None'])
-	parser.add_argument('--multiple_strategies', type=bool, required=False,
-					    default=True, help='Set to False to execute only one strategy')
+	parser.add_argument('--multiple_strategies', default=False, 
+						help='Set to False to execute only one strategy')
 	parser.add_argument('--second_strategy', type=str, required=False,
 						default='carry_forward', 
 						choices=['pop_mean', 'carry_forward', 
@@ -54,7 +55,7 @@ def main():
 	if ts_df.isnull().values.any():
 		ts_df = apply_strategy(ts_df, static_df, args.strategy)
 	
-	if args.multiple_strategies == True:	
+	if args.multiple_strategies:	
 		if ts_df.isnull().values.any():
 			ts_df = apply_strategy(ts_df, static_df, args.second_strategy)
 		if ts_df.isnull().values.any():
@@ -62,7 +63,15 @@ def main():
 		if ts_df.isnull().values.any():
 			ts_df = apply_strategy(ts_df, static_df, 'nulls')
 
-	ts_df.to_csv('ts_filled.csv', index=False)
+	# save data to file
+	if args.output is None:
+		file_name = args.data.split('/')[-1].split('.')[0]
+		data_output = '{}_filled.csv'.format(file_name)
+	elif args.output[-4:] == '.csv':
+		data_output = args.output
+	else:
+		data_output = '{}.csv'.format(args.output)
+	ts_df.to_csv(data_output, index=False)
 
 def apply_strategy(ts_df, static_df, strategy): 
 	if strategy == 'pop_mean':
@@ -146,7 +155,8 @@ def GRU_complex(ts_df):
 	pass
 
 def nulls(ts_df):
-	return ts_df.fillna(0, inplace=True)
+	ts_df.fillna(0, inplace=True)
+	return ts_df
 
 if __name__ == '__main__':
     main()
