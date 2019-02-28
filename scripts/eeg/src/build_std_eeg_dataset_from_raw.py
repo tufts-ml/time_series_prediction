@@ -1,9 +1,10 @@
 import argparse
 import numpy as np
 import pandas as pd
-import scipy.stats
+import sys
+import os
 
-def standardize_eeg_data(input_csv_path='raw/data.csv'):
+def standardize_eeg_data(input_csv_path='data.csv'):
     ''' Read raw csv file and create tidy dataframe
 
     Returns
@@ -12,6 +13,7 @@ def standardize_eeg_data(input_csv_path='raw/data.csv'):
         subj_id, chunk_id, seq_num, eeg_signal, seizure_label
     '''
     data = pd.read_csv(input_csv_path)
+    data['id'] = data[data.columns[0]]
     data['subj_id'] = data['id'].str.extract(r'X\d*\.(.*)', expand=False)
     data['chunk_id'] = data['id'].str.extract(r'X(\d*)\..*',
                                               expand=False).astype(int)
@@ -37,12 +39,34 @@ def standardize_eeg_data(input_csv_path='raw/data.csv'):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '--output_csv_path',
-        default='eeg_signal_data.csv')
+        '--input_csv_path',
+        default='data.csv')
+    parser.add_argument(
+        '--output_all_csv_path',
+        default='eeg_all_data.csv')
+    parser.add_argument(
+        '--output_sensors_ts_csv_path',
+        default='eeg_sensors_ts.csv')
+    parser.add_argument(
+        '--output_labels_static_csv_path',
+        default='eeg_static_labels.csv')
     args = parser.parse_args()
     locals().update(args.__dict__)
 
-    tidy_df = standardize_eeg_data()
+    tidy_df = standardize_eeg_data(input_csv_path=input_csv_path)
 
     # Write to csv file
-    tidy_df.to_csv(output_csv_path, index=False, header=True)
+    tidy_df.to_csv(output_all_csv_path, index=False, header=True)
+
+    static_df = pd.pivot_table(
+        tidy_df[['subj_id', 'seizure_binary_label', 'category_label']],
+        index='subj_id',
+        )
+    static_df.to_csv(output_labels_static_csv_path, index=True)
+
+    tidy_ts_df = tidy_df[['subj_id', 'chunk_id', 'seq_num', 'eeg_signal']]
+    tidy_ts_df.to_csv(output_sensors_ts_csv_path, index=False)
+
+    print("Static labels saved to CSV file:\n%s" % (output_labels_static_csv_path))
+    print("Sensor time-series saved to CSV file:\n%s" % (output_sensors_ts_csv_path))
+    
