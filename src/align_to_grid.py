@@ -26,15 +26,16 @@ import json
 
 # Parse command line arguments
 parser = argparse.ArgumentParser()
-parser.add_argument('--input', required=True)
+parser.add_argument('--input_ts_csv_path', required=True)
 parser.add_argument('--data_dict', required=True)
 parser.add_argument('--step_size', required=True)
 parser.add_argument('--output', required=True)
 args = parser.parse_args()
 
 # Import data
-df = pd.read_csv(args.input)
-data_dict = json.load(open(args.data_dict))
+df = pd.read_csv(args.input_ts_csv_path)
+with open(args.data_dict, 'r') as f:
+    data_dict = json.load(f)
 id_cols = [c['name'] for c in data_dict['fields'] if c['role'] == 'id']
 time_cols = [c['name'] for c in data_dict['fields'] if c['role'] == 'time']
 seq_cols = [c['name'] for c in data_dict['fields'] if c['role'] == 'sequence']

@@ -26,7 +26,7 @@ def main():
 												 "time features or adding"
 												 "new features.")
 
-	parser.add_argument('--data', type=str, required=True, 
+	parser.add_argument('--input', type=str, required=True, 
 						help='Path to csv dataframe of readings')
 	parser.add_argument('--data_dict', type=str, required=True,
 						help='Path to json data dictionary file')
@@ -51,7 +51,7 @@ def main():
 	
 	args = parser.parse_args()
 
-	ts_df = pd.read_csv(args.data)
+	ts_df = pd.read_csv(args.input)
 	data_dict = None
 	
 	# transform data
@@ -64,13 +64,14 @@ def main():
 
 	# save data to file
 	if args.output is None:
-		file_name = args.data.split('/')[-1].split('.')[0]
+		file_name = args.input.split('/')[-1].split('.')[0]
 		data_output = '{}_transformed.csv'.format(file_name)
 	elif args.output[-4:] == '.csv':
 		data_output = args.output
 	else:
 		data_output = '{}.csv'.format(args.output)
 	ts_df.to_csv(data_output)
+	print("Wrote to output CSV:\n%s" % (data_output))
 
 	# save data dictionary to file
 	if args.data_dict_output is None:
@@ -91,7 +92,10 @@ def main():
 #		in the recursive steps
 def collapse(ts_df, args): 
 	id_and_output_cols = parse_id_and_output_cols(args.data_dict)
+	id_and_output_cols = remove_col_names_from_list_if_not_in_df(id_and_output_cols, ts_df)
+
 	feature_cols = parse_feature_cols(args.data_dict)
+	feature_cols = remove_col_names_from_list_if_not_in_df(feature_cols, ts_df)
 
 	operations = []
 	for op in args.collapse_features.split(' '):
@@ -226,6 +230,22 @@ def parse_feature_cols(data_dict_file):
 		if 'role' in col and col['role'] == 'feature':
 			non_time_cols.append(col['name'])
 	return non_time_cols
+
+def remove_col_names_from_list_if_not_in_df(col_list, df):
+	''' Remove column names from provided list if not in dataframe
+
+	Examples
+	--------
+	>>> df = pd.DataFrame(np.eye(3), columns=['a', 'b', 'c'])
+	>>> remove_col_names_from_list_if_not_in_df(['q', 'c', 'a', 'e', 'f'], df)
+	['c', 'a']
+	'''
+	assert isinstance(col_list, list)
+	for cc in range(len(col_list))[::-1]:
+		col = col_list[cc]
+		if col not in df.columns:
+			col_list.remove(col)
+	return col_list
 
 if __name__ == '__main__':
     main()
