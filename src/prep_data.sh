@@ -16,7 +16,6 @@ python normalize_features.py \
     --input ts_filled.csv \
     --data_dict ../docs/eeg_spec.json \
     --output _normalized.csv
-# Note: slow
 echo "Transforming features"
 python feature_transformation.py \
     --data _normalized.csv \
