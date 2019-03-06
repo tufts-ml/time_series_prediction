@@ -24,7 +24,7 @@
 #         Example (with TS files in src directory):
 #             python eval_classifier.py logistic
 #                 --ts_dir .
-#                 --data_dict ../docs/eeg_spec.json
+#                 --data_dict transformed.json
 #                 --static_file ../datasets/eeg/eeg_static.csv
 #                 --validation_size 0.1
 #                 --scoring roc_auc
@@ -50,11 +50,10 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.neural_network import MLPClassifier
 from sklearn.tree import DecisionTreeClassifier
-from custom_classifiers import LogisticRegressionWithThreshold
-
-from sklearn.metrics import (accuracy_score, average_precision_score,
-                             roc_auc_score, roc_curve, precision_recall_curve,
-                             confusion_matrix)
+from custom_classifiers import ThresholdClassifier
+from sklearn.metrics import (accuracy_score, balanced_accuracy_score,
+                             average_precision_score, confusion_matrix,
+                             roc_auc_score, roc_curve, precision_recall_curve)
 from sklearn.model_selection import GridSearchCV, ShuffleSplit
 
 # Parse pre-specified command line arguments
@@ -63,12 +62,9 @@ parser = argparse.ArgumentParser()
 subparsers = parser.add_subparsers()
 
 logistic_parser = subparsers.add_parser('logistic')
-logistic_parser.set_defaults(clf=LogisticRegressionWithThreshold,
+logistic_parser.set_defaults(clf=LogisticRegression,
                              default_clf_args={'solver': 'lbfgs'})
 logistic_parser.add_argument('--grid_C', type=float, nargs='*', default=[1])
-# Decision threshold uses the output of decision_function(), the signed distance
-# to the hyperplane (default 0), not predicted probabilities (default 0.5).
-
 
 dtree_parser = subparsers.add_parser('dtree')
 dtree_parser.set_defaults(clf=DecisionTreeClassifier, default_clf_args={})
@@ -169,7 +165,8 @@ for x in grid.cv_results_:
 # Threshold search
 
 if args.thresholds is not None:
-    grid = GridSearchCV(grid.best_estimator_, {'threshold': args.thresholds},
+    grid = GridSearchCV(ThresholdClassifier(grid.best_estimator_),
+                        {'threshold': args.thresholds},
                         scoring=args.threshold_scoring, cv=splitter)
     grid.fit(x_train, y_train)
     print('\nThreshold search results:')
@@ -182,13 +179,14 @@ if args.thresholds is not None:
 y_test_pred = grid.predict(x_test)
 y_test_pred_proba = grid.predict_proba(x_test)[:, 1]
 accuracy = accuracy_score(y_test, y_test_pred)
+balanced_accuracy = balanced_accuracy_score(y_test, y_test_pred)
 avg_precision = average_precision_score(y_test, y_test_pred_proba)
 auroc = roc_auc_score(y_test, y_test_pred_proba)
 roc_fpr, roc_tpr, _ = roc_curve(y_test, y_test_pred_proba)
 pr_precision, pr_recall, _ = precision_recall_curve(y_test, y_test_pred_proba)
 confusion = confusion_matrix(y_test, y_test_pred)
-print('\n')
-print('Accuracy of best model: {:.3f}'.format(accuracy))
+print('\nAccuracy of best model: {:.3f}'.format(accuracy))
+print('Balanced accuracy of best model: {:.3f}'.format(balanced_accuracy))
 print('Average precision of best model: {:.3f}'.format(avg_precision))
 print('AUROC of best model: {:.3f}'.format(auroc))
 print('Confusion matrix of best model:\n', confusion)
