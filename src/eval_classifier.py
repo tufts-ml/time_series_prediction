@@ -3,15 +3,19 @@
 # Input:  First argument: a classifier type ('logistic', 'dtree', 'rforest',
 #             'mlp')
 #         --ts_dir: (required) a directory containing time-series files
-#             train.csv andtest.csv
+#             train.csv and test.csv
 #         --data_dict: (required) data dictionary for the above files
 #         --static_file: joins the indicated static file to the time-series data
 #             on all columns in the static data of role 'id'
 #         --validation_size: fraction of the training data to be used for
 #             model selection (default 0.1)
-#         --scoring: scoring parameter passed to GridSearchCV to determine
-#             best hyperparameters
-#         - Arguments starting with 'grid_' specify the hyperparameter values
+#         --scoring: scoring method to determine best hyperparameters, passed
+#             directly to GridSearchCV as 'scoring' parameter
+#         --thresholds: list of threshold values to be tested; classifier must
+#             support a 'threshold' parameter
+#         --threshold_scoring: scoring method to determine best threshold;
+#             default is 'balanced_accuracy'
+#         - Arguments starting with '--grid_' specify the hyperparameter values
 #           to be tested as a list following the hyperparameter name: for
 #           example, "--grid_C 0.1 1 10". These arguments should go at the end.
 #           They must be implemented for individual classifiers.
@@ -23,9 +27,11 @@
 #                 --data_dict ../docs/eeg_spec.json
 #                 --static_file ../datasets/eeg/eeg_static.csv
 #                 --validation_size 0.1
-#                 --scoring balanced_accuracy
+#                 --scoring roc_auc
 #                 --max_iter 100
 #                 --grid_C 0.1 1 10
+#                 --threshold -1 0 1
+#                 --threshold_scoring balanced_accuracy
 #
 # Output: TODO (currently prints results of grid search)
 
@@ -62,8 +68,7 @@ logistic_parser.set_defaults(clf=LogisticRegressionWithThreshold,
 logistic_parser.add_argument('--grid_C', type=float, nargs='*', default=[1])
 # Decision threshold uses the output of decision_function(), the signed distance
 # to the hyperplane (default 0), not predicted probabilities (default 0.5).
-logistic_parser.add_argument('--grid_threshold', type=float, nargs='*',
-                             default=[0])
+
 
 dtree_parser = subparsers.add_parser('dtree')
 dtree_parser.set_defaults(clf=DecisionTreeClassifier, default_clf_args={})
@@ -92,10 +97,13 @@ for p in all_subparsers:
     p.add_argument('--static_file')
     p.add_argument('--validation_size', type=float, default=0.1)
     p.add_argument('--scoring')
+    p.add_argument('--thresholds', type=float, nargs='*')
+    p.add_argument('--threshold_scoring', default='balanced_accuracy')
 
 args, unknown_args = parser.parse_known_args()
 generic_args = ('ts_dir', 'data_dict', 'static_file', 'validation_size',
-                 'scoring', 'clf', 'default_clf_args')
+                 'scoring', 'clf', 'default_clf_args', 'thresholds',
+                 'threshold_scoring')
 # key[5:] strips the 'grid_' prefix from the argument
 param_grid = {key[5:]: vars(args)[key] for key in vars(args)
               if key not in generic_args}
@@ -150,24 +158,36 @@ y_test = np.ravel(test[outcome_col])
 clf = args.clf(**args.default_clf_args, **passthrough_args)
 # Despite using GridSearchCV, this uses a single validation set.
 # TODO: specify seed
-grid = GridSearchCV(clf, param_grid, scoring=args.scoring,
-                    cv=ShuffleSplit(test_size=args.validation_size, n_splits=1))
+splitter = ShuffleSplit(test_size=args.validation_size, n_splits=1)
+grid = GridSearchCV(clf, param_grid, scoring=args.scoring, cv=splitter)
 grid.fit(x_train, y_train)
-print('Grid search results:')
+print('\nGrid search results:')
 for x in grid.cv_results_:
     if 'train' not in x:
         print(x, grid.cv_results_[x])
-y_test_pred = grid.predict(x_test)
-y_test_pred_proba = grid.predict_proba(x_test)[:, 1]
+
+# Threshold search
+
+if args.thresholds is not None:
+    grid = GridSearchCV(grid.best_estimator_, {'threshold': args.thresholds},
+                        scoring=args.threshold_scoring, cv=splitter)
+    grid.fit(x_train, y_train)
+    print('\nThreshold search results:')
+    for x in grid.cv_results_:
+        if 'train' not in x:
+            print(x, grid.cv_results_[x])
+
 
 # Evaluation
-
+y_test_pred = grid.predict(x_test)
+y_test_pred_proba = grid.predict_proba(x_test)[:, 1]
 accuracy = accuracy_score(y_test, y_test_pred)
 avg_precision = average_precision_score(y_test, y_test_pred_proba)
 auroc = roc_auc_score(y_test, y_test_pred_proba)
 roc_fpr, roc_tpr, _ = roc_curve(y_test, y_test_pred_proba)
 pr_precision, pr_recall, _ = precision_recall_curve(y_test, y_test_pred_proba)
 confusion = confusion_matrix(y_test, y_test_pred)
+print('\n')
 print('Accuracy of best model: {:.3f}'.format(accuracy))
 print('Average precision of best model: {:.3f}'.format(avg_precision))
 print('AUROC of best model: {:.3f}'.format(auroc))
