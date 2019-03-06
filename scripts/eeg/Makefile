@@ -37,7 +37,7 @@ $(EEG_DATASET_TOP_PATH)/raw/data.csv:
 	source $(PROJECT_REPO_DIR)/setup_env/$(USER).sh; \
 	source activate ${PROJECT_ENV_NAME}; \
 	mkdir -p $(EEG_DATASET_TOP_PATH)/raw/; \
-	wget https://archive.ics.uci.edu/ml/machine-learning-databases/00388/data.csv --directory-prefix $(EEG_DATASET_TOP_PATH)/raw/; \
+	wget http://archive.ics.uci.edu/ml/machine-learning-databases/00388/data.csv --directory-prefix $(EEG_DATASET_TOP_PATH)/raw/; \
 	echo "DONE. Saved to $(EEG_DATASET_TOP_PATH)/raw/data.csv"; \
 	}
 
@@ -52,10 +52,10 @@ $(EEG_DATASET_PATH)/eeg_sensors_ts.csv: $(EEG_DATASET_TOP_PATH)/raw/data.csv src
 	mkdir -p $(EEG_DATASET_PATH); \
 	python -u ./src/build_std_eeg_dataset_from_raw.py \
 		--input_csv_path $(EEG_DATASET_TOP_PATH)/raw/data.csv \
-		--output_all_csv_path $(EEG_DATASET_PATH}/eeg_all_data.csv \
-		--output_sensors_ts_csv_path $(EEG_DATASET_PATH}/eeg_sensors_ts.csv \
-		--output_labels_static_csv_path $(EEG_DATASET_PATH}/eeg_labels_static.csv \
-	; \
+		--output_all_csv_path $(EEG_DATASET_PATH)/eeg_all_data.csv \
+		--output_sensors_ts_csv_path $(EEG_DATASET_PATH)/eeg_sensors_ts.csv \
+		--output_labels_static_csv_path $(EEG_DATASET_PATH)/eeg_labels_static.csv \
+		; \
 	}
 
 # =====
