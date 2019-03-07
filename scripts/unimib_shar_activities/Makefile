@@ -11,9 +11,10 @@ HAS_REQD_EXE := $(foreach exec,$(REQD_EXECUTABLES),\
 PYTHON_VERSION?=3.6
 PROJECT_ENV_NAME?=tspred_env
 PROJECT_REPO_DIR?=$(abspath ../../)
-DATA_VERSION?=v20190228
+DATA_VERSION?=v20190307
 DATASET_TOP_PATH?=$(PROJECT_REPO_DIR)/datasets/unimib_shar_activities/
 DATASET_PATH?=$(DATASET_TOP_PATH)/$(DATA_VERSION)
+DATA_VERSION_SUBPATH?=unimib_shar_activities/$(DATA_VERSION)
 
 CONDA_ENV_PATH:=$(shell conda env list --json | grep ${PROJECT_ENV_NAME} | head -n1 | cut -d'"' -f2)
 # Quit early if environment not found
@@ -80,48 +81,48 @@ $(DATASET_PATH)/sensor_data_per_tstep.csv: $(DATASET_TOP_PATH)/raw/data/adl_data
 
 # =====
 .PHONY: align_to_grid 
-align_to_grid: $(EEG_DATASET_PATH)/eeg_sensors_ts_aligned.csv 			## Build time-series aligned to regular intervals
+align_to_grid: $(DATASET_PATH)/sensor_data_per_tstep__aligned.csv 		## Build time-series aligned to regular intervals
 
-$(EEG_DATASET_PATH)/eeg_sensors_ts_aligned.csv: 
+$(DATASET_PATH)/sensor_data_per_tstep__aligned.csv: 
 	@{ \
 	source $(PROJECT_REPO_DIR)/setup_env/$(USER).sh; \
 	source activate ${PROJECT_ENV_NAME}; \
 	python -u $(PROJECT_REPO_DIR)/src/align_to_grid.py \
-	    --input_ts_csv_path $(EEG_DATASET_PATH)/eeg_sensors_ts.csv \
-	    --data_dict $(PROJECT_REPO_DIR)/docs/eeg_spec.json \
+	    --input_ts_csv_path $(DATASET_PATH)/sensor_data_per_tstep.csv \
+	    --data_dict $(PROJECT_REPO_DIR)/docs/$(DATA_VERSION_SUBPATH)/sensor_data_per_tstep.json \
 	    --step_size 1 \
-	    --output $(EEG_DATASET_PATH)/eeg_sensors_ts_aligned.csv \
+	    --output $(DATASET_PATH)/sensor_data_per_tstep__aligned.csv \
 	; \
 	}
 
 # =====
 .PHONY: normalize_features 
-normalize_features: $(EEG_DATASET_PATH)/eeg_sensors_ts_aligned_normalized.csv 		## Build time series with normalized feature cols
+normalize_features: $(DATASET_PATH)/sensor_data_per_tstep__normalized.csv 		## Build time series with normalized feature cols
 
-$(EEG_DATASET_PATH)/eeg_sensors_ts_aligned_normalized.csv: $(EEG_DATASET_PATH)/eeg_sensors_ts_aligned.csv $(PROJECT_REPO_DIR)/src/normalize_features.py
+$(DATASET_PATH)/sensor_data_per_tstep__normalized.csv: $(DATASET_PATH)/sensor_data_per_tstep__aligned.csv $(PROJECT_REPO_DIR)/src/normalize_features.py
 	@{ \
 	source $(PROJECT_REPO_DIR)/setup_env/$(USER).sh; \
 	source activate ${PROJECT_ENV_NAME}; \
 	python -u $(PROJECT_REPO_DIR)/src/normalize_features.py \
-	    --input $(EEG_DATASET_PATH)/eeg_sensors_ts_aligned.csv \
-	    --data_dict $(PROJECT_REPO_DIR)/docs/eeg_spec.json \
-	    --output $(EEG_DATASET_PATH)/eeg_sensors_ts_aligned_normalized.csv \
+	    --input $(DATASET_PATH)/sensor_data_per_tstep__aligned.csv \
+	    --data_dict $(PROJECT_REPO_DIR)/docs/$(DATA_VERSION_SUBPATH)/sensor_data_per_tstep.json \
+	    --output $(DATASET_PATH)/sensor_data_per_tstep__normalized.csv \
 	; \
 	}
 
 # =====
 .PHONY: collapse_ts 
-collapse_ts: $(EEG_DATASET_PATH)/eeg_sensors_ts_normalized_collapsed.csv 		## Collapse time-series into fixed-size feature vector
+collapse_ts: $(DATASET_PATH)/sensor_data_per_seq__collapsed.csv 		## Collapse time-series into fixed-size feature vector
 
-$(EEG_DATASET_PATH)/eeg_sensors_ts_normalized_collapsed.csv: $(EEG_DATASET_PATH)/eeg_sensors_ts_aligned_normalized.csv $(PROJECT_REPO_DIR)/src/feature_transformation.py
+$(DATASET_PATH)/sensor_data_per_seq__collapsed.csv: $(DATASET_PATH)/sensor_data_per_tstep__normalized.csv $(PROJECT_REPO_DIR)/src/feature_transformation.py
 	@{ \
 	source $(PROJECT_REPO_DIR)/setup_env/$(USER).sh; \
 	source activate ${PROJECT_ENV_NAME}; \
 	python -u $(PROJECT_REPO_DIR)/src/feature_transformation.py \
-	    --input $(EEG_DATASET_PATH)/eeg_sensors_ts_aligned_normalized.csv \
-	    --data_dict $(PROJECT_REPO_DIR)/docs/eeg_spec.json \
-	    --output $(EEG_DATASET_PATH)/eeg_sensors_ts_normalized_collapsed.csv \
-		--data_dict_output $(EEG_DATASET_PATH)/collapsed.json \
+	    --input $(DATASET_PATH)/sensor_data_per_tstep__normalized.csv \
+	    --data_dict $(PROJECT_REPO_DIR)/docs/$(DATA_VERSION_SUBPATH)/sensor_data_per_tstep.json \
+	    --output $(DATASET_PATH)/sensor_data_per_seq__collapsed.csv \
+		--data_dict_output $(DATASET_PATH)/sensor_data_per_seq__collapsed.json \
 	    --collapse \
 	; \
 	}
@@ -129,14 +130,14 @@ $(EEG_DATASET_PATH)/eeg_sensors_ts_normalized_collapsed.csv: $(EEG_DATASET_PATH)
 
 # =====
 .PHONY: split_into_train_and_test 
-split_into_train_and_test: $(EEG_DATASET_PATH)/train.csv 		## Split into train and test
+split_into_train_and_test: $(DATASET_PATH)/train.csv 		## Split into train and test
 
-$(EEG_DATASET_PATH)/train.csv: $(EEG_DATASET_PATH)/eeg_sensors_ts_normalized_collapsed.csv $(PROJECT_REPO_DIR)/src/split_dataset.py
+$(DATASET_PATH)/train.csv: $(DATASET_PATH)/eeg_sensors_ts_normalized_collapsed.csv $(PROJECT_REPO_DIR)/src/split_dataset.py
 	@{ \
 	python -u $(PROJECT_REPO_DIR)/src/split_dataset.py \
-		--input $(EEG_DATASET_PATH)/eeg_sensors_ts_normalized_collapsed.csv \
-		--data_dict $(EEG_DATASET_PATH)/collapsed.json \
+		--input $(DATASET_PATH)/eeg_sensors_ts_normalized_collapsed.csv \
+		--data_dict $(DATASET_PATH)/collapsed.json \
 		--test_size 0.1 \
-		--output_dir $(EEG_DATASET_PATH)/ \
+		--output_dir $(DATASET_PATH)/ \
 	; \
 	}

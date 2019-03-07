@@ -1,0 +1,49 @@
+{
+    "fields": [
+        {
+            "name": "seq_id",
+            "description": "Unique identifier for each recorded activity time-series",
+            "type": "integer",
+            "role": "id",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "tstep_id",
+            "description": "Sequential number indicating discrete timesteps within each sequence",
+            "type": "integer",
+            "role": "sequence",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "acc_x",
+            "description": "Value from accelerometer x-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "acc_y",
+            "description": "Value from accelerometer y-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "acc_z",
+            "description": "Value from accelerometer z-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        }
+    ]
+}

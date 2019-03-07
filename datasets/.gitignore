@@ -1,0 +1,8 @@
+# Ignore everything by default (avoid huge data files)
+**/*.csv
+**/*.json
+**/*.txt
+
+# But not these files...
+!.gitignore
+
