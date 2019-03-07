@@ -112,7 +112,7 @@ def pop_mean(ts_df):
 	return ts_df
 
 def carry_forward(ts_df): 
-	ts_df = ts_df.groupby(['subject_id']).apply(lambda x: x.fillna(method='pad'))
+	ts_df = ts_df.groupby(['subj_id']).apply(lambda x: x.fillna(method='pad'))
 	return ts_df
 
 # Currently does not work due to changes necessary for more common cases. Will
