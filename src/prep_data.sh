@@ -33,5 +33,7 @@ python eval_classifier.py logistic \
     --data_dict transformed.json \
     --static_file ../datasets/eeg/eeg_static.csv \
     --validation_size 0.1 \
-    --class_weight balanced \
-    --grid_C 0.01 0.1 1 10 100
+    --scoring roc_auc \
+    --threshold_scoring balanced_accuracy \
+    --grid_C 0.001 0.01 1 10 100 1000 \
+    --thresholds 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9
