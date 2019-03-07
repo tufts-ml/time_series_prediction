@@ -2,7 +2,7 @@ SHELL:=/bin/bash
 
 # Verify required programs (like 'conda' are on the current path)
 # Make will terminate immediately if one of these is not available
-REQD_EXECUTABLES = ls grep conda
+REQD_EXECUTABLES = ls grep conda unzip
 HAS_REQD_EXE := $(foreach exec,$(REQD_EXECUTABLES),\
         $(if $(shell which $(exec)),$(exec),$(error "Required program '$(exec)' not in PATH. Please install or fix path issues.")))
 
