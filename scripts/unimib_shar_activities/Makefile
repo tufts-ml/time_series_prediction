@@ -24,6 +24,10 @@ $(error CONDA_ENV_PATH not defined)
 endif
 endif
 
+.PHONY: all
+
+all: $(DATASET_PATH)/sensor_data_per_seq__collapsed.csv
+
 .PHONY: help
 help:                                                 				## Show help messages for each command
 	@fgrep -h "##" $(MAKEFILE_LIST) | fgrep -v fgrep | sed -e 's/\\$$//' | sed -e 's/:.*##/,/' | column -s, -t
@@ -132,11 +136,11 @@ $(DATASET_PATH)/sensor_data_per_seq__collapsed.csv: $(DATASET_PATH)/sensor_data_
 .PHONY: split_into_train_and_test 
 split_into_train_and_test: $(DATASET_PATH)/train.csv 		## Split into train and test
 
-$(DATASET_PATH)/train.csv: $(DATASET_PATH)/eeg_sensors_ts_normalized_collapsed.csv $(PROJECT_REPO_DIR)/src/split_dataset.py
+$(DATASET_PATH)/train.csv: $(DATASET_PATH)/sensor_data_per_seq__collapsed.csv $(PROJECT_REPO_DIR)/src/split_dataset.py
 	@{ \
 	python -u $(PROJECT_REPO_DIR)/src/split_dataset.py \
-		--input $(DATASET_PATH)/eeg_sensors_ts_normalized_collapsed.csv \
-		--data_dict $(DATASET_PATH)/collapsed.json \
+		--input $(DATASET_PATH)/sensor_data_per_seq__collapsed.csv \
+		--data_dict $(DATASET_PATH)/sensor_data_per_seq__collapsed.json \
 		--test_size 0.1 \
 		--output_dir $(DATASET_PATH)/ \
 	; \

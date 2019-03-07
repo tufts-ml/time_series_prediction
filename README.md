@@ -6,14 +6,19 @@ Code for prediction given sequential data with some missing / irregularly-spaced
 
 * docs/ : documentation
 
-* datasets/ : Datasets and associated prep/standardization code
+* datasets/ : Datasets files only
+    
+    Usually, files are TOO LARGE to be in version control.
 
-Should follow the flat-file format defined in docs/dataset_spec.md
+* scripts/ : Specific code to prep each raw dataset into standard form
 
+    Usual recipe: cd data_folder/ && make all
 
 * src/ : Python source code for core methods
 
 * experiments/ : Code for launching experiments on HPC cluster resources
+
+
 
 
 
