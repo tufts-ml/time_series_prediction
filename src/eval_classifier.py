@@ -22,16 +22,16 @@
 #         - Any other arguments are passed through to the classifier.
 #
 #         Example (with TS files in src directory):
-#             python eval_classifier.py logistic
-#                 --ts_dir .
-#                 --data_dict ../docs/eeg_spec.json
-#                 --static_file ../datasets/eeg/eeg_static.csv
-#                 --validation_size 0.1
-#                 --scoring roc_auc
-#                 --max_iter 100
-#                 --grid_C 0.1 1 10
-#                 --threshold -1 0 1
-#                 --threshold_scoring balanced_accuracy
+            # python eval_classifier.py logistic
+            #     --ts_dir .
+            #     --data_dict transformed.json
+            #     --static_file ../datasets/eeg/eeg_static.csv
+            #     --validation_size 0.1
+            #     --scoring roc_auc
+            #     --max_iter 100
+            #     --grid_C 0.1 1 10
+            #     --thresholds -1 0 1
+            #     --threshold_scoring balanced_accuracy
 #
 # Output: TODO (currently prints results of grid search)
 
@@ -43,18 +43,19 @@ import argparse
 import ast
 import json
 import numpy as np
+import os
 import pandas as pd
 import matplotlib.pyplot as plt
+from yattag import Doc
 
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.neural_network import MLPClassifier
 from sklearn.tree import DecisionTreeClassifier
-from custom_classifiers import LogisticRegressionWithThreshold
-
-from sklearn.metrics import (accuracy_score, average_precision_score,
-                             roc_auc_score, roc_curve, precision_recall_curve,
-                             confusion_matrix)
+from custom_classifiers import ThresholdClassifier
+from sklearn.metrics import (accuracy_score, balanced_accuracy_score, f1_score,
+                             average_precision_score, confusion_matrix,
+                             roc_auc_score, roc_curve, precision_recall_curve)
 from sklearn.model_selection import GridSearchCV, ShuffleSplit
 
 # Parse pre-specified command line arguments
@@ -63,12 +64,9 @@ parser = argparse.ArgumentParser()
 subparsers = parser.add_subparsers()
 
 logistic_parser = subparsers.add_parser('logistic')
-logistic_parser.set_defaults(clf=LogisticRegressionWithThreshold,
+logistic_parser.set_defaults(clf=LogisticRegression,
                              default_clf_args={'solver': 'lbfgs'})
 logistic_parser.add_argument('--grid_C', type=float, nargs='*', default=[1])
-# Decision threshold uses the output of decision_function(), the signed distance
-# to the hyperplane (default 0), not predicted probabilities (default 0.5).
-
 
 dtree_parser = subparsers.add_parser('dtree')
 dtree_parser.set_defaults(clf=DecisionTreeClassifier, default_clf_args={})
@@ -153,6 +151,22 @@ y_train = np.ravel(train[outcome_col])
 x_test = test[feature_cols]
 y_test = np.ravel(test[outcome_col])
 
+# Set up HTML report
+
+try:
+    os.mkdir('html')
+except OSError:
+    pass
+os.chdir('html')
+
+doc, tag, text = Doc().tagtext()
+
+with tag('h3'):
+    text('Settings')
+for x in vars(args):
+    with tag('p'):
+        text(x, ': ', str(vars(args)[x]))
+
 # Grid search
 
 clf = args.clf(**args.default_clf_args, **passthrough_args)
@@ -161,46 +175,78 @@ clf = args.clf(**args.default_clf_args, **passthrough_args)
 splitter = ShuffleSplit(test_size=args.validation_size, n_splits=1)
 grid = GridSearchCV(clf, param_grid, scoring=args.scoring, cv=splitter)
 grid.fit(x_train, y_train)
-print('\nGrid search results:')
+with tag('h3'):
+    text('Grid search results')
 for x in grid.cv_results_:
     if 'train' not in x:
-        print(x, grid.cv_results_[x])
+        with tag('p'):
+            text(x, ': ', str(grid.cv_results_[x]))
 
 # Threshold search
 
 if args.thresholds is not None:
-    grid = GridSearchCV(grid.best_estimator_, {'threshold': args.thresholds},
+    grid = GridSearchCV(ThresholdClassifier(grid.best_estimator_),
+                        {'threshold': args.thresholds},
                         scoring=args.threshold_scoring, cv=splitter)
     grid.fit(x_train, y_train)
-    print('\nThreshold search results:')
+    with tag('h3'):
+        text('Threshold search results')
     for x in grid.cv_results_:
         if 'train' not in x:
-            print(x, grid.cv_results_[x])
-
+            with tag('p'):
+                text(x, ': ', str(grid.cv_results_[x]))
 
 # Evaluation
+
 y_test_pred = grid.predict(x_test)
 y_test_pred_proba = grid.predict_proba(x_test)[:, 1]
 accuracy = accuracy_score(y_test, y_test_pred)
+balanced_accuracy = balanced_accuracy_score(y_test, y_test_pred)
+f1 = f1_score(y_test, y_test_pred)
 avg_precision = average_precision_score(y_test, y_test_pred_proba)
-auroc = roc_auc_score(y_test, y_test_pred_proba)
+roc_auc = roc_auc_score(y_test, y_test_pred_proba)
 roc_fpr, roc_tpr, _ = roc_curve(y_test, y_test_pred_proba)
 pr_precision, pr_recall, _ = precision_recall_curve(y_test, y_test_pred_proba)
 confusion = confusion_matrix(y_test, y_test_pred)
-print('\n')
-print('Accuracy of best model: {:.3f}'.format(accuracy))
-print('Average precision of best model: {:.3f}'.format(avg_precision))
-print('AUROC of best model: {:.3f}'.format(auroc))
-print('Confusion matrix of best model:\n', confusion)
 
 # Plots
 
 plt.plot(roc_fpr, roc_tpr)
 plt.xlabel('FPR')
 plt.ylabel('TPR')
-plt.savefig('roc.png')
+plt.savefig('roc_curve.png')
 plt.clf()
 plt.plot(pr_recall, pr_precision)
 plt.xlabel('Recall')
 plt.ylabel('Precision')
-plt.savefig('pr.png')
+plt.savefig('pr_curve.png')
+
+# Finish HTML report
+
+with tag('h3'):
+    text('Parameters of best model')
+with tag('p'):
+    text(str(grid.best_estimator_))
+
+with tag('h3'):
+    text('Evaluation of best model')
+with tag('p'):
+    text('Accuracy: {:.3f}'.format(accuracy))
+with tag('p'):
+    text('Balanced accuracy: {:.3f}'.format(balanced_accuracy))
+with tag('p'):
+    text('F1 score: {:.3f}'.format(f1))
+with tag('p'):
+    text('Average precision: {:.3f}'.format(avg_precision))
+with tag('p'):
+    text('Confusion matrix:')
+doc.asis(pd.DataFrame(confusion).to_html())
+with tag('p'):
+    text('ROC curve')
+doc.stag('img', src='roc_curve.png')
+with tag('p'):
+    text('PR curve')
+doc.stag('img', src='pr_curve.png')
+
+with open('report.html', 'w') as f:
+    f.write(doc.getvalue())

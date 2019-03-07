@@ -36,9 +36,9 @@ def main():
 	
 	parser.add_argument('--collapse', default=False, action='store_true')
 	parser.add_argument('--collapse_features', type=str, required=False,
-						default='mean median std_dev min_val max_val', 
-						help="Enclose options with 's, choose"
-							 "from mean, std_dev, min_val, max_val"
+						default='mean median std amin amax', 
+						help="Enclose options with 's, choose "
+							 "from mean, std, amin, amax, "
 							 "median")
 	
 	# TODO: Add arithmetic opertions (ie column1 * column2 / column3)
@@ -121,13 +121,13 @@ def all_id_combinations(cols, df, combos, ids=[]):
 def get_summary_stat_func(op):
 	if op == 'mean':
 		return np.mean
-	elif op == 'std_dev':
+	elif op == 'std':
 		return np.std
 	elif op == 'median':
 		return np.median
-	elif op == 'min_val':
+	elif op == 'amin':
 		return np.amin
-	elif op == 'max_val':
+	elif op == 'amax':
 		return np.amax
 
 # ADD NEW FEATURE COLUMN
@@ -180,7 +180,7 @@ def update_data_dict_collapse(args):
 	for name in feature_cols:
 		for col in data_dict['fields']:
 			if col['name'] == name: 
-				for op in operations:
+				for op in args.collapse_features.split(' '):
 					new_dict = dict(col)
 					new_dict['name'] = '{}_{}'.format(op, name)
 					new_fields.append(new_dict)
