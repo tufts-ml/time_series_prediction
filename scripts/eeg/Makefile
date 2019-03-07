@@ -113,6 +113,8 @@ split_into_train_and_test: $(EEG_DATASET_PATH)/train.csv 		## Split into train a
 
 $(EEG_DATASET_PATH)/train.csv: $(EEG_DATASET_PATH)/eeg_sensors_ts_normalized_collapsed.csv $(PROJECT_REPO_DIR)/src/split_dataset.py
 	@{ \
+	source $(PROJECT_REPO_DIR)/setup_env/$(USER).sh; \
+	source activate ${PROJECT_ENV_NAME}; \
 	python -u $(PROJECT_REPO_DIR)/src/split_dataset.py \
 		--input $(EEG_DATASET_PATH)/eeg_sensors_ts_normalized_collapsed.csv \
 		--data_dict $(EEG_DATASET_PATH)/collapsed.json \
