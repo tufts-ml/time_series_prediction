@@ -1,0 +1,130 @@
+{
+    "fields": [
+        {
+            "name": "subj_id",
+            "description": "Unique identifier for each subject",
+            "type": "integer",
+            "role": "id",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "age_yr",
+            "description": "Age of subject in years",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "height_cm",
+            "description": "Height of subject in centimeters",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "weight_kg",
+            "description": "Weight of subject in kilograms",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "is_male",
+            "description": "Indicator for whether subject is male",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "gender_name",
+            "description": "Gender of subject",
+            "type": "string",
+            "role": "other",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "seq_id",
+            "description": "Unique identifier for each recorded activity time-series",
+            "type": "integer",
+            "role": "id",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "category_id",
+            "description": "Value between 0 and 8 indicating activity category",
+            "type": "integer",
+            "role": "outcome",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "category_name",
+            "description": "Name of activity category",
+            "type": "string",
+            "role": "other",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "pocket_id",
+            "description": "Indicator for smartphone being in the left (right?) pocket during recording",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "tstep_id",
+            "description": "Sequential number indicating discrete timesteps within each sequence",
+            "type": "integer",
+            "role": "sequence",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "acc_x",
+            "description": "Value from accelerometer x-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "acc_y",
+            "description": "Value from accelerometer y-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "acc_z",
+            "description": "Value from accelerometer z-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        }
+    ]
+}

@@ -80,7 +80,7 @@ if __name__ == '__main__':
     y_df['seq_id'] = np.arange(n_seq)
 
     names_path = os.path.join(dataset_path, 'adl_names.mat')
-    label_names = [unicode(np.squeeze(u))
+    label_names = [str(np.squeeze(u))
         for u in np.squeeze(loadmat(names_path)['adl_names'])]
     y_df['category_name'] = [
         label_names[ii] for ii in y_df['category_id']]

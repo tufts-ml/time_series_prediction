@@ -35,7 +35,8 @@ test = None
 valid = None
 gss1 = GroupShuffleSplit(n_splits=1, random_state=SEED, 
                          test_size=args.test_size)
-id_cols = [c['name'] for c in data_dict['fields'] if c['role'] == 'id']
+id_cols = [c['name'] for c in data_dict['fields']
+           if c['role'] == 'id' and c['name'] in df.columns]
 grp = df[id_cols]
 grp = [' '.join(row) for row in grp.astype(str).values]
 for a, b in gss1.split(df, groups=grp):
