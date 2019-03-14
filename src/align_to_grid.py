@@ -8,8 +8,8 @@
 #         --data_dict: (required) data dictionary for that file
 #         --step_size: (required) time-series step size; see below
 #         --output: (required) output file path
-# Output: a time-series file with regular steps grouped by all columns with
-#         role 'id' in the data dictionary. If there is a
+# Output: a time-series file with regular steps grouped by all columns in the
+#         data of role 'id' in the data dictionary. If there is a
 #           - column of role 'time': the steps correspond to the syntax in
 #             http://pandas.pydata.org/pandas-docs/stable/timeseries.html#offset-aliases
 #           - column of role 'sequence': the steps are every n entries in the
@@ -36,7 +36,8 @@ args = parser.parse_args()
 df = pd.read_csv(args.input_ts_csv_path)
 with open(args.data_dict, 'r') as f:
     data_dict = json.load(f)
-id_cols = [c['name'] for c in data_dict['fields'] if c['role'] == 'id']
+id_cols = [c['name'] for c in data_dict['fields']
+           if c['role'] == 'id' and c['name'] in df.columns]
 time_cols = [c['name'] for c in data_dict['fields'] if c['role'] == 'time']
 seq_cols = [c['name'] for c in data_dict['fields'] if c['role'] == 'sequence']
 
