@@ -2,24 +2,28 @@
 
 # Input:  --input: (required) a time-series file. One or more columns must
 #             have role 'id', and there must be exactly one of the following:
-#               - a column of role 'time' containing irregular timesteps
+#               - a column of role 'time' containing (likely irregular)
+#                 timesteps that can be parsed by pandas.to_datetime()
 #               - a column of role 'sequence' containing the numbers 1, ..., n
-#                 for each group
+#                 for each group, or time values that can be parsed as floats
+#                 (e.g. fractional hours).
 #         --data_dict: (required) data dictionary for that file
 #         --step_size: (required) time-series step size; see below
 #         --output: (required) output file path
 # Output: a time-series file with regular steps grouped by all columns in the
 #         data of role 'id' in the data dictionary. If there is a
 #           - column of role 'time': the steps correspond to the syntax in
-#             http://pandas.pydata.org/pandas-docs/stable/timeseries.html#offset-aliases
+#             http://pandas.pydata.org/pandas-docs/stable/timeseries.html#dateoffset-objects
 #           - column of role 'sequence': the steps are every n entries in the
-#             sequence, where n is the argument.
+#             sequence, where n is the argument, or are every n time units if
+#             the column values are interpreted as fractional time units.
 #         Values represent the mean for the given group within each step. Steps
 #         are closed and labeled on the right: e.g., a step labeled 2:00:00
 #         might cover data from 1:00:01 to 2:00:00.
 
 # TODO: summary stat other than mean?
 
+import numpy as np
 import pandas as pd
 import argparse
 import json
@@ -57,8 +61,8 @@ elif len(time_cols) == 1:
     aligned = aligned.drop(id_cols, axis='columns')
 elif len(seq_cols) == 1:
     seq_col = seq_cols[0]
-    length = int(args.step_size)
-    df[seq_col] = df[seq_col].apply(lambda x: length*(1+int((x-1)/length)))
+    length = float(args.step_size)
+    df[seq_col] = df[seq_col].apply(lambda x: length*(np.floor(x/length)))
     aligned = df.groupby(id_cols + [seq_col]).mean()
 
 # Export data
