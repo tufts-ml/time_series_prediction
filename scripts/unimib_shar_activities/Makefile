@@ -142,6 +142,7 @@ $(DATASET_PATH)/train.csv: $(DATASET_PATH)/sensor_data_per_seq__collapsed.csv $(
 		--input $(DATASET_PATH)/sensor_data_per_seq__collapsed.csv \
 		--data_dict $(DATASET_PATH)/activity_dict__collapsed.json \
 		--test_size 0.1 \
+		--group_cols subj_id \
 		--output_dir $(DATASET_PATH)/ \
 	; \
 	}

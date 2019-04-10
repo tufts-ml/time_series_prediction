@@ -7,7 +7,7 @@
 #              a number between 0 and 1
 #         --output_dir: (required) directory where output files are saved
 #         --group_cols: (optional) columns to group by, specified as a
-#             space-seaparated list
+#             space-separated list
 #         Additionally, a seed used for randomization is hard-coded.
 # Output: train.csv and test.csv, where grouping is by all specified columns,
 #         or all columns of role 'id' if --group_cols is not specified.
