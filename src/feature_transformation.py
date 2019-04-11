@@ -11,7 +11,7 @@
 # Output: Puts transformed dataframe into ts_transformed.csv and 
 #		  updated data dictionary into transformed.json
 
-# Warning: Calculating slope on a column or half of a column requires at
+# Warning: Calculating slope on a column or part of a column requires at
 #		   least two data points, otherwise the outputed data file and dict
 #		   will be wrong. 
 
@@ -21,6 +21,7 @@ import argparse
 import json
 import numpy as np
 from scipy import stats
+import ast
 
 def main(): 
 	parser = argparse.ArgumentParser(description="Script for collapsing"
@@ -41,11 +42,15 @@ def main():
 						help="Enclose options with 's, choose "
 							 "from mean, std, min, max, "
 							 "median, slope")
-	parser.add_argument('--collapse_half_features', type=str, required=False,
+	parser.add_argument('--collapse_range_features', type=str, required=False,
 						default='slope std', 
 						help="Enclose options with 's, choose "
 							 "from mean, std, min, max, "
 							 "median, slope")
+	parser.add_argument('--range_pairs', type=str, required=False,
+						default='[(0, 50), (50, 100)]',
+						help="Enclose pairs list with 's and [], list all desired ranges in "
+							 "parentheses like this: '[(0, 50), (25, 75), (50, 100)]'")
 	
 	# TODO: Add arithmetic opertions (ie column1 * column2 / column3)
 	parser.add_argument('--add_feature', default=False, action='store_true')
@@ -104,10 +109,10 @@ def collapse(ts_df, args):
 	for op in args.collapse_features.split(' '):
 		operations.append(get_summary_stat_func(op))
 	# without this check it still iterates once for some reason
-	if len(args.collapse_half_features) > 0: 
-		for op in args.collapse_half_features.split(' '):
-			operations.append(get_summary_stat_func(op, 'first'))
-			operations.append(get_summary_stat_func(op, 'second'))
+	if len(args.collapse_range_features) > 0: 
+		for op in args.collapse_range_features.split(' '):
+			for low, high in ast.literal_eval(args.range_pairs):
+				operations.append(get_summary_stat_func(op, low_perc=low, high_perc=high))
 
 	# TODO: Retest when pandas updates and fixes their dropna=False bug. See
 	#       pandas-dev/pandas#25738 
@@ -129,8 +134,12 @@ def all_id_combinations(cols, df, combos, ids=[]):
 		all_id_combinations(cols[1:], df.loc[df[cols[0]] == i], 
 							combos, ids_copy)
 
-def get_summary_stat_func(op, eval_range='all'):
-	return COLLAPSE_FUNCTIONS[eval_range][op]
+def get_summary_stat_func(op, low_perc=0, high_perc=100):
+	if low_perc == 0 and high_perc == 100:
+		return COLLAPSE_FUNCTIONS[op]
+	else:
+		return bind_func_for_range(op, low_perc, high_perc)
+
 
 # ADD NEW FEATURE COLUMN
 
@@ -182,20 +191,15 @@ def update_data_dict_collapse(args):
 					new_dict = dict(col)
 					new_dict['name'] = '{}_{}'.format(op, name)
 					new_fields.append(new_dict)
-	if len(args.collapse_half_features) > 0: 
-		for op in args.collapse_half_features.split(' '):
-			for name in feature_cols:
-				for col in data_dict['fields']:
-					if col['name'] == name: 
-						new_dict = dict(col)
-						new_dict['name'] = '{}_first_half_{}'.format(op, name)
-						new_fields.append(new_dict)
-			for name in feature_cols:
-				for col in data_dict['fields']:
-					if col['name'] == name:
-						new_dict = dict(col)
-						new_dict['name'] = '{}_second_half_{}'.format(op, name)
-						new_fields.append(new_dict)
+	if len(args.collapse_range_features) > 0: 
+		for op in args.collapse_range_features.split(' '):
+			for low, high in ast.literal_eval(args.range_pairs):
+				for name in feature_cols:
+					for col in data_dict['fields']:
+						if col['name'] == name: 
+							new_dict = dict(col)
+							new_dict['name'] = '{}_{}_to_{}_{}'.format(op, low, high, name)
+							new_fields.append(new_dict)
 
 	new_data_dict = dict()
 	new_data_dict['fields'] = new_fields
@@ -261,11 +265,7 @@ def remove_col_names_from_list_if_not_in_df(col_list, df):
 
 
 # COLLAPSE FUNCTIONS AND DICT
-# Pivot table requires that functions passed to aggfunc have names so
-# it can turn those names into column names in the returned dataframe.
-# Because of this, the aggregate functions cannot be made more specific 
-# by using lambda to wrap them. Instead, every variation must be defined
-# explicitly, which is done below. 
+
 def slope(data):
 	if not data.dropna().empty:
 		slope, _, _, _, _ = stats.linregress(x=range(len(data)), y=data)
@@ -273,76 +273,21 @@ def slope(data):
 	else:
 		return np.nan
 
-def mean_first_half(d):
-	return np.mean(d[:(len(d)//2)])
-def mean_second_half(d): 
-	return np.mean(d[(len(d)//2):])
-def mean_middle_half(d):
-	return np.mean(d[(len(d)//4):(3*len(d)//4)])
-def std_first_half(d):
-	return np.std(d[:(len(d)//2)])
-def std_second_half(d): 
-	return np.std(d[(len(d)//2):])
-def std_middle_half(d):
-	return np.std(d[(len(d)//4):(3*len(d)//4)])
-def median_first_half(d):
-	return np.median(d[:(len(d)//2)])
-def median_second_half(d): 
-	return np.median(d[(len(d)//2):])
-def median_middle_half(d):
-	return np.median(d[(len(d)//4):(3*len(d)//4)])
-def min_first_half(d):
-	return np.amin(d[:(len(d)//2)])
-def min_second_half(d): 
-	return np.amin(d[(len(d)//2):])
-def min_middle_half(d):
-	return np.amin(d[(len(d)//4):(3*len(d)//4)])
-def max_first_half(d):
-	return np.amax(d[:(len(d)//2)])
-def max_second_half(d): 
-	return np.amax(d[(len(d)//2):])
-def max_middle_half(d):
-	return np.amax(d[(len(d)//4):(3*len(d)//4)])
-def slope_first_half(d):
-	return slope(d[:(len(d)//2)])
-def slope_second_half(d): 
-	return slope(d[(len(d)//2):])
-def slope_middle_half(d):
-	return slope(d[(len(d)//4):(3*len(d)//4)])
+def bind_func_for_range(op, start_percentile, end_percentile):
+	def closure_func(d):
+		f = COLLAPSE_FUNCTIONS[op]
+		return f(d[((len(d)*start_percentile)//100):((len(d)*end_percentile)//100)])
+
+	closure_func.__name__ = '{}_{}_to_{}'.format(op, start_percentile, end_percentile)
+	return closure_func
 
 COLLAPSE_FUNCTIONS = {
-	"all": {
-		"mean": np.mean,
-		"std":  np.std,
-		"median": np.median,
-		"min": np.amin,
-		"max": np.amax,
-		"slope": slope
-	},
-	"first": {
-		"mean": mean_first_half,
-		"std":  std_first_half,
-		"median": median_first_half,
-		"min": min_first_half,
-		"max": max_first_half,
-		"slope": slope_first_half
-	},
-	"second": {
-		"mean": mean_second_half,
-		"std":  std_second_half,
-		"median": median_second_half,
-		"min": min_second_half,
-		"max": max_second_half,
-		"slope": slope_second_half
-	}, 
-	"middle": {
-		"mean": mean_middle_half,
-		"std":  std_middle_half,
-		"median": median_middle_half,
-		"min": min_middle_half,
-		"max": max_middle_half,
-		"slope": slope_middle_half
-	}
+	"mean": np.mean,
+	"std":  np.std,
+	"median": np.median,
+	"min": np.amin,
+	"max": np.amax,
+	"slope": slope
 }
 
 if __name__ == '__main__':
