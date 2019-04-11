@@ -13,7 +13,7 @@ PROJECT_ENV_NAME?=tspred_env
 PROJECT_REPO_DIR?=$(abspath ../../)
 N_SEQS?=50
 DATA_VERSION?=20190406
-DATASET_TOP_PATH?=/cluster/tufts/hugheslab/datasets/mimic-iii-v1.4/$(DATA_VERSION)/
+DATASET_TOP_PATH?=/cluster/tufts/hugheslab/datasets/mimic-iii-v1.4/v20181213
 DATASET_SRC_PATH?=$(DATASET_TOP_PATH)/mimic3benchmarks_csv_by_subj/in_hospital_mortality/
 DATASET_OUT_PATH?=$(DATASET_TOP_PATH)/tidy/mimic3benchmarks_inhospital_mortality/$(DATA_VERSION)
 
@@ -76,9 +76,9 @@ $(DATASET_OUT_PATH)/vitals_data_per_tstamp__fillmissing.csv:
 	python -u $(PROJECT_REPO_DIR)/src/fill_missing_values.py \
 	    --data $(DATASET_OUT_PATH)/vitals_data_per_tstamp__aligned.csv \
 	    --data_dict $(PROJECT_REPO_DIR)/docs/mimic-iii-v1.4/$(DATA_VERSION)/mimic_dict.json \
-		--multiple_strategies \
+	    --multiple_strategies True \
 	    --strategy carry_forward \
-		--second_strategy pop_mean \
+	    --second_strategy pop_mean \
 	    --output $(DATASET_OUT_PATH)/vitals_data_per_tstamp__fillmissing.csv \
 	; \
 	}
@@ -131,12 +131,12 @@ $(DATASET_OUT_PATH)/train.csv:
 
 # =====
 .PHONY: evaluate_classifier 
-evaluate_classifier: $(DATASET_OUT_PATH)/report.html
+evaluate_classifier: $(DATASET_OUT_PATH)/report.html			## Train and evaluate classifier
 
 $(DATASET_OUT_PATH)/report.html:
 	@{ \
 	python -u $(PROJECT_REPO_DIR)/src/eval_classifier.py \
-		logistic
+		logistic \
 		--ts_dir $(DATASET_OUT_PATH)/ \
 		--data_dict $(DATASET_OUT_PATH)/mimic_dict__collapsed.json \
 		--static_files $(DATASET_OUT_PATH)/metadata_per_seq.csv \

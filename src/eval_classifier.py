@@ -33,7 +33,8 @@
             #     --thresholds -1 0 1
             #     --threshold_scoring balanced_accuracy
 #
-# Output: An HTML report of the results, "report.html"
+# Output: An HTML report of the results, "report.html", in the current
+#         working directory
 
 # TODO: allow specifying classifer settings implemented for grid search without
 #       applying to grid search. For example, '--C 1' instead of '--grid_C 1'.
