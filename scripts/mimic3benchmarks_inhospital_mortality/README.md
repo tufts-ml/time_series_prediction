@@ -1,4 +1,4 @@
-UniMiB SHAR dataset
+MIMIC-III Benchmark: In-Hospital Mortality dataset
 
 # Prereqs
 
@@ -12,11 +12,7 @@ You can use the given 'Makefile' to complete every step of the required pipeline
 
 ```
 help                         Show help messages for each command
-download_raw_dataset         Download dataset from source repository
-unzip_raw_dataset            Unzip raw dataset into .mat files
 build_std_dataset_from_raw   Build standardized flat file time-series dataset
-align_to_grid                Build time-series aligned to regular intervals
-normalize_features           Build time series with normalized feature cols
-collapse_ts                  Collapse time-series into fixed-size feature vector
-split_into_train_and_test    Split into train and test
+                             * set N_SEQS=n to extract only n sequences, N_SEQS=-1 to extract all
+                             * set env var DATA_VERSION=2019MMDD to define the prefix where results are saved
 ```

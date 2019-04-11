@@ -11,8 +11,8 @@ HAS_REQD_EXE := $(foreach exec,$(REQD_EXECUTABLES),\
 PYTHON_VERSION?=3.6
 PROJECT_ENV_NAME?=tspred_env
 PROJECT_REPO_DIR?=$(abspath ../../)
-N_SEQS?=500
-DATA_VERSION?=v20190309
+N_SEQS?=50
+DATA_VERSION?=v20190314_$(N_SEQS)_seqs
 DATASET_TOP_PATH?=/cluster/tufts/hugheslab/datasets/mimic-iii-v1.4/v20181213/
 DATASET_SRC_PATH?=$(DATASET_TOP_PATH)/mimic3benchmarks_csv_by_subj/in_hospital_mortality/
 DATASET_OUT_PATH?=$(DATASET_TOP_PATH)/tidy/mimic3benchmarks_inhospital_mortality/$(DATA_VERSION)
@@ -38,12 +38,13 @@ $(DATASET_OUT_PATH)/vitals_data_per_tstamp.csv: $(DATASET_SRC_PATH)/train/*.csv 
 	source $(PROJECT_REPO_DIR)/setup_env/$(USER).sh; \
 	source activate ${PROJECT_ENV_NAME}; \
 	mkdir -p $(DATASET_OUT_PATH); \
+	echo "DATASET_TOP_PATH:\n$(DATASET_TOP_PATH)"; \
 	python -u ./src/make_csv_dataset_from_raw.py \
 		--dataset_path $(DATASET_SRC_PATH)/ \
+		--data_per_subject_path $(DATASET_TOP_PATH)/mimic3benchmarks_csv_by_subj/ \
 		--n_sequences_to_read_per_split $(N_SEQS) \
 		--output_vitals_ts_csv_path $(DATASET_OUT_PATH)/vitals_data_per_tstamp.csv \
 		--output_metadata_per_seq_csv_path $(DATASET_OUT_PATH)/metadata_per_seq.csv \
-		--output_metadata_per_subj_csv_path $(DATASET_OUT_PATH)/metadata_per_subj.csv \
 		; \
 	}
 
