@@ -10,12 +10,13 @@ HAS_REQD_EXE := $(foreach exec,$(REQD_EXECUTABLES),\
 # Can override with your setup_env/$USER.sh, or with local env variables
 PYTHON_VERSION?=3.6
 PROJECT_ENV_NAME?=tspred_env
-PROJECT_REPO_DIR?=$(abspath ../../)
+# PROJECT_REPO_DIR?=$(abspath ../../)
+PROJECT_REPO_DIR?=$(abspath ../../../)
 N_SEQS?=50
-DATA_VERSION?=20190406
-DATASET_TOP_PATH?=/cluster/tufts/hugheslab/datasets/mimic-iii-v1.4/v20181213
-DATASET_SRC_PATH?=$(DATASET_TOP_PATH)/mimic3benchmarks_csv_by_subj/in_hospital_mortality/
-DATASET_OUT_PATH?=$(DATASET_TOP_PATH)/tidy/mimic3benchmarks_inhospital_mortality/$(DATA_VERSION)
+DATA_VERSION?=v20190314_500_seqs
+# DATASET_TOP_PATH?=$(PROJECT_REPO_DIR)/datasets/mimic-iii-v1.4/v20190314_500_seqs/
+# DATASET_SRC_PATH?=$(DATASET_TOP_PATH)/mimic3benchmarks_csv_by_subj/in_hospital_mortality/
+DATASET_OUT_PATH?=$(PROJECT_REPO_DIR)/datasets/mimic-iii-v1.4/$(DATA_VERSION)
 
 CONDA_ENV_PATH:=$(shell conda env list --json | grep ${PROJECT_ENV_NAME} | head -n1 | cut -d'"' -f2)
 # Quit early if environment not found
@@ -30,23 +31,24 @@ help:                                                 				## Show help messages 
 	@fgrep -h "##" $(MAKEFILE_LIST) | fgrep -v fgrep | sed -e 's/\\$$//' | sed -e 's/:.*##/,/' | column -s, -t
 
 # =====
-.PHONY: build_std_dataset_from_raw 
-build_std_dataset_from_raw: $(DATASET_OUT_PATH)/vitals_data_per_tstamp.csv 	## Build standardized flat file time-series dataset
+# .PHONY: build_std_dataset_from_raw 
+# build_std_dataset_from_raw: $(DATASET_OUT_PATH)/vitals_data_per_tstamp.csv 	## Build standardized flat file time-series dataset
 
-$(DATASET_OUT_PATH)/vitals_data_per_tstamp.csv: $(DATASET_SRC_PATH)/train/*.csv src/make_csv_dataset_from_raw.py
-	@{ \
-	source $(PROJECT_REPO_DIR)/setup_env/$(USER).sh; \
-	source activate ${PROJECT_ENV_NAME}; \
-	mkdir -p $(DATASET_OUT_PATH); \
-	echo "DATASET_TOP_PATH:\n$(DATASET_TOP_PATH)"; \
-	python -u ./src/make_csv_dataset_from_raw.py \
-		--dataset_path $(DATASET_SRC_PATH)/ \
-		--data_per_subject_path $(DATASET_TOP_PATH)/mimic3benchmarks_csv_by_subj/ \
-		--n_sequences_to_read_per_split $(N_SEQS) \
-		--output_vitals_ts_csv_path $(DATASET_OUT_PATH)/vitals_data_per_tstamp.csv \
-		--output_metadata_per_seq_csv_path $(DATASET_OUT_PATH)/metadata_per_seq.csv \
-		; \
-	}
+# $(DATASET_OUT_PATH)/vitals_data_per_tstamp.csv: $(DATASET_SRC_PATH)/train/*.csv src/make_csv_dataset_from_raw.py
+# 	@{ \
+# 	source $(PROJECT_REPO_DIR)/setup_env/$(USER).sh; \
+# 	source activate ${PROJECT_ENV_NAME}; \
+# 	mkdir -p $(DATASET_OUT_PATH); \
+# 	echo "DATASET_TOP_PATH:\n$(DATASET_TOP_PATH)"; \
+# 	python -u ./src/make_csv_dataset_from_raw.py \
+# 		--dataset_path $(DATASET_SRC_PATH)/ \
+# 		--data_per_subject_path $(DATASET_TOP_PATH)/mimic3benchmarks_csv_by_subj/ \
+# 		--n_sequences_to_read_per_split $(N_SEQS) \
+# 		--output_vitals_ts_csv_path $(DATASET_OUT_PATH)/vitals_data_per_tstamp.csv \
+# 		--output_metadata_per_seq_csv_path $(DATASET_OUT_PATH)/metadata_per_seq.csv \
+# 		--output_metadata_per_subj_csv_path $(DATASET_OUT_PATH)/metadata_per_subj.csv \
+# 		; \
+# 	}
 
 # =====
 .PHONY: align_to_grid 
@@ -75,12 +77,11 @@ $(DATASET_OUT_PATH)/vitals_data_per_tstamp__fillmissing.csv:
 	python -u $(PROJECT_REPO_DIR)/src/fill_missing_values.py \
 	    --data $(DATASET_OUT_PATH)/vitals_data_per_tstamp__aligned.csv \
 	    --data_dict $(PROJECT_REPO_DIR)/docs/mimic-iii-v1.4/$(DATA_VERSION)/mimic_dict.json \
-	    --multiple_strategies True \
 	    --strategy carry_forward \
-	    --second_strategy pop_mean \
 	    --output $(DATASET_OUT_PATH)/vitals_data_per_tstamp__fillmissing.csv \
 	; \
 	}
+
 
 # =====
 .PHONY: normalize_features 
@@ -96,6 +97,7 @@ $(DATASET_OUT_PATH)/vitals_data_per_tstamp__normalized.csv:
 	    --output $(DATASET_OUT_PATH)/vitals_data_per_tstamp__normalized.csv \
 	; \
 	}
+
 
 # =====
 .PHONY: collapse_ts 
@@ -114,6 +116,7 @@ $(DATASET_OUT_PATH)/vitals_data_per_seq__collapsed.csv:
 	; \
 	}
 
+
 # =====
 .PHONY: split_into_train_and_test 
 split_into_train_and_test: $(DATASET_OUT_PATH)/train.csv 		## Split into train and test
@@ -125,22 +128,5 @@ $(DATASET_OUT_PATH)/train.csv:
 		--data_dict $(DATASET_OUT_PATH)/mimic_dict__collapsed.json \
 		--test_size 0.1 \
 		--output_dir $(DATASET_OUT_PATH)/ \
-	; \
-	}
-
-# =====
-.PHONY: evaluate_classifier 
-evaluate_classifier: $(DATASET_OUT_PATH)/report.html			## Train and evaluate classifier
-
-$(DATASET_OUT_PATH)/report.html:
-	@{ \
-	python -u $(PROJECT_REPO_DIR)/src/eval_classifier.py \
-		logistic \
-		--ts_dir $(DATASET_OUT_PATH)/ \
-		--data_dict $(DATASET_OUT_PATH)/mimic_dict__collapsed.json \
-		--static_files $(DATASET_OUT_PATH)/metadata_per_seq.csv \
-		--validation_size 0.1 \
-		--scoring balanced_accuracy \
-		--grid_C 0.001 0.01 0.1 1 10 100 1000 \
 	; \
 	}

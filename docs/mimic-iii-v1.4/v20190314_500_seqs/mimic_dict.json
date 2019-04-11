@@ -1,0 +1,120 @@
+{
+    "fields": [
+        {
+            "name": "subject_id",
+            "description": "Unique identifier for each subject",
+            "type": "integer",
+            "role": "id",
+            "constraints": {"required": true}
+        },
+        {
+            "name": "episode_id",
+            "description": "Unique identifier for each episode (?)",
+            "type": "integer",
+            "role": "id",
+            "constraints": {"required": true}
+        },
+        {
+            "name": "age",
+            "description": "Age of subject in years",
+            "type": "number",
+            "role": "feature"
+        },
+        {
+            "name": "height",
+            "description": "Height of subject in centimeters",
+            "type": "number",
+            "role": "feature"
+        },
+        {
+            "name": "weight",
+            "description": "Weight of subject in kilograms",
+            "type": "number",
+            "role": "feature"
+        },
+        {
+            "name": "ethnicity",
+            "description": "Ethnicity of subject",
+            "type": "string",
+            "role": "feature"
+        },
+        {
+            "name": "last_careunit",
+            "description": "Last unit where subject was treated",
+            "type": "string",
+            "role": "feature"
+        },
+        {
+            "name": "hours",
+            "description": "Fractional number of hours from the start of the time series",
+            "type": "number",
+            "role": "sequence"
+        },
+        {
+            "name": "heart_rate",
+            "description": "Heart rate in beats per minute",
+            "type": "number",
+            "role": "feature"
+        },
+        {
+            "name": "temperature",
+            "description": "Body temperature in degrees Celsius",
+            "type": "number",
+            "role": "feature"
+        },
+        {
+            "name": "mean_blood_pressure",
+            "description": "Mean of systolic and diastolic blood pressure in mmHg",
+            "type": "number",
+            "role": "feature"
+        },
+        {
+            "name": "systolic_blood_pressure",
+            "description": "Systolic blood pressure in mmHg",
+            "type": "number",
+            "role": "feature"
+        },
+        {
+            "name": "diastolic_blood_pressure",
+            "description": "Diastolic blood pressure in mmHg",
+            "type": "number",
+            "role": "feature"
+        },
+        {
+            "name": "respiratory_rate",
+            "description": "Respiratory rate in breaths per minute",
+            "type": "number",
+            "role": "feature"
+        },
+        {
+            "name": "fraction_inspired_oxygen",
+            "description": "Fraction of inspired oxygen",
+            "type": "number",
+            "role": "feature"
+        },
+        {
+            "name": "oxygen_saturation",
+            "description": "Percentage of oxygen saturation (out of 100",
+            "type": "number",
+            "role": "feature"
+        },
+        {
+            "name": "capillary_refill_rate",
+            "description": "Capillary refill rate",
+            "type": "number",
+            "role": "feature"
+        },
+        {
+            "name": "ph",
+            "description": "pH of ...?",
+            "type": "number",
+            "role": "feature"
+        },
+        {
+            "name": "glucose",
+            "description": "Blood glucose level in mg/dL",
+            "type": "number",
+            "role": "feature"
+        }
+    ]
+}

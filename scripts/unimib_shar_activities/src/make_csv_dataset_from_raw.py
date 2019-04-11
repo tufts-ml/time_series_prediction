@@ -80,7 +80,7 @@ if __name__ == '__main__':
     y_df['seq_id'] = np.arange(n_seq)
 
     names_path = os.path.join(dataset_path, 'adl_names.mat')
-    label_names = [unicode(np.squeeze(u))
+    label_names = [str(np.squeeze(u))
         for u in np.squeeze(loadmat(names_path)['adl_names'])]
     y_df['category_name'] = [
         label_names[ii] for ii in y_df['category_id']]
@@ -100,8 +100,9 @@ if __name__ == '__main__':
     x_df = pd.DataFrame(np.vstack(xyz_ts_arr_per_seq), columns=['acc_x', 'acc_y', 'acc_z'])
     x_df['seq_id'] = np.hstack(seqid_ts_arr_per_seq)
     x_df['tstep_id'] = np.hstack([np.arange(idvec.size) for idvec in seqid_ts_arr_per_seq])
+    x_df = x_df.merge(y_df[['seq_id', 'subj_id']], how='inner', on='seq_id')
     x_df.to_csv(output_sensors_ts_csv_path,
-        columns=['seq_id', 'tstep_id', 'acc_x', 'acc_y', 'acc_z'],
+        columns=['seq_id', 'subj_id', 'tstep_id', 'acc_x', 'acc_y', 'acc_z'],
         index=False)
 
 

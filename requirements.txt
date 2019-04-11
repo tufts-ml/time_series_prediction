@@ -6,3 +6,4 @@ numexpr>=2.6
 scikit-learn>=0.19
 pytables>=3.4
 matplotlib>=2.0
+yattag>=1.11.1

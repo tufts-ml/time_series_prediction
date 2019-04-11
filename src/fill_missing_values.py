@@ -11,6 +11,7 @@ import argparse
 import json
 
 EXEMPT_COLS = []
+ID_COLS = []
 
 def main():
 	parser = argparse.ArgumentParser(description="Script for filling in "
@@ -49,6 +50,7 @@ def main():
 	# TODO: reorganize this control flow to better accomodate the different
 	# 		combinations of arguments needed. 
 	ts_df = pd.read_csv(args.data)
+	get_id_cols(args.data_dict)
 	get_exempt_cols(args.data_dict)
 	static_df = None
 
@@ -93,6 +95,14 @@ def apply_strategy(ts_df, static_df, strategy):
 	else:
 		return ts_df
 
+def get_id_cols(data_dict_file):
+	with open(data_dict_file, 'r') as f:
+		data_dict = json.load(f)
+
+	for col in data_dict['fields']:
+		if 'role' in col and col['role'] == 'id':
+			ID_COLS.append(col['name'])
+
 def get_exempt_cols(data_dict_file):
 	with open(data_dict_file, 'r') as f:
 		data_dict = json.load(f)
@@ -112,7 +122,7 @@ def pop_mean(ts_df):
 	return ts_df
 
 def carry_forward(ts_df): 
-	ts_df = ts_df.groupby(['subj_id']).apply(lambda x: x.fillna(method='pad'))
+	ts_df = ts_df.groupby(ID_COLS).apply(lambda x: x.fillna(method='pad'))
 	return ts_df
 
 # Currently does not work due to changes necessary for more common cases. Will

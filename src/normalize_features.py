@@ -28,7 +28,8 @@ data_dict = json.load(open(args.data_dict))
 # Normalize features
 for c in data_dict['fields']:
     col = c['name']
-    if (c['role'] == 'feature' and c['type'] in ('integer', 'number')):
+    if (c['role'] == 'feature' and c['type'] in ('integer', 'number')
+                and col in df.columns):
         df[col] = robust_scale(df[col])
 
 # Export data

@@ -93,7 +93,7 @@ $(DATASET_PATH)/sensor_data_per_tstep__aligned.csv:
 	source activate ${PROJECT_ENV_NAME}; \
 	python -u $(PROJECT_REPO_DIR)/src/align_to_grid.py \
 	    --input_ts_csv_path $(DATASET_PATH)/sensor_data_per_tstep.csv \
-	    --data_dict $(PROJECT_REPO_DIR)/docs/$(DATA_VERSION_SUBPATH)/sensor_data_per_tstep.json \
+	    --data_dict $(PROJECT_REPO_DIR)/docs/$(DATA_VERSION_SUBPATH)/activity_dict.json \
 	    --step_size 1 \
 	    --output $(DATASET_PATH)/sensor_data_per_tstep__aligned.csv \
 	; \
@@ -109,7 +109,7 @@ $(DATASET_PATH)/sensor_data_per_tstep__normalized.csv: $(DATASET_PATH)/sensor_da
 	source activate ${PROJECT_ENV_NAME}; \
 	python -u $(PROJECT_REPO_DIR)/src/normalize_features.py \
 	    --input $(DATASET_PATH)/sensor_data_per_tstep__aligned.csv \
-	    --data_dict $(PROJECT_REPO_DIR)/docs/$(DATA_VERSION_SUBPATH)/sensor_data_per_tstep.json \
+	    --data_dict $(PROJECT_REPO_DIR)/docs/$(DATA_VERSION_SUBPATH)/activity_dict.json \
 	    --output $(DATASET_PATH)/sensor_data_per_tstep__normalized.csv \
 	; \
 	}
@@ -124,9 +124,9 @@ $(DATASET_PATH)/sensor_data_per_seq__collapsed.csv: $(DATASET_PATH)/sensor_data_
 	source activate ${PROJECT_ENV_NAME}; \
 	python -u $(PROJECT_REPO_DIR)/src/feature_transformation.py \
 	    --input $(DATASET_PATH)/sensor_data_per_tstep__normalized.csv \
-	    --data_dict $(PROJECT_REPO_DIR)/docs/$(DATA_VERSION_SUBPATH)/sensor_data_per_tstep.json \
+	    --data_dict $(PROJECT_REPO_DIR)/docs/$(DATA_VERSION_SUBPATH)/activity_dict.json \
 	    --output $(DATASET_PATH)/sensor_data_per_seq__collapsed.csv \
-		--data_dict_output $(DATASET_PATH)/sensor_data_per_seq__collapsed.json \
+		--data_dict_output $(DATASET_PATH)/activity_dict__collapsed.json \
 	    --collapse \
 	; \
 	}
@@ -140,8 +140,9 @@ $(DATASET_PATH)/train.csv: $(DATASET_PATH)/sensor_data_per_seq__collapsed.csv $(
 	@{ \
 	python -u $(PROJECT_REPO_DIR)/src/split_dataset.py \
 		--input $(DATASET_PATH)/sensor_data_per_seq__collapsed.csv \
-		--data_dict $(DATASET_PATH)/sensor_data_per_seq__collapsed.json \
+		--data_dict $(DATASET_PATH)/activity_dict__collapsed.json \
 		--test_size 0.1 \
+		--group_cols subj_id \
 		--output_dir $(DATASET_PATH)/ \
 	; \
 	}

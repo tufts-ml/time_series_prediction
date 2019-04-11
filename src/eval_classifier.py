@@ -5,8 +5,8 @@
 #         --ts_dir: (required) a directory containing time-series files
 #             train.csv and test.csv
 #         --data_dict: (required) data dictionary for the above files
-#         --static_file: joins the indicated static file to the time-series data
-#             on all columns in the static data of role 'id'
+#         --static_files: joins the indicated static files to the time-series
+#             data on all columns in each static file of role 'id'
 #         --validation_size: fraction of the training data to be used for
 #             model selection (default 0.1)
 #         --scoring: scoring method to determine best hyperparameters, passed
@@ -25,7 +25,7 @@
             # python eval_classifier.py logistic
             #     --ts_dir .
             #     --data_dict transformed.json
-            #     --static_file ../datasets/eeg/eeg_static.csv
+            #     --static_files ../datasets/eeg/eeg_static.csv
             #     --validation_size 0.1
             #     --scoring roc_auc
             #     --max_iter 100
@@ -33,7 +33,8 @@
             #     --thresholds -1 0 1
             #     --threshold_scoring balanced_accuracy
 #
-# Output: TODO (currently prints results of grid search)
+# Output: An HTML report of the results, "report.html", in the current
+#         working directory
 
 # TODO: allow specifying classifer settings implemented for grid search without
 #       applying to grid search. For example, '--C 1' instead of '--grid_C 1'.
@@ -65,7 +66,8 @@ subparsers = parser.add_subparsers()
 
 logistic_parser = subparsers.add_parser('logistic')
 logistic_parser.set_defaults(clf=LogisticRegression,
-                             default_clf_args={'solver': 'lbfgs'})
+                             default_clf_args={'solver': 'lbfgs',
+                                               'multi_class': 'auto'})
 logistic_parser.add_argument('--grid_C', type=float, nargs='*', default=[1])
 
 dtree_parser = subparsers.add_parser('dtree')
@@ -92,14 +94,14 @@ all_subparsers = (logistic_parser, dtree_parser, rforest_parser, mlp_parser)
 for p in all_subparsers:
     p.add_argument('--ts_dir', required=True)
     p.add_argument('--data_dict', required=True)
-    p.add_argument('--static_file')
+    p.add_argument('--static_files', nargs='*')
     p.add_argument('--validation_size', type=float, default=0.1)
     p.add_argument('--scoring')
     p.add_argument('--thresholds', type=float, nargs='*')
     p.add_argument('--threshold_scoring', default='balanced_accuracy')
 
 args, unknown_args = parser.parse_known_args()
-generic_args = ('ts_dir', 'data_dict', 'static_file', 'validation_size',
+generic_args = ('ts_dir', 'data_dict', 'static_files', 'validation_size',
                  'scoring', 'clf', 'default_clf_args', 'thresholds',
                  'threshold_scoring')
 # key[5:] strips the 'grid_' prefix from the argument
@@ -131,25 +133,28 @@ for i in range(len(unknown_args)):
 data_dict = json.load(open(args.data_dict))
 train = pd.read_csv(args.ts_dir + '/train.csv')
 test = pd.read_csv(args.ts_dir + '/test.csv')
-if args.static_file:
-    static = pd.read_csv(args.static_file)
-    static_id_cols = [c['name'] for c in data_dict['fields']
-                      if c['role'] == 'id' and c['name'] in static.columns]
-    train = train.merge(static, on=static_id_cols)
-    test = test.merge(static, on=static_id_cols)
+if args.static_files:
+    for f in args.static_files:
+        static = pd.read_csv(f)
+        join_cols = [c['name'] for c in data_dict['fields']
+                     if c['role'] == 'id' and c['name'] in static.columns
+                        and c['name'] in train.columns]
+        train = train.merge(static, on=join_cols)
+        test = test.merge(static, on=join_cols)
 
 # Prepare data for classification
 
 feature_cols = [c['name'] for c in data_dict['fields']
-                if c['role'] == 'feature']
+                if c['role'] == 'feature' and c['name'] in train]
 outcome_col = [c['name'] for c in data_dict['fields']
-               if c['role'] == 'outcome']
+               if c['role'] == 'outcome' and c['name'] in train]
 if len(outcome_col) != 1:
     raise Exception('Data must have exactly one outcome column')
 x_train = train[feature_cols]
 y_train = np.ravel(train[outcome_col])
 x_test = test[feature_cols]
 y_test = np.ravel(test[outcome_col])
+is_multiclass = len(np.unique(y_train)) > 2
 
 # Set up HTML report
 
@@ -202,24 +207,26 @@ y_test_pred = grid.predict(x_test)
 y_test_pred_proba = grid.predict_proba(x_test)[:, 1]
 accuracy = accuracy_score(y_test, y_test_pred)
 balanced_accuracy = balanced_accuracy_score(y_test, y_test_pred)
-f1 = f1_score(y_test, y_test_pred)
-avg_precision = average_precision_score(y_test, y_test_pred_proba)
-roc_auc = roc_auc_score(y_test, y_test_pred_proba)
-roc_fpr, roc_tpr, _ = roc_curve(y_test, y_test_pred_proba)
-pr_precision, pr_recall, _ = precision_recall_curve(y_test, y_test_pred_proba)
 confusion = confusion_matrix(y_test, y_test_pred)
+if not is_multiclass:
+    f1 = f1_score(y_test, y_test_pred)
+    avg_precision = average_precision_score(y_test, y_test_pred_proba)
+    roc_auc = roc_auc_score(y_test, y_test_pred_proba)
+    roc_fpr, roc_tpr, _ = roc_curve(y_test, y_test_pred_proba)
+    pr_precision, pr_recall, _ = precision_recall_curve(y_test, y_test_pred_proba)
 
 # Plots
 
-plt.plot(roc_fpr, roc_tpr)
-plt.xlabel('FPR')
-plt.ylabel('TPR')
-plt.savefig('roc_curve.png')
-plt.clf()
-plt.plot(pr_recall, pr_precision)
-plt.xlabel('Recall')
-plt.ylabel('Precision')
-plt.savefig('pr_curve.png')
+if not is_multiclass:
+    plt.plot(roc_fpr, roc_tpr)
+    plt.xlabel('FPR')
+    plt.ylabel('TPR')
+    plt.savefig('roc_curve.png')
+    plt.clf()
+    plt.plot(pr_recall, pr_precision)
+    plt.xlabel('Recall')
+    plt.ylabel('Precision')
+    plt.savefig('pr_curve.png')
 
 # Finish HTML report
 
@@ -235,18 +242,19 @@ with tag('p'):
 with tag('p'):
     text('Balanced accuracy: {:.3f}'.format(balanced_accuracy))
 with tag('p'):
-    text('F1 score: {:.3f}'.format(f1))
-with tag('p'):
-    text('Average precision: {:.3f}'.format(avg_precision))
-with tag('p'):
     text('Confusion matrix:')
 doc.asis(pd.DataFrame(confusion).to_html())
-with tag('p'):
-    text('ROC curve')
-doc.stag('img', src='roc_curve.png')
-with tag('p'):
-    text('PR curve')
-doc.stag('img', src='pr_curve.png')
+if not is_multiclass:
+    with tag('p'):
+        text('F1 score: {:.3f}'.format(f1))
+    with tag('p'):
+        text('Average precision: {:.3f}'.format(avg_precision))
+    with tag('p'):
+        text('ROC curve')
+    doc.stag('img', src='roc_curve.png')
+    with tag('p'):
+        text('PR curve')
+    doc.stag('img', src='pr_curve.png')
 
 with open('report.html', 'w') as f:
     f.write(doc.getvalue())

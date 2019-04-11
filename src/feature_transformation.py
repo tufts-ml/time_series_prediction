@@ -11,8 +11,9 @@
 # Output: Puts transformed dataframe into ts_transformed.csv and 
 #		  updated data dictionary into transformed.json
 
-# Warning: With multiple ID columns and a large dataset, this runs
-# 		   quite slowly
+# Warning: Calculating slope on a column or part of a column requires at
+#		   least two data points, otherwise the outputed data file and dict
+#		   will be wrong. 
 
 import sys
 import pandas as pd
@@ -20,6 +21,7 @@ import argparse
 import json
 import numpy as np
 from scipy import stats
+import ast
 
 def main(): 
 	parser = argparse.ArgumentParser(description="Script for collapsing"
@@ -36,10 +38,19 @@ def main():
 	
 	parser.add_argument('--collapse', default=False, action='store_true')
 	parser.add_argument('--collapse_features', type=str, required=False,
-						default='mean median std amin amax', 
+						default='mean median std min max', 
 						help="Enclose options with 's, choose "
-							 "from mean, std, amin, amax, "
-							 "median")
+							 "from mean, std, min, max, "
+							 "median, slope")
+	parser.add_argument('--collapse_range_features', type=str, required=False,
+						default='slope std', 
+						help="Enclose options with 's, choose "
+							 "from mean, std, min, max, "
+							 "median, slope")
+	parser.add_argument('--range_pairs', type=str, required=False,
+						default='[(0, 50), (50, 100)]',
+						help="Enclose pairs list with 's and [], list all desired ranges in "
+							 "parentheses like this: '[(0, 50), (25, 75), (50, 100)]'")
 	
 	# TODO: Add arithmetic opertions (ie column1 * column2 / column3)
 	parser.add_argument('--add_feature', default=False, action='store_true')
@@ -82,14 +93,11 @@ def main():
 	else:
 		dict_output = '{}.json'.format(args.data_dict_output)
 	with open(dict_output, 'w') as f:
-		json.dump(data_dict, f)
+		json.dump(data_dict, f, indent=4)
 	f.close()
 
 
 # COLLAPSE TIME SERIES
-
-# TODO: Possibly rearrange this to be simpler, ie put most of collapse func
-#		in the recursive steps
 def collapse(ts_df, args): 
 	id_and_output_cols = parse_id_and_output_cols(args.data_dict)
 	id_and_output_cols = remove_col_names_from_list_if_not_in_df(id_and_output_cols, ts_df)
@@ -100,8 +108,16 @@ def collapse(ts_df, args):
 	operations = []
 	for op in args.collapse_features.split(' '):
 		operations.append(get_summary_stat_func(op))
+	# without this check it still iterates once for some reason
+	if len(args.collapse_range_features) > 0: 
+		for op in args.collapse_range_features.split(' '):
+			for low, high in ast.literal_eval(args.range_pairs):
+				operations.append(get_summary_stat_func(op, low_perc=low, high_perc=high))
 
-	new_df = pd.pivot_table(ts_df, values=feature_cols, index=id_and_output_cols, aggfunc=operations)
+	# TODO: Retest when pandas updates and fixes their dropna=False bug. See
+	#       pandas-dev/pandas#25738 
+	new_df = pd.pivot_table(ts_df, values=feature_cols, index=id_and_output_cols, 
+							aggfunc=operations, dropna=False)
 
 	# format columns in a clean fashion
 	new_df.columns = ['_'.join(str(s).strip() for s in col if s) for col in new_df.columns]
@@ -118,17 +134,12 @@ def all_id_combinations(cols, df, combos, ids=[]):
 		all_id_combinations(cols[1:], df.loc[df[cols[0]] == i], 
 							combos, ids_copy)
 
-def get_summary_stat_func(op):
-	if op == 'mean':
-		return np.mean
-	elif op == 'std':
-		return np.std
-	elif op == 'median':
-		return np.median
-	elif op == 'amin':
-		return np.amin
-	elif op == 'amax':
-		return np.amax
+def get_summary_stat_func(op, low_perc=0, high_perc=100):
+	if low_perc == 0 and high_perc == 100:
+		return COLLAPSE_FUNCTIONS[op]
+	else:
+		return bind_func_for_range(op, low_perc, high_perc)
+
 
 # ADD NEW FEATURE COLUMN
 
@@ -168,22 +179,27 @@ def update_data_dict_collapse(args):
 	id_and_output_cols = parse_id_and_output_cols(args.data_dict)
 	feature_cols = parse_feature_cols(args.data_dict)
 
-	operations = []
-	for op in args.collapse_features.split(' '):
-		operations.append(get_summary_stat_func(op))
-
 	new_fields = []
 	for name in id_and_output_cols:
 		for col in data_dict['fields']:
 			if col['name'] == name: 
 				new_fields.append(col)
-	for name in feature_cols:
-		for col in data_dict['fields']:
-			if col['name'] == name: 
-				for op in args.collapse_features.split(' '):
+	for op in args.collapse_features.split(' '):
+		for name in feature_cols:
+			for col in data_dict['fields']:
+				if col['name'] == name: 
 					new_dict = dict(col)
 					new_dict['name'] = '{}_{}'.format(op, name)
 					new_fields.append(new_dict)
+	if len(args.collapse_range_features) > 0: 
+		for op in args.collapse_range_features.split(' '):
+			for low, high in ast.literal_eval(args.range_pairs):
+				for name in feature_cols:
+					for col in data_dict['fields']:
+						if col['name'] == name: 
+							new_dict = dict(col)
+							new_dict['name'] = '{}_{}_to_{}_{}'.format(op, low, high, name)
+							new_fields.append(new_dict)
 
 	new_data_dict = dict()
 	new_data_dict['fields'] = new_fields
@@ -246,6 +262,33 @@ def remove_col_names_from_list_if_not_in_df(col_list, df):
 		if col not in df.columns:
 			col_list.remove(col)
 	return col_list
+
+
+# COLLAPSE FUNCTIONS AND DICT
+
+def slope(data):
+	if not data.dropna().empty:
+		slope, _, _, _, _ = stats.linregress(x=range(len(data)), y=data)
+		return slope
+	else:
+		return np.nan
+
+def bind_func_for_range(op, start_percentile, end_percentile):
+	def closure_func(d):
+		f = COLLAPSE_FUNCTIONS[op]
+		return f(d[((len(d)*start_percentile)//100):((len(d)*end_percentile)//100)])
+
+	closure_func.__name__ = '{}_{}_to_{}'.format(op, start_percentile, end_percentile)
+	return closure_func
+
+COLLAPSE_FUNCTIONS = {
+	"mean": np.mean,
+	"std":  np.std,
+	"median": np.median,
+	"min": np.amin,
+	"max": np.amax,
+	"slope": slope
+}
 
 if __name__ == '__main__':
     main()

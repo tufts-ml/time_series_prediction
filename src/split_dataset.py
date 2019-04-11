@@ -6,8 +6,11 @@
 #         --test_size: (required) fractional size of the test set, expressed as
 #              a number between 0 and 1
 #         --output_dir: (required) directory where output files are saved
+#         --group_cols: (optional) columns to group by, specified as a
+#             space-separated list
 #         Additionally, a seed used for randomization is hard-coded.
-# Output: train.csv and test.csv, where grouping is by all columns of role 'id'.
+# Output: train.csv and test.csv, where grouping is by all specified columns,
+#         or all columns of role 'id' if --group_cols is not specified.
 
 import argparse
 import json
@@ -20,6 +23,7 @@ parser.add_argument('--input', required=True)
 parser.add_argument('--data_dict', required=True)
 parser.add_argument('--test_size', required=True, type=float)
 parser.add_argument('--output_dir', required=True)
+parser.add_argument('--group_cols', nargs='*', default=[None])
 args = parser.parse_args()
 
 SEED = 20190206
@@ -35,8 +39,12 @@ test = None
 valid = None
 gss1 = GroupShuffleSplit(n_splits=1, random_state=SEED, 
                          test_size=args.test_size)
-id_cols = [c['name'] for c in data_dict['fields'] if c['role'] == 'id']
-grp = df[id_cols]
+if len(args.group_cols) == 0 or args.group_cols[0] is not None:
+    group_cols = args.group_cols
+elif args.group_cols[0] is None:
+    group_cols = [c['name'] for c in data_dict['fields']
+                  if c['role'] == 'id' and c['name'] in df.columns]
+grp = df[group_cols]
 grp = [' '.join(row) for row in grp.astype(str).values]
 for a, b in gss1.split(df, groups=grp):
     train = df.iloc[a]
