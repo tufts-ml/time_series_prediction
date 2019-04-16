@@ -45,7 +45,6 @@ $(DATASET_OUT_PATH)/vitals_data_per_tstamp.csv: $(DATASET_SRC_PATH)/train/*.csv 
 		--n_sequences_to_read_per_split $(N_SEQS) \
 		--output_vitals_ts_csv_path $(DATASET_OUT_PATH)/vitals_data_per_tstamp.csv \
 		--output_metadata_per_seq_csv_path $(DATASET_OUT_PATH)/metadata_per_seq.csv \
-		--output_metadata_per_subj_csv_path $(DATASET_OUT_PATH)/metadata_per_subj.csv \
 		; \
 	}
 
