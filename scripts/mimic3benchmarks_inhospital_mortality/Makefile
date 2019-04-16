@@ -143,5 +143,7 @@ $(DATASET_OUT_PATH)/report.html:
 		--validation_size 0.1 \
 		--scoring balanced_accuracy \
 		--grid_C 0.001 0.01 0.1 1 10 100 1000 \
+		--class_weight balanced \
+		--max_iter 1000 \
 	; \
 	}

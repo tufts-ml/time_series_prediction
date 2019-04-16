@@ -126,7 +126,7 @@ for i in range(len(unknown_args)):
     arg = unknown_args[i]
     if arg.startswith('--'):
         val = unknown_args[i+1]
-        passthrough_args[arg[2:]] = auto_convert_str(unknown_args[i+1])
+        passthrough_args[arg[2:]] = auto_convert_str(val)
 
 # Import data
 
@@ -168,9 +168,13 @@ doc, tag, text = Doc().tagtext()
 
 with tag('h3'):
     text('Settings')
+print(vars(args), passthrough_args)
 for x in vars(args):
     with tag('p'):
         text(x, ': ', str(vars(args)[x]))
+for x in passthrough_args:
+    with tag('p'):
+        text(x, ': ', str(passthrough_args[x]))
 
 # Grid search
 
@@ -249,6 +253,8 @@ if not is_multiclass:
         text('F1 score: {:.3f}'.format(f1))
     with tag('p'):
         text('Average precision: {:.3f}'.format(avg_precision))
+    with tag('p'):
+        text('AUROC: {:3f}'.format(roc_auc))
     with tag('p'):
         text('ROC curve')
     doc.stag('img', src='roc_curve.png')
