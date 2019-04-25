@@ -5,7 +5,5 @@
 if [[ $HOME == "/Users/byronperpetua" ]]; then
     if [[ -z $PROJECT_REPO_DIR ]]; then
         PROJECT_REPO_DIR=$HOME/Documents/School/Tufts/project/time_series_prediction/
-    fi
+    fi    
 fi
-
-

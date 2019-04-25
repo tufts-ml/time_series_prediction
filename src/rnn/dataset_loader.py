@@ -31,17 +31,17 @@ class TidySequentialDataCSVLoader(object):
 
         ## Parse sequence ids and compute fenceposts
         idx_P = per_tstep_csv_df[idx_col_names].values.copy()
-        del per_tstep_csv_df[idx_col_names]
+        per_tstep_csv_df.drop(columns=idx_col_names, inplace=True)
         uvals = np.unique(idx_P)
         seq_fp = list()
         prev_uval = None
-        for pp in range(idx_P.size):
-            if idx_P[pp] == prev_uval:
+        for pp in range(idx_P.shape[0]):
+            if np.array_equal(idx_P[pp], prev_uval):
                 continue
             else:
                 seq_fp.append(pp)
                 prev_uval = idx_P[pp]
-        seq_fp.append(idx_P.size)
+        seq_fp.append(idx_P.shape[0])
         self.seq_fp = seq_fp
 
         ## Parse sequence lengths
@@ -71,6 +71,7 @@ class TidySequentialDataCSVLoader(object):
         ## Parse x
         if x_col_names == '__all__':
             x_PF = per_tstep_csv_df.values.copy()
+            print(per_tstep_csv_df.columns)
         else:
             x_PF = per_tstep_csv_df[x_col_names].values.copy()
         self.x_PF = x_PF

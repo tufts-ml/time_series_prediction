@@ -18,9 +18,9 @@ if __name__ == '__main__':
         default='my_dataset.csv',
         help='Location of dataset csv file')
     parser.add_argument(
-        '--batch_size', type=int, default=20,
+        '--batch_size', type=int, default=3,
         help='Number of sequences per minibatch')
-    parser.add_argument('--epochs', type=int, default=5, metavar='N',
+    parser.add_argument('--epochs', type=int, default=400, metavar='N',
                     help='number of epochs')
     parser.add_argument('--seed', type=int, default=1111,
                     help='random seed')
@@ -32,13 +32,27 @@ if __name__ == '__main__':
 
     device = 'cpu'
 
-    dataset = TidySequentialDataCSVLoader(
-        per_tstep_csv_path='eeg_rnn_data/eeg_train_balanced.csv',
-        idx_col_names='chunk_id',
-        x_col_names=['eeg_signal'],
-        y_col_name='seizure_binary_label',
-        y_label_type='per_tstep')
-    X, y = dataset.get_batch_data(batch_id=0)
+    train = TidySequentialDataCSVLoader(
+        #per_tstep_csv_path='mimic_rnn_data_full/vitals_data_per_tstamp__normalized.csv',
+        #per_seq_csv_path='mimic_rnn_data_full/metadata_per_seq.csv',
+        per_tstep_csv_path='mimic_rnn_data_500seq/ts_train_balanced.csv',
+        per_seq_csv_path='mimic_rnn_data_500seq/seq_train_balanced.csv',
+        idx_col_names=['subject_id', 'episode_id'],
+        x_col_names='__all__',
+        y_col_name='inhospital_mortality',
+        y_label_type='')
+    X_train, y_train = train.get_batch_data(batch_id=0)
+
+    test = TidySequentialDataCSVLoader(
+        #per_tstep_csv_path='mimic_rnn_data_full/vitals_data_per_tstamp__normalized.csv',
+        #per_seq_csv_path='mimic_rnn_data_full/metadata_per_seq.csv',
+        per_tstep_csv_path='mimic_rnn_data_500seq/ts_test.csv',
+        per_seq_csv_path='mimic_rnn_data_500seq/seq_test.csv',
+        idx_col_names=['subject_id', 'episode_id'],
+        x_col_names='__all__',
+        y_col_name='inhospital_mortality',
+        y_label_type='')
+    X_test, y_test = test.get_batch_data(batch_id=0)
 
     rnn = RNNBinaryClassifier(
         max_epochs=args.epochs,
@@ -48,37 +62,39 @@ if __name__ == '__main__':
             #skorch.callbacks.Checkpoint(),
             skorch.callbacks.ProgressBar(),
         ],
-        module__rnn_type='ELMAN+relu',
-        #module__rnn_type='LSTM',
-        module__n_inputs=X.shape[-1],
+        module__rnn_type='LSTM',
+        module__n_inputs=X_train.shape[-1],
         module__n_hiddens=10,
         module__n_layers=1,
         optimizer=torch.optim.SGD,
         optimizer__lr=.01,
         )
 
-    X, y = dataset.get_batch_data(batch_id=0)
-    rnn.fit(X, y)
+    rnn.fit(X_train, y_train)
 
-    ### Evaluate
+    # Evaluation
     pd.set_option('display.precision', 3)
     proba_0 = []
     proba_1 = []
-    for n in range(dataset.N):
-        #print(n)
-        X, y = dataset.get_single_sequence_data(n)
+    train_acc_outcomes = []
+    test_acc_outcomes = []
+    train_ypred = []
+    test_ypred = []
+    for n in range(train.N):
+        X, y = train.get_single_sequence_data(n)
         yproba = float(rnn.forward(X)[:,1])
-        if y[0] == 1:
-            proba_1.append(yproba)
-        else:
-            proba_0.append(yproba)
-        #result_df = pd.DataFrame(y, columns=['y_true'])
-        #result_df['Pr(y=1)'] = yproba[:,1]
-        # print("\n### Seq %d" % n)
-        # print(result_df.__str__())
-    print(np.mean(proba_0), np.mean(proba_1))
+        train_ypred.append(round(yproba))
+        train_acc_outcomes.append(round(yproba) == y)
+    for n in range(test.N):
+        X, y = test.get_single_sequence_data(n)
+        yproba = float(rnn.forward(X)[:,1])
+        test_ypred.append(round(yproba))
+        test_acc_outcomes.append(round(yproba) == y)
+    print(np.mean(train_acc_outcomes), np.mean(test_acc_outcomes))
+    print(np.mean(train_ypred), np.mean(test_ypred))
 
-    
+
+
 
 
 """
