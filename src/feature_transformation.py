@@ -23,7 +23,7 @@ import numpy as np
 from scipy import stats
 import ast
 
-def main(): 
+def main():
 	parser = argparse.ArgumentParser(description="Script for collapsing"
 												 "time features or adding"
 												 "new features.")
@@ -38,20 +38,25 @@ def main():
 	
 	parser.add_argument('--collapse', default=False, action='store_true')
 	parser.add_argument('--collapse_features', type=str, required=False,
-						default='mean median std min max', 
+						default='count mean median std min max', 
 						help="Enclose options with 's, choose "
 							 "from mean, std, min, max, "
-							 "median, slope")
+							 "median, slope, count, present")
 	parser.add_argument('--collapse_range_features', type=str, required=False,
 						default='slope std', 
 						help="Enclose options with 's, choose "
 							 "from mean, std, min, max, "
-							 "median, slope")
+							 "median, slope, count, present")
 	parser.add_argument('--range_pairs', type=str, required=False,
 						default='[(0, 50), (50, 100)]',
 						help="Enclose pairs list with 's and [], list all desired ranges in "
 							 "parentheses like this: '[(0, 50), (25, 75), (50, 100)]'")
-	
+	parser.add_argument('--max_time_step', type=int, required=False,
+						default=-1, help="Specify the maximum number of time "
+										 "steps to collapse on, for example, "
+										 "input 48 for 48 hours at 1 hour time steps. "
+										 "Set to -1 for no limit.")
+
 	# TODO: Add arithmetic opertions (ie column1 * column2 / column3)
 	parser.add_argument('--add_feature', default=False, action='store_true')
 	parser.add_argument('--add_from', type=str, required=False)
@@ -107,12 +112,14 @@ def collapse(ts_df, args):
 
 	operations = []
 	for op in args.collapse_features.split(' '):
-		operations.append(get_summary_stat_func(op))
+		operations.append(get_summary_stat_func(op, max_time_step=args.max_time_step))
 	# without this check it still iterates once for some reason
 	if len(args.collapse_range_features) > 0: 
 		for op in args.collapse_range_features.split(' '):
 			for low, high in ast.literal_eval(args.range_pairs):
-				operations.append(get_summary_stat_func(op, low_perc=low, high_perc=high))
+				operations.append(get_summary_stat_func(op, low_perc=low, 
+														high_perc=high,
+														max_time_step=args.max_time_step))
 
 	# TODO: Retest when pandas updates and fixes their dropna=False bug. See
 	#       pandas-dev/pandas#25738 
@@ -134,11 +141,8 @@ def all_id_combinations(cols, df, combos, ids=[]):
 		all_id_combinations(cols[1:], df.loc[df[cols[0]] == i], 
 							combos, ids_copy)
 
-def get_summary_stat_func(op, low_perc=0, high_perc=100):
-	if low_perc == 0 and high_perc == 100:
-		return COLLAPSE_FUNCTIONS[op]
-	else:
-		return bind_func_for_range(op, low_perc, high_perc)
+def get_summary_stat_func(op, low_perc=0, high_perc=100, max_time_step=-1):	
+	return bind_func_for_range(op, low_perc, high_perc, max_time_step)
 
 
 # ADD NEW FEATURE COLUMN
@@ -267,27 +271,64 @@ def remove_col_names_from_list_if_not_in_df(col_list, df):
 # COLLAPSE FUNCTIONS AND DICT
 
 def slope(data):
-	if not data.dropna().empty:
-		slope, _, _, _, _ = stats.linregress(x=range(len(data)), y=data)
+	if len(data.dropna()) > 1:
+		slope, _, _, _, _ = stats.linregress(x=range(len(data.dropna())), y=data.dropna())
 		return slope
 	else:
-		return np.nan
+		return 0
 
-def bind_func_for_range(op, start_percentile, end_percentile):
-	def closure_func(d):
+def standard_dev(data): 
+	if len(data.dropna()) > 1:
+		return np.std(data)
+	else: 
+		return 0
+
+def count(data):
+	return len(data.dropna())
+
+def present(data): 
+	return 1 if len(data.dropna() > 0) else 0
+
+def bind_func_for_range(op, start_percentile, end_percentile, max_time_step):
+	if max_time_step < -1 or max_time_step == 0:
+		raise Exception('set_max_time_steps value must be -1 (for unlimited) '
+						'or a positive number.')
+	def closure_func(data):
 		f = COLLAPSE_FUNCTIONS[op]
-		return f(d[((len(d)*start_percentile)//100):((len(d)*end_percentile)//100)])
+		# Treat the last data point as 100 percentile.
+		if max_time_step == -1: 
+			lower_bound = (len(data)*start_percentile)//100
+			upper_bound = (len(data)*end_percentile)//100
+		# Treat the max time step as 100 percentile.
+		elif max_time_step < len(data):
+			lower_bound = (max_time_step*start_percentile)//100
+			upper_bound = (max_time_step*end_percentile)//100
+		# Add nan values to list until it is the length of the max time step. 
+		# Treat that as 100 percentile.
+		else: 
+			data = data.append(pd.Series([np.nan for i in range(max_time_step - len(data))]),
+							   ignore_index=True)
+			lower_bound = (len(data)*start_percentile)//100
+			upper_bound = (len(data)*end_percentile)//100
+		
+		return f(data[lower_bound:upper_bound])
+	
+	if start_percentile == 0 and end_percentile == 100:
+		closure_func.__name__ = op
+	else:
+		closure_func.__name__ = '{}_{}_to_{}'.format(op, start_percentile, end_percentile)
 
-	closure_func.__name__ = '{}_{}_to_{}'.format(op, start_percentile, end_percentile)
 	return closure_func
 
 COLLAPSE_FUNCTIONS = {
 	"mean": np.mean,
-	"std":  np.std,
-	"median": np.median,
+	"std":  standard_dev,
+	"median": np.nanmedian,
 	"min": np.amin,
 	"max": np.amax,
-	"slope": slope
+	"slope": slope, 
+	"count": count,
+	"present": present
 }
 
 if __name__ == '__main__':
