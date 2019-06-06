@@ -48,7 +48,7 @@ def main():
 							 "from mean, std, min, max, "
 							 "median, slope, count, present")
 	parser.add_argument('--range_pairs', type=str, required=False,
-						default='[(0, 50), (50, 100)]',
+						default='[(0, 10), (0, 25), (0, 50), (50, 100), (75, 100), (90, 100)]',
 						help="Enclose pairs list with 's and [], list all desired ranges in "
 							 "parentheses like this: '[(0, 50), (25, 75), (50, 100)]'")
 	parser.add_argument('--max_time_step', type=int, required=False,
