@@ -24,6 +24,8 @@ def main():
 						help='random seed')
 	parser.add_argument('--save', type=str,  default='LRmodel.pt',
 						help='path to save the final model')
+	parser.add_argument('--report_dir', type=str, default='results',
+						help='dir in which to save results report')
 	args = parser.parse_args()
 
 	# extract data
