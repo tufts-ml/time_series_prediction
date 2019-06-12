@@ -6,6 +6,9 @@ import json
 
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import (roc_curve, accuracy_score, log_loss, 
+							balanced_accuracy_score, confusion_matrix, 
+							roc_auc_score)
 
 from yattag import Doc
 import matplotlib.pyplot as plt
