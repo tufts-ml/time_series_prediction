@@ -74,7 +74,7 @@ def main():
 	print('Negative Predictive Value', float(true_neg) / (true_neg + false_pos))
 
 	create_html_report(args.report_dir, y_test, y_pred, y_pred_proba, 
-					   hyperparameters, best_penalty, best_C)
+					   hyperparameters, best_n_estimators, best_max_depth)
 
 def create_html_report(report_dir, y_test, y_pred, y_pred_proba, hyperparameters, best_n_estimators, best_max_depth):
 	try:
