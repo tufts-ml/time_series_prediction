@@ -15,9 +15,12 @@ class RNNBinaryClassifier(skorch.NeuralNet):
             **kwargs,
             ):
         self.clip = clip
+        kwargs.update(module=RNNBinaryClassifierModule)
         super(RNNBinaryClassifier, self).__init__(
-            module=RNNBinaryClassifierModule,
             criterion=criterion, lr=lr, *args, **kwargs)
+
+    def score(self, X, y, sample_weight=None):
+        return self.module_.score(X, y, sample_weight)
 
     '''
     def on_epoch_begin(self, *args, **kwargs):
