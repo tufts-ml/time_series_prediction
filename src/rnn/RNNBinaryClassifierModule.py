@@ -48,6 +48,17 @@ class RNNBinaryClassifierModule(nn.Module):
         # Setup to use double-precision floats (like np.float64)
         self.double()
 
+    def score(self, X, y, sample_weight=None):
+        correct_predictions = 0
+        total_predictions = 0
+
+        results = self.forward(torch.DoubleTensor(X))
+        for probabilties, outcome in zip(results, y):
+            if probabilties[outcome] > 0.5:
+                correct_predictions += 1
+            total_predictions += 1
+
+        return float(correct_predictions) / total_predictions
 
     def forward(self, inputs_NTF, seq_lens_N=None, pad_val=0, return_hiddens=False):
         ''' Forward pass of input data through NN module
