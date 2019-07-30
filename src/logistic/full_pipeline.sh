@@ -12,7 +12,7 @@ TS_DATA_DICT_PATH="/cluster/home/onewla01/hughes/time_series_prediction/docs/mim
 TEMP_DATA_PATH="/cluster/tufts/hugheslab/onewla01/mimic"
 
 # Path to directory in which html classifier performance report should be saved
-REPORT_DIR="$SOURCE_PATH/src/logistic/html"
+REPORT_DIR="$SOURCE_PATH/logistic/html"
 
 # Check directory and file exists
 if [ ! -d "$SOURCE_PATH" ]; then
