@@ -89,7 +89,7 @@ def create_html_report(report_dir, y_test, y_pred, y_pred_proba, hyperparameters
 
 	# Metadata
 	with tag('h2'):
-		text('Classifier Results')
+		text('Logistic Classifier Results')
 	with tag('h3'):
 		text('Hyperparameters searched:')
 	with tag('p'):
