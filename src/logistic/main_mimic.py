@@ -42,7 +42,7 @@ def main():
 
 	# hyperparameter space
 	penalty = ['l1', 'l2']
-	C = [ 1e-5, 1e-4, 1e-3, 1e-2, 1e0, 1e2, 1e3, 1e4]
+	C = [ 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e2, 1e3, 1e4]
 	hyperparameters = dict(C=C, penalty=penalty)
 
 	# grid search
@@ -118,10 +118,10 @@ def create_html_report(report_dir, y_test, y_pred, y_pred_proba, hyperparameters
 	conf_matrix = confusion_matrix(y_test, y_pred)
 	conf_matrix_norm = conf_matrix.astype('float') / conf_matrix.sum(axis=1)[:, np.newaxis]
 
-	true_pos = conf_matrix[0][0]
-	true_neg = conf_matrix[1][1]
-	false_pos = conf_matrix[1][0]
-	false_neg = conf_matrix[0][1]
+	true_neg = conf_matrix[0][0]
+	true_pos = conf_matrix[1][1]
+	false_neg = conf_matrix[1][0]
+	false_pos = conf_matrix[0][1]
 	with tag('p'):
 		text('True Positive Rate: ', float(true_pos) / (true_pos + false_neg))
 	with tag('p'):
@@ -132,8 +132,8 @@ def create_html_report(report_dir, y_test, y_pred, y_pred_proba, hyperparameters
 		text('Negative Predictive Value: ', float(true_neg) / (true_neg + false_pos))
 	
 	# Confusion Matrix
-	columns = ['Predicted 1', 'Predicted 0']
-	rows = ['Actual 1', 'Actual 0']
+	columns = ['Predicted 0', 'Predicted 1']
+	rows = ['Actual 0', 'Actual 1']
 	cell_text = []
 	for cm_row, cm_norm_row in zip(conf_matrix, conf_matrix_norm):
 		row_text = []
@@ -142,7 +142,7 @@ def create_html_report(report_dir, y_test, y_pred, y_pred_proba, hyperparameters
 		cell_text.append(row_text)
 
 	ax = plt.subplot(111, frame_on=False) 
-	ax.xaxis.set_visible(False) 
+	ax.xaxis.set_visible(False)
 	ax.yaxis.set_visible(False)
 
 	confusion_table = ax.table(cellText=cell_text,
@@ -157,7 +157,7 @@ def create_html_report(report_dir, y_test, y_pred, y_pred_proba, hyperparameters
 	doc.stag('img', src=('confusion_matrix.png'))
 
 	# ROC curve/area
-	y_pred_proba_pos, y_pred_proba_neg = zip(*y_pred_proba)
+	y_pred_proba_neg, y_pred_proba_pos = zip(*y_pred_proba)
 	fpr, tpr, thresholds = roc_curve(y_test, y_pred_proba_pos)
 	roc_area = roc_auc_score(y_test, y_pred_proba_pos)
 	plt.plot(fpr, tpr)
