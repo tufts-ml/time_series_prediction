@@ -49,6 +49,12 @@ def main():
 	logistic = LogisticRegression(solver='liblinear', max_iter=10000)
 	classifier = GridSearchCV(logistic, hyperparameters, cv=5, verbose=1)
 
+	print("X_train:", np.argwhere(np.logical_not(np.isfinite(X_train.values))))
+	print("y_train:", np.argwhere(np.logical_not(np.isfinite(y_train))))
+	print(y_train)
+	print("X_test:", np.argwhere(np.logical_not(np.isfinite(X_test.values))))
+	print("y_test:", np.argwhere(np.logical_not(np.isfinite(y_test))))
+	print(y_test)
 	best_logistic = classifier.fit(X_train, y_train)
 
 	# View best hyperparameters

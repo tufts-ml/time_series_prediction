@@ -2,10 +2,10 @@
 
 SOURCE_PATH="/cluster/home/onewla01/hughes/time_series_prediction/src"
 TS_DATA_PATH="/cluster/tufts/hugheslab/datasets/mimic-iii-v1.4/v20181213/tidy/mimic3benchmarks_inhospital_mortality/20190406/vitals_data_per_tstamp.csv"
-TS_METADATA_PATH="/cluster/home/onewla01/hughes/time_series_prediction/datasets/mimic/v20190406_500_seqs/metadata_per_seq.csv"
+TS_METADATA_PATH="/cluster/tufts/hugheslab/datasets/mimic-iii-v1.4/v20181213/tidy/mimic3benchmarks_inhospital_mortality/20190406/metadata_per_seq.csv"
 TS_DATA_DICT_PATH="/cluster/home/onewla01/hughes/time_series_prediction/docs/mimic-iii-v1.4/20190406/mimic_dict.json"
 TEMP_DATA_PATH="/cluster/tufts/hugheslab/onewla01/mimic"
-REPORT_DIR="/cluster/tufts/hugheslab/onewla01/mimic/html"
+REPORT_DIR="/cluster/home/onewla01/hughes/time_series_prediction/src/random_forest/html"
 
 echo "Align to grid"
 python $SOURCE_PATH/align_to_grid.py \
@@ -46,7 +46,7 @@ python $SOURCE_PATH/split_dataset.py \
     --output_dir $TEMP_DATA_PATH/collapsed_test_train 
 
 echo "Run classifier" 
-python $SOURCE_PATH/logistic/main_mimic.py \
+python $SOURCE_PATH/random_forest/main_mimic.py \
     --train_vitals_csv $TEMP_DATA_PATH/collapsed_test_train/train.csv \
     --test_vitals_csv $TEMP_DATA_PATH/collapsed_test_train/test.csv \
     --metadata_csv $TS_METADATA_PATH \
