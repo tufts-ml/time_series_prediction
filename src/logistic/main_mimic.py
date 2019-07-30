@@ -65,10 +65,10 @@ def main():
 	print('Balanced Accuracy:', balanced_accuracy_score(y_test, y_pred))
 	print('Log Loss:', log_loss(y_test, y_pred_proba))
 	conf_matrix = confusion_matrix(y_test, y_pred)
-	true_pos = conf_matrix[0][0]
-	true_neg = conf_matrix[1][1]
-	false_pos = conf_matrix[1][0]
-	false_neg = conf_matrix[0][1]
+	true_neg = conf_matrix[0][0]
+	true_pos = conf_matrix[1][1]
+	false_neg = conf_matrix[1][0]
+	false_pos = conf_matrix[0][1]
 	print('True Positive Rate:', float(true_pos) / (true_pos + false_neg))
 	print('True Negative Rate:', float(true_neg) / (true_neg + false_pos))
 	print('Positive Predictive Value:', float(true_pos) / (true_pos + false_pos))
