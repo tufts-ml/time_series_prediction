@@ -25,7 +25,7 @@ if [ ! -f "$TS_METADATA_PATH" ]; then
 fi
 
 # Format data unless user adds command line arg "classifier"
-if [ "$1" != "classifier"]; then
+if [ "$1" != "classifier" ]; then
 
     # Check files and directories exist
     if [ ! -f "$TS_DATA_PATH" ]; then
