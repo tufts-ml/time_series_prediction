@@ -25,7 +25,7 @@ def main():
 	parser.add_argument('--data_dict', type=str, required=True)
 	parser.add_argument('--seed', type=int, default=1111,
 						help='random seed')
-	parser.add_argument('--save', type=str,  default='LRmodel.pt',
+	parser.add_argument('--save', type=str,  default='RFmodel.pt',
 						help='path to save the final model')
 	parser.add_argument('--report_dir', type=str, default='results',
 						help='dir in which to save results report')
