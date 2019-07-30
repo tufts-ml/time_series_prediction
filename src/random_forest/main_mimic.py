@@ -64,10 +64,10 @@ def main():
 	print('Balanced Accuracy:', balanced_accuracy_score(y_test, y_pred))
 	print('Log Loss:', log_loss(y_test, y_pred_proba))
 	conf_matrix = confusion_matrix(y_test, y_pred)
-	true_pos = conf_matrix[0][0]
-	true_neg = conf_matrix[1][1]
-	false_pos = conf_matrix[1][0]
-	false_neg = conf_matrix[0][1]
+	true_neg = conf_matrix[0][0]
+	true_pos = conf_matrix[1][1]
+	false_neg = conf_matrix[1][0]
+	false_pos = conf_matrix[0][1]
 	print('True Positive Rate:', float(true_pos) / (true_pos + false_neg))
 	print('True Negative Rate:', float(true_neg) / (true_neg + false_pos))
 	print('Positive Predictive Value:', float(true_pos) / (true_pos + false_pos))
@@ -116,10 +116,10 @@ def create_html_report(report_dir, y_test, y_pred, y_pred_proba, hyperparameters
 	conf_matrix = confusion_matrix(y_test, y_pred)
 	conf_matrix_norm = conf_matrix.astype('float') / conf_matrix.sum(axis=1)[:, np.newaxis]
 
-	true_pos = conf_matrix[0][0]
-	true_neg = conf_matrix[1][1]
-	false_pos = conf_matrix[1][0]
-	false_neg = conf_matrix[0][1]
+	true_neg = conf_matrix[0][0]
+	true_pos = conf_matrix[1][1]
+	false_neg = conf_matrix[1][0]
+	false_pos = conf_matrix[0][1]
 	with tag('p'):
 		text('True Positive Rate: ', float(true_pos) / (true_pos + false_neg))
 	with tag('p'):
@@ -130,8 +130,8 @@ def create_html_report(report_dir, y_test, y_pred, y_pred_proba, hyperparameters
 		text('Negative Predictive Value: ', float(true_neg) / (true_neg + false_pos))
 	
 	# Confusion Matrix
-	columns = ['Predicted 1', 'Predicted 0']
-	rows = ['Actual 1', 'Actual 0']
+	columns = ['Predicted 0', 'Predicted 1']
+	rows = ['Actual 0', 'Actual 1']
 	cell_text = []
 	for cm_row, cm_norm_row in zip(conf_matrix, conf_matrix_norm):
 		row_text = []
@@ -155,7 +155,7 @@ def create_html_report(report_dir, y_test, y_pred, y_pred_proba, hyperparameters
 	doc.stag('img', src=('confusion_matrix.png'))
 
 	# ROC curve/area
-	y_pred_proba_pos, y_pred_proba_neg = zip(*y_pred_proba)
+	y_pred_proba_neg, y_pred_proba_pos = zip(*y_pred_proba)
 	fpr, tpr, thresholds = roc_curve(y_test, y_pred_proba_pos)
 	roc_area = roc_auc_score(y_test, y_pred_proba_pos)
 	plt.plot(fpr, tpr)
