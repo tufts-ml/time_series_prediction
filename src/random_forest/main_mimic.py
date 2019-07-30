@@ -41,7 +41,7 @@ def main():
 
 	# hyperparameter space
 	n_estimators = [10, 100, 500, 1000]
-	max_depth = [None, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+	max_depth = [20, 40, 60, 80, 100]
 	hyperparameters = dict(n_estimators=n_estimators, max_depth=max_depth)
 
 	# grid search

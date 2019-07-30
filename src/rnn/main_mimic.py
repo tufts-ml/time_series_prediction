@@ -27,7 +27,7 @@ def main():
     parser.add_argument('--metadata_csv', type=str, required=True,
                         help='Location of metadata for testing and training')
     parser.add_argument('--data_dict', type=str, required=True)
-    parser.add_argument('--batch_size', type=int, default=3,
+    parser.add_argument('--batch_size', type=int, default=100,
                         help='Number of sequences per minibatch')
     parser.add_argument('--epochs', type=int, default=200, metavar='N',
                         help='Number of epochs')
@@ -72,7 +72,7 @@ def main():
         batch_size=args.batch_size,
         device=device,
         callbacks=[
-            skorch.callbacks.ProgressBar(),
+            #skorch.callbacks.ProgressBar(),
         ],
         module__rnn_type='LSTM',
         module__n_inputs=X_train.shape[-1],
@@ -80,7 +80,7 @@ def main():
         module__n_layers=1,
         optimizer=torch.optim.SGD,)
 
-    classifier = GridSearchCV(rnn, hyperparameters, cv=5, verbose=1)
+    classifier = GridSearchCV(rnn, hyperparameters, n_jobs=-1, cv=5, verbose=1)
     best_rnn = classifier.fit(X_train, y_train)
 
     # View best hyperparameters
