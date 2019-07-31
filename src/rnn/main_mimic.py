@@ -29,7 +29,7 @@ def main():
     parser.add_argument('--data_dict', type=str, required=True)
     parser.add_argument('--batch_size', type=int, default=256,
                         help='Number of sequences per minibatch')
-    parser.add_argument('--epochs', type=int, default=200, metavar='N',
+    parser.add_argument('--epochs', type=int, default=500, metavar='N',
                         help='Number of epochs')
     parser.add_argument('--seed', type=int, default=1111,
                         help='random seed')
