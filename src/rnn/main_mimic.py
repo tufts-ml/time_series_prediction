@@ -89,8 +89,6 @@ def main():
     y_pred_proba = best_rnn.predict_proba(X_test)
     y_pred = convert_proba_to_binary(y_pred_proba)
 
-    print(type(y_pred), y_pred, type(y_pred_proba), y_pred_proba)
-
     # Brief Summary
     print('Best lr:', best_rnn.best_estimator_.get_params()['lr'])
     print('Accuracy:', accuracy_score(y_test, y_pred))
