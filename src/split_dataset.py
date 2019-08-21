@@ -24,9 +24,8 @@ parser.add_argument('--data_dict', required=True)
 parser.add_argument('--test_size', required=True, type=float)
 parser.add_argument('--output_dir', required=True)
 parser.add_argument('--group_cols', nargs='*', default=[None])
+parser.add_argument('--seed', required=False, default=20190206)
 args = parser.parse_args()
-
-SEED = 20190206
 
 # Import data
 df = pd.read_csv(args.input)
@@ -37,7 +36,7 @@ train_test = None
 train = None
 test = None
 valid = None
-gss1 = GroupShuffleSplit(n_splits=1, random_state=SEED, 
+gss1 = GroupShuffleSplit(n_splits=1, random_state=args.seed, 
                          test_size=args.test_size)
 if len(args.group_cols) == 0 or args.group_cols[0] is not None:
     group_cols = args.group_cols

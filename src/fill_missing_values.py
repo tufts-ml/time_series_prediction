@@ -22,7 +22,7 @@ def main():
 	parser.add_argument('--data', type=str, required=True, 
 						help='Path to csv dataframe of readings')
 	parser.add_argument('--static', type=str, required=False, 
-						help='Path to csv dataframe of static values')
+						help='Path to csv dataframe of static metadata')
 	parser.add_argument('--data_dict', type=str, required=True,
 						help='JSON dictionary describing data schema')
 
@@ -33,7 +33,7 @@ def main():
 								 'similar_subject_mean', 'GRU_simple',
 								 'GRU_complex', 'nulls', 'None'])
 	parser.add_argument('--multiple_strategies', default=False, 
-						help='Set to False to execute only one strategy')
+						help='Set to True to execute a backup second and third strategy')
 	parser.add_argument('--second_strategy', type=str, required=False,
 						default='carry_forward', 
 						choices=['pop_mean', 'carry_forward', 
@@ -125,9 +125,11 @@ def carry_forward(ts_df):
 	ts_df = ts_df.groupby(ID_COLS).apply(lambda x: x.fillna(method='pad'))
 	return ts_df
 
-# Currently does not work due to changes necessary for more common cases. Will
-# return to fix soon. 
+# TODO! Fix this. Allow the user to define their own similarity function
+# that can run on metadata, and provide a default function (KNN?).
 def similar_subject_mean(ts_df, static_df):
+	raise Exception('WARNING: The similar_subject_mean method has not been implemented.')
+
 	return ts_df
 
 	data_cols = [c for c in ts_df.columns.values if c not in EXEMPT_COLS]
@@ -159,10 +161,12 @@ def similar_subject_mean(ts_df, static_df):
 	return new_ts_df.sort_values(by=['subject_id', 'time'])
 
 def GRU_simple(ts_df):
-	pass
+	raise Exception('WARNING: The GRU_simple method has not been implemented.')
+
 
 def GRU_complex(ts_df):
-	pass
+	raise Exception('WARNING: The GRU_complex method has not been implemented.')
+
 
 def nulls(ts_df):
 	ts_df.fillna(0, inplace=True)

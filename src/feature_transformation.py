@@ -11,9 +11,6 @@
 # Output: Puts transformed dataframe into ts_transformed.csv and 
 #		  updated data dictionary into transformed.json
 
-# Warning: Calculating slope on a column or part of a column requires at
-#		   least two data points, otherwise the outputed data file and dict
-#		   will be wrong. 
 
 import sys
 import pandas as pd
