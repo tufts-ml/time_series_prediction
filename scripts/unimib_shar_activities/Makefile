@@ -45,7 +45,7 @@ $(DATASET_TOP_PATH)/raw/UniMiB-SHAR.zip:
 	echo "> Save the ZIP file here:";\
 	echo "$(DATASET_TOP_PATH)/raw/UniMiB-SHAR.zip"; \
 	echo "> Then do:";\
-	echo "make unzip_raw_dataset";\	
+	echo "make unzip_raw_dataset";\
 	}
 
 # =====
