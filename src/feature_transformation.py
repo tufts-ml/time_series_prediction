@@ -74,7 +74,6 @@ def main():
 	elif args.add_feature:
 		ts_df = add_new_feature(ts_df, args)
 		data_dict = update_data_dict_add_feature(args)
-
 	# save data to file
 	if args.output is None:
 		file_name = args.input.split('/')[-1].split('.')[0]
@@ -103,15 +102,14 @@ def main():
 def collapse(ts_df, args): 
 	id_and_output_cols = parse_id_and_output_cols(args.data_dict)
 	id_and_output_cols = remove_col_names_from_list_if_not_in_df(id_and_output_cols, ts_df)
-
 	feature_cols = parse_feature_cols(args.data_dict)
 	feature_cols = remove_col_names_from_list_if_not_in_df(feature_cols, ts_df)
-
 	operations = []
 	for op in args.collapse_features.split(' '):
 		operations.append(get_summary_stat_func(op, max_time_step=args.max_time_step))
 	# without this check it still iterates once for some reason
-	if len(args.collapse_range_features) > 0: 
+	if len(args.collapse_range_features) > 0:
+		
 		for op in args.collapse_range_features.split(' '):
 			for low, high in ast.literal_eval(args.range_pairs):
 				operations.append(get_summary_stat_func(op, low_perc=low, 
@@ -119,9 +117,10 @@ def collapse(ts_df, args):
 														max_time_step=args.max_time_step))
 
 	# TODO: Retest when pandas updates and fixes their dropna=False bug. See
-	#       pandas-dev/pandas#25738 
+	#       pandas-dev/pandas#25738
+
 	new_df = pd.pivot_table(ts_df, values=feature_cols, index=id_and_output_cols, 
-							aggfunc=operations, dropna=False)
+							aggfunc=operations, dropna=True)
 
 	# format columns in a clean fashion
 	new_df.columns = ['_'.join(str(s).strip() for s in col if s) for col in new_df.columns]
@@ -176,7 +175,6 @@ def update_data_dict_collapse(args):
 	with open(args.data_dict, 'r') as f:
 		data_dict = json.load(f)
 	f.close()
-
 	id_and_output_cols = parse_id_and_output_cols(args.data_dict)
 	feature_cols = parse_feature_cols(args.data_dict)
 
