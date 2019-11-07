@@ -7,8 +7,8 @@ import json
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import (roc_curve, accuracy_score, log_loss, 
-							balanced_accuracy_score, confusion_matrix, 
-							roc_auc_score)
+							balanced_accuracy_score, confusion_matrix, multilabel_confusion_matrix,
+							roc_auc_score, label_ranking_average_precision_score, coverage_error, label_ranking_loss)
 
 from yattag import Doc
 import matplotlib.pyplot as plt
@@ -17,10 +17,10 @@ import matplotlib.pyplot as plt
 def main():
 	parser = argparse.ArgumentParser(description='sklearn LogisticRegression')
 	
-	parser.add_argument('--train_vitals_csv', type=str, required=True,
-						help='Location of vitals data for training')
-	parser.add_argument('--test_vitals_csv', type=str, required=True,
-						help='Location of vitals data for testing')
+	parser.add_argument('--train_csv', type=str, required=True,
+						help='Location of data for training')
+	parser.add_argument('--test_csv', type=str, required=True,
+						help='Location of data for testing')
 	parser.add_argument('--metadata_csv', type=str, required=True,
 						help='Location of metadata for testing and training')
 	parser.add_argument('--data_dict', type=str, required=True)
@@ -33,12 +33,12 @@ def main():
 	args = parser.parse_args()
 
 	# extract data
-	train_vitals = pd.read_csv(args.train_vitals_csv)
-	test_vitals = pd.read_csv(args.test_vitals_csv)
+	train = pd.read_csv(args.train_csv)
+	test = pd.read_csv(args.test_csv)
 	metadata = pd.read_csv(args.metadata_csv)
 
-	X_train, y_train = extract_labels(train_vitals, metadata, args.data_dict)
-	X_test, y_test = extract_labels(test_vitals, metadata, args.data_dict)
+	X_train, y_train = extract_labels(train, metadata, args.data_dict)
+	X_test, y_test = extract_labels(test, metadata, args.data_dict)
 
 	# hyperparameter space
 	penalty = ['l1', 'l2']
@@ -46,7 +46,9 @@ def main():
 	hyperparameters = dict(C=C, penalty=penalty)
 
 	# grid search
-	logistic = LogisticRegression(solver='liblinear', max_iter=10000)
+	#configure multiclass classification option based on checking metadata?
+
+	logistic = LogisticRegression(solver='liblinear', max_iter=10000, multi_class="auto")
 	classifier = GridSearchCV(logistic, hyperparameters, cv=5, verbose=1)
 
 	best_logistic = classifier.fit(X_train, y_train)
@@ -64,15 +66,27 @@ def main():
 	print('Accuracy:', accuracy_score(y_test, y_pred))
 	print('Balanced Accuracy:', balanced_accuracy_score(y_test, y_pred))
 	print('Log Loss:', log_loss(y_test, y_pred_proba))
-	conf_matrix = confusion_matrix(y_test, y_pred)
-	true_neg = conf_matrix[0][0]
-	true_pos = conf_matrix[1][1]
-	false_neg = conf_matrix[1][0]
-	false_pos = conf_matrix[0][1]
-	print('True Positive Rate:', float(true_pos) / (true_pos + false_neg))
-	print('True Negative Rate:', float(true_neg) / (true_neg + false_pos))
-	print('Positive Predictive Value:', float(true_pos) / (true_pos + false_pos))
-	print('Negative Predictive Value', float(true_neg) / (true_neg + false_pos))
+	num_classes = float(np.amax(y_test))
+	scaledDowny_test = np.true_divide(y_test, num_classes)
+	scaledDowny_pred = np.true_divide(y_pred, num_classes)
+	print(scaledDowny_test)
+	print(scaledDowny_pred)
+	#print('Coverage Error:', coverage_error(scaledDowny_test, scaledDowny_pred))
+	#print('Ranking-based Average Precision:', label_ranking_average_precision_score(scaledDowny_test, scaledDowny_pred))
+	print('Ranking Loss:', label_ranking_loss(scaledDowny_test, scaledDowny_pred))
+	conf_matrix = multilabel_confusion_matrix(y_test, y_pred)
+	print(conf_matrix)
+
+	for i in range(len(conf_matrix)):
+		true_neg = conf_matrix[i][0][0]
+		true_pos = conf_matrix[i][1][1]
+		false_neg = conf_matrix[i][1][0]
+		false_pos = conf_matrix[i][0][1]
+		
+		print('True Positive Rate:', float(true_pos) / (true_pos + false_neg))
+		print('True Negative Rate:', float(true_neg) / (true_neg + false_pos))
+		print('Positive Predictive Value:', float(true_pos) / (true_pos + false_pos))
+		print('Negative Predictive Value', float(true_neg) / (true_neg + false_pos))
 
 
 	create_html_report(args.report_dir, y_test, y_pred, y_pred_proba, 
@@ -115,46 +129,52 @@ def create_html_report(report_dir, y_test, y_pred, y_pred_proba, hyperparameters
 	with tag('p'):
 		text('Log Loss: ', log_loss(y_test, y_pred_proba))
 	
-	conf_matrix = confusion_matrix(y_test, y_pred)
-	conf_matrix_norm = conf_matrix.astype('float') / conf_matrix.sum(axis=1)[:, np.newaxis]
+	conf_matrix = multilabel_confusion_matrix(y_test, y_pred)
+	print(conf_matrix)
+	for i in range(len(conf_matrix)):
+		conf_matrix_norm = conf_matrix[i].astype('float') / conf_matrix[i].sum(axis=1)[:, np.newaxis]
 
-	true_neg = conf_matrix[0][0]
-	true_pos = conf_matrix[1][1]
-	false_neg = conf_matrix[1][0]
-	false_pos = conf_matrix[0][1]
-	with tag('p'):
-		text('True Positive Rate: ', float(true_pos) / (true_pos + false_neg))
-	with tag('p'):
-		text('True Negative Rate: ', float(true_neg) / (true_neg + false_pos))
-	with tag('p'):
-		text('Positive Predictive Value: ', float(true_pos) / (true_pos + false_pos))
-	with tag('p'):
-		text('Negative Predictive Value: ', float(true_neg) / (true_neg + false_pos))
-	
-	# Confusion Matrix
-	columns = ['Predicted 0', 'Predicted 1']
-	rows = ['Actual 0', 'Actual 1']
-	cell_text = []
-	for cm_row, cm_norm_row in zip(conf_matrix, conf_matrix_norm):
-		row_text = []
-		for i, i_norm in zip(cm_row, cm_norm_row):
-			row_text.append('{} ({})'.format(i, i_norm))
-		cell_text.append(row_text)
+		true_neg = conf_matrix[i][0][0]
+		true_pos = conf_matrix[i][1][1]
+		false_neg = conf_matrix[i][1][0]
+		false_pos = conf_matrix[i][0][1]
+		#change way of calculating metrics and confusion matrix
+		with tag('p'):
+			text('True Positive Rate: ', float(true_pos) / (true_pos + false_neg))
+		with tag('p'):
+			text('True Negative Rate: ', float(true_neg) / (true_neg + false_pos))
+		with tag('p'):
+			text('Positive Predictive Value: ', float(true_pos) / (true_pos + false_pos))
+		with tag('p'):
+			text('Negative Predictive Value: ', float(true_neg) / (true_neg + false_pos))
+		
+		# Confusion Matrix
+		columns = ['Predicted 0', 'Predicted 1']
+		rows = ['Actual 0', 'Actual 1']
+		cell_text = []
+		for cm_row, cm_norm_row in zip(conf_matrix[i], conf_matrix_norm):
+			row_text = []
+			for i, i_norm in zip(cm_row, cm_norm_row):
+				row_text.append('{} ({})'.format(i, i_norm))
+			cell_text.append(row_text)
 
-	ax = plt.subplot(111, frame_on=False) 
-	ax.xaxis.set_visible(False)
-	ax.yaxis.set_visible(False)
+		ax = plt.subplot(111, frame_on=False) 
+		ax.xaxis.set_visible(False)
+		ax.yaxis.set_visible(False)
+		print(rows)
+		print(columns)
+		print(cell_text)
+		
+		confusion_table = ax.table(cellText=cell_text,
+								   rowLabels=rows,
+								   colLabels=columns,
+								   loc='center')
+		plt.savefig(report_dir + '/confusion_matrix_class'+str(i)+'.png')
+		plt.close()
 
-	confusion_table = ax.table(cellText=cell_text,
-							   rowLabels=rows,
-							   colLabels=columns,
-							   loc='center')
-	plt.savefig(report_dir + '/confusion_matrix.png')
-	plt.close()
-
-	with tag('p'):
-		text('Confusion Matrix:')
-	doc.stag('img', src=('confusion_matrix.png'))
+		with tag('p'):
+			text('Confusion Matrix:')
+		doc.stag('img', src=('confusion_matrix_class'+str(i)+'.png'))
 
 	# ROC curve/area
 	y_pred_proba_neg, y_pred_proba_pos = zip(*y_pred_proba)
@@ -171,23 +191,22 @@ def create_html_report(report_dir, y_test, y_pred, y_pred_proba, hyperparameters
 	doc.stag('img', src=('roc_curve.png'))	
 	with tag('p'):
 		text('ROC Area: ', roc_area)
-
 	with open(report_dir + '/report.html', 'w') as f:
 		f.write(doc.getvalue())
 
 
-def extract_labels(vitals, metadata, data_dict):
+def extract_labels(seqs, metadata, data_dict):
 	id_cols = parse_id_cols(data_dict)
 	outcome = parse_outcome_col(data_dict)
+	print(outcome)
 	print(id_cols)
-
-	df = pd.merge(vitals, metadata, on=id_cols, how='left')
+	df = pd.merge(seqs, metadata, on=id_cols, how='left')
+	print(df)
 	y = list(df[outcome])
-
-	if len(vitals) != len(y):
+	if len(seqs) != len(y):
 		raise Exception('Number of sequences did not match number of labels.')
-
-	return vitals, y
+	print("extract")
+	return seqs, y
 
 def parse_id_cols(data_dict_file):   
 	cols = []

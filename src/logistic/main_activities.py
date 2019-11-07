@@ -7,7 +7,7 @@ import json
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import (roc_curve, accuracy_score, log_loss, 
-							balanced_accuracy_score, confusion_matrix, 
+							balanced_accuracy_score, confusion_matrix, multilabel_confusion_matrix,
 							roc_auc_score)
 
 from yattag import Doc
@@ -17,10 +17,10 @@ import matplotlib.pyplot as plt
 def main():
 	parser = argparse.ArgumentParser(description='sklearn LogisticRegression')
 	
-	parser.add_argument('--train_vitals_csv', type=str, required=True,
-						help='Location of vitals data for training')
-	parser.add_argument('--test_vitals_csv', type=str, required=True,
-						help='Location of vitals data for testing')
+	parser.add_argument('--train_activity_csv', type=str, required=True,
+						help='Location of activities data for training')
+	parser.add_argument('--test_activity_csv', type=str, required=True,
+						help='Location of activities data for testing')
 	parser.add_argument('--metadata_csv', type=str, required=True,
 						help='Location of metadata for testing and training')
 	parser.add_argument('--data_dict', type=str, required=True)
@@ -33,12 +33,12 @@ def main():
 	args = parser.parse_args()
 
 	# extract data
-	train_vitals = pd.read_csv(args.train_vitals_csv)
-	test_vitals = pd.read_csv(args.test_vitals_csv)
+	train_activity = pd.read_csv(args.train_activity_csv)
+	test_activity = pd.read_csv(args.test_activity_csv)
 	metadata = pd.read_csv(args.metadata_csv)
 
-	X_train, y_train = extract_labels(train_vitals, metadata, args.data_dict)
-	X_test, y_test = extract_labels(test_vitals, metadata, args.data_dict)
+	X_train, y_train = extract_labels(train_activity, metadata, args.data_dict)
+	X_test, y_test = extract_labels(test_activity, metadata, args.data_dict)
 
 	# hyperparameter space
 	penalty = ['l1', 'l2']
@@ -46,7 +46,9 @@ def main():
 	hyperparameters = dict(C=C, penalty=penalty)
 
 	# grid search
-	logistic = LogisticRegression(solver='liblinear', max_iter=10000)
+	#configure multiclass classification option based on checking metadata?
+
+	logistic = LogisticRegression(solver='liblinear', max_iter=10000, multi_class="auto")
 	classifier = GridSearchCV(logistic, hyperparameters, cv=5, verbose=1)
 
 	best_logistic = classifier.fit(X_train, y_train)
@@ -64,11 +66,12 @@ def main():
 	print('Accuracy:', accuracy_score(y_test, y_pred))
 	print('Balanced Accuracy:', balanced_accuracy_score(y_test, y_pred))
 	print('Log Loss:', log_loss(y_test, y_pred_proba))
-	conf_matrix = confusion_matrix(y_test, y_pred)
+	conf_matrix = multilabel_confusion_matrix(y_test, y_pred)
 	true_neg = conf_matrix[0][0]
 	true_pos = conf_matrix[1][1]
 	false_neg = conf_matrix[1][0]
 	false_pos = conf_matrix[0][1]
+	print(conf_matrix)
 	print('True Positive Rate:', float(true_pos) / (true_pos + false_neg))
 	print('True Negative Rate:', float(true_neg) / (true_neg + false_pos))
 	print('Positive Predictive Value:', float(true_pos) / (true_pos + false_pos))
@@ -115,13 +118,15 @@ def create_html_report(report_dir, y_test, y_pred, y_pred_proba, hyperparameters
 	with tag('p'):
 		text('Log Loss: ', log_loss(y_test, y_pred_proba))
 	
-	conf_matrix = confusion_matrix(y_test, y_pred)
+	conf_matrix = multilabel_confusion_matrix(y_test, y_pred)
+	print(conf_matrix)
 	conf_matrix_norm = conf_matrix.astype('float') / conf_matrix.sum(axis=1)[:, np.newaxis]
 
 	true_neg = conf_matrix[0][0]
 	true_pos = conf_matrix[1][1]
 	false_neg = conf_matrix[1][0]
 	false_pos = conf_matrix[0][1]
+	#change way of calculating metrics and confusion matrix
 	with tag('p'):
 		text('True Positive Rate: ', float(true_pos) / (true_pos + false_neg))
 	with tag('p'):
@@ -144,7 +149,10 @@ def create_html_report(report_dir, y_test, y_pred, y_pred_proba, hyperparameters
 	ax = plt.subplot(111, frame_on=False) 
 	ax.xaxis.set_visible(False)
 	ax.yaxis.set_visible(False)
-
+	print(rows)
+	print(columns)
+	print(cell_text)
+	
 	confusion_table = ax.table(cellText=cell_text,
 							   rowLabels=rows,
 							   colLabels=columns,
@@ -179,14 +187,14 @@ def create_html_report(report_dir, y_test, y_pred, y_pred_proba, hyperparameters
 def extract_labels(vitals, metadata, data_dict):
 	id_cols = parse_id_cols(data_dict)
 	outcome = parse_outcome_col(data_dict)
+	print(outcome)
 	print(id_cols)
-
 	df = pd.merge(vitals, metadata, on=id_cols, how='left')
+	print(df)
 	y = list(df[outcome])
-
 	if len(vitals) != len(y):
 		raise Exception('Number of sequences did not match number of labels.')
-
+	print("extract")
 	return vitals, y
 
 def parse_id_cols(data_dict_file):   

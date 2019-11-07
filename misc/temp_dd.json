@@ -1,0 +1,1345 @@
+{
+    "fields": [
+        {
+            "name": "subj_id",
+            "description": "Unique identifier for each subject",
+            "type": "integer",
+            "role": "id",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "gender_name",
+            "description": "Gender of subject",
+            "type": "string",
+            "role": "other",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "seq_id",
+            "description": "Unique identifier for each recorded activity time-series",
+            "type": "integer",
+            "role": "id",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "category_id",
+            "description": "Value between 0 and 8 indicating activity category",
+            "type": "integer",
+            "role": "outcome",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "category_name",
+            "description": "Name of activity category",
+            "type": "string",
+            "role": "other",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "count_age_yr",
+            "description": "Age of subject in years",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "count_height_cm",
+            "description": "Height of subject in centimeters",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "count_weight_kg",
+            "description": "Weight of subject in kilograms",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "count_is_male",
+            "description": "Indicator for whether subject is male",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "count_pocket_id",
+            "description": "Indicator for smartphone being in the left (right?) pocket during recording",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "count_acc_x",
+            "description": "Value from accelerometer x-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "count_acc_y",
+            "description": "Value from accelerometer y-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "count_acc_z",
+            "description": "Value from accelerometer z-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "mean_age_yr",
+            "description": "Age of subject in years",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "mean_height_cm",
+            "description": "Height of subject in centimeters",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "mean_weight_kg",
+            "description": "Weight of subject in kilograms",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "mean_is_male",
+            "description": "Indicator for whether subject is male",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "mean_pocket_id",
+            "description": "Indicator for smartphone being in the left (right?) pocket during recording",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "mean_acc_x",
+            "description": "Value from accelerometer x-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "mean_acc_y",
+            "description": "Value from accelerometer y-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "mean_acc_z",
+            "description": "Value from accelerometer z-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "median_age_yr",
+            "description": "Age of subject in years",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "median_height_cm",
+            "description": "Height of subject in centimeters",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "median_weight_kg",
+            "description": "Weight of subject in kilograms",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "median_is_male",
+            "description": "Indicator for whether subject is male",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "median_pocket_id",
+            "description": "Indicator for smartphone being in the left (right?) pocket during recording",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "median_acc_x",
+            "description": "Value from accelerometer x-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "median_acc_y",
+            "description": "Value from accelerometer y-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "median_acc_z",
+            "description": "Value from accelerometer z-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_age_yr",
+            "description": "Age of subject in years",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_height_cm",
+            "description": "Height of subject in centimeters",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_weight_kg",
+            "description": "Weight of subject in kilograms",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_is_male",
+            "description": "Indicator for whether subject is male",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_pocket_id",
+            "description": "Indicator for smartphone being in the left (right?) pocket during recording",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_acc_x",
+            "description": "Value from accelerometer x-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_acc_y",
+            "description": "Value from accelerometer y-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_acc_z",
+            "description": "Value from accelerometer z-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "min_age_yr",
+            "description": "Age of subject in years",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "min_height_cm",
+            "description": "Height of subject in centimeters",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "min_weight_kg",
+            "description": "Weight of subject in kilograms",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "min_is_male",
+            "description": "Indicator for whether subject is male",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "min_pocket_id",
+            "description": "Indicator for smartphone being in the left (right?) pocket during recording",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "min_acc_x",
+            "description": "Value from accelerometer x-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "min_acc_y",
+            "description": "Value from accelerometer y-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "min_acc_z",
+            "description": "Value from accelerometer z-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "max_age_yr",
+            "description": "Age of subject in years",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "max_height_cm",
+            "description": "Height of subject in centimeters",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "max_weight_kg",
+            "description": "Weight of subject in kilograms",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "max_is_male",
+            "description": "Indicator for whether subject is male",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "max_pocket_id",
+            "description": "Indicator for smartphone being in the left (right?) pocket during recording",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "max_acc_x",
+            "description": "Value from accelerometer x-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "max_acc_y",
+            "description": "Value from accelerometer y-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "max_acc_z",
+            "description": "Value from accelerometer z-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_0_to_10_age_yr",
+            "description": "Age of subject in years",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_0_to_10_height_cm",
+            "description": "Height of subject in centimeters",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_0_to_10_weight_kg",
+            "description": "Weight of subject in kilograms",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_0_to_10_is_male",
+            "description": "Indicator for whether subject is male",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_0_to_10_pocket_id",
+            "description": "Indicator for smartphone being in the left (right?) pocket during recording",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_0_to_10_acc_x",
+            "description": "Value from accelerometer x-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_0_to_10_acc_y",
+            "description": "Value from accelerometer y-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_0_to_10_acc_z",
+            "description": "Value from accelerometer z-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_0_to_25_age_yr",
+            "description": "Age of subject in years",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_0_to_25_height_cm",
+            "description": "Height of subject in centimeters",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_0_to_25_weight_kg",
+            "description": "Weight of subject in kilograms",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_0_to_25_is_male",
+            "description": "Indicator for whether subject is male",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_0_to_25_pocket_id",
+            "description": "Indicator for smartphone being in the left (right?) pocket during recording",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_0_to_25_acc_x",
+            "description": "Value from accelerometer x-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_0_to_25_acc_y",
+            "description": "Value from accelerometer y-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_0_to_25_acc_z",
+            "description": "Value from accelerometer z-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_0_to_50_age_yr",
+            "description": "Age of subject in years",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_0_to_50_height_cm",
+            "description": "Height of subject in centimeters",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_0_to_50_weight_kg",
+            "description": "Weight of subject in kilograms",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_0_to_50_is_male",
+            "description": "Indicator for whether subject is male",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_0_to_50_pocket_id",
+            "description": "Indicator for smartphone being in the left (right?) pocket during recording",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_0_to_50_acc_x",
+            "description": "Value from accelerometer x-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_0_to_50_acc_y",
+            "description": "Value from accelerometer y-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_0_to_50_acc_z",
+            "description": "Value from accelerometer z-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_50_to_100_age_yr",
+            "description": "Age of subject in years",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_50_to_100_height_cm",
+            "description": "Height of subject in centimeters",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_50_to_100_weight_kg",
+            "description": "Weight of subject in kilograms",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_50_to_100_is_male",
+            "description": "Indicator for whether subject is male",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_50_to_100_pocket_id",
+            "description": "Indicator for smartphone being in the left (right?) pocket during recording",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_50_to_100_acc_x",
+            "description": "Value from accelerometer x-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_50_to_100_acc_y",
+            "description": "Value from accelerometer y-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_50_to_100_acc_z",
+            "description": "Value from accelerometer z-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_75_to_100_age_yr",
+            "description": "Age of subject in years",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_75_to_100_height_cm",
+            "description": "Height of subject in centimeters",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_75_to_100_weight_kg",
+            "description": "Weight of subject in kilograms",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_75_to_100_is_male",
+            "description": "Indicator for whether subject is male",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_75_to_100_pocket_id",
+            "description": "Indicator for smartphone being in the left (right?) pocket during recording",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_75_to_100_acc_x",
+            "description": "Value from accelerometer x-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_75_to_100_acc_y",
+            "description": "Value from accelerometer y-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_75_to_100_acc_z",
+            "description": "Value from accelerometer z-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_90_to_100_age_yr",
+            "description": "Age of subject in years",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_90_to_100_height_cm",
+            "description": "Height of subject in centimeters",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_90_to_100_weight_kg",
+            "description": "Weight of subject in kilograms",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_90_to_100_is_male",
+            "description": "Indicator for whether subject is male",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_90_to_100_pocket_id",
+            "description": "Indicator for smartphone being in the left (right?) pocket during recording",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_90_to_100_acc_x",
+            "description": "Value from accelerometer x-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_90_to_100_acc_y",
+            "description": "Value from accelerometer y-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_90_to_100_acc_z",
+            "description": "Value from accelerometer z-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_0_to_10_age_yr",
+            "description": "Age of subject in years",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_0_to_10_height_cm",
+            "description": "Height of subject in centimeters",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_0_to_10_weight_kg",
+            "description": "Weight of subject in kilograms",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_0_to_10_is_male",
+            "description": "Indicator for whether subject is male",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_0_to_10_pocket_id",
+            "description": "Indicator for smartphone being in the left (right?) pocket during recording",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_0_to_10_acc_x",
+            "description": "Value from accelerometer x-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_0_to_10_acc_y",
+            "description": "Value from accelerometer y-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_0_to_10_acc_z",
+            "description": "Value from accelerometer z-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_0_to_25_age_yr",
+            "description": "Age of subject in years",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_0_to_25_height_cm",
+            "description": "Height of subject in centimeters",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_0_to_25_weight_kg",
+            "description": "Weight of subject in kilograms",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_0_to_25_is_male",
+            "description": "Indicator for whether subject is male",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_0_to_25_pocket_id",
+            "description": "Indicator for smartphone being in the left (right?) pocket during recording",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_0_to_25_acc_x",
+            "description": "Value from accelerometer x-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_0_to_25_acc_y",
+            "description": "Value from accelerometer y-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_0_to_25_acc_z",
+            "description": "Value from accelerometer z-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_0_to_50_age_yr",
+            "description": "Age of subject in years",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_0_to_50_height_cm",
+            "description": "Height of subject in centimeters",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_0_to_50_weight_kg",
+            "description": "Weight of subject in kilograms",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_0_to_50_is_male",
+            "description": "Indicator for whether subject is male",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_0_to_50_pocket_id",
+            "description": "Indicator for smartphone being in the left (right?) pocket during recording",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_0_to_50_acc_x",
+            "description": "Value from accelerometer x-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_0_to_50_acc_y",
+            "description": "Value from accelerometer y-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_0_to_50_acc_z",
+            "description": "Value from accelerometer z-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_50_to_100_age_yr",
+            "description": "Age of subject in years",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_50_to_100_height_cm",
+            "description": "Height of subject in centimeters",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_50_to_100_weight_kg",
+            "description": "Weight of subject in kilograms",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_50_to_100_is_male",
+            "description": "Indicator for whether subject is male",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_50_to_100_pocket_id",
+            "description": "Indicator for smartphone being in the left (right?) pocket during recording",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_50_to_100_acc_x",
+            "description": "Value from accelerometer x-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_50_to_100_acc_y",
+            "description": "Value from accelerometer y-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_50_to_100_acc_z",
+            "description": "Value from accelerometer z-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_75_to_100_age_yr",
+            "description": "Age of subject in years",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_75_to_100_height_cm",
+            "description": "Height of subject in centimeters",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_75_to_100_weight_kg",
+            "description": "Weight of subject in kilograms",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_75_to_100_is_male",
+            "description": "Indicator for whether subject is male",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_75_to_100_pocket_id",
+            "description": "Indicator for smartphone being in the left (right?) pocket during recording",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_75_to_100_acc_x",
+            "description": "Value from accelerometer x-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_75_to_100_acc_y",
+            "description": "Value from accelerometer y-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_75_to_100_acc_z",
+            "description": "Value from accelerometer z-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_90_to_100_age_yr",
+            "description": "Age of subject in years",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_90_to_100_height_cm",
+            "description": "Height of subject in centimeters",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_90_to_100_weight_kg",
+            "description": "Weight of subject in kilograms",
+            "type": "float",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_90_to_100_is_male",
+            "description": "Indicator for whether subject is male",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_90_to_100_pocket_id",
+            "description": "Indicator for smartphone being in the left (right?) pocket during recording",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_90_to_100_acc_x",
+            "description": "Value from accelerometer x-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_90_to_100_acc_y",
+            "description": "Value from accelerometer y-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_90_to_100_acc_z",
+            "description": "Value from accelerometer z-axis",
+            "type": "number",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        }
+    ]
+}
