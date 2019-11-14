@@ -16,6 +16,7 @@ import argparse
 import json
 import pandas as pd
 from sklearn.model_selection import GroupShuffleSplit
+import os
 
 # Parse command line arguments
 parser = argparse.ArgumentParser()
@@ -50,5 +51,11 @@ for a, b in gss1.split(df, groups=grp):
     test = df.iloc[b]
 
 # Output data
-train.to_csv(args.output_dir + '/train.csv', index=False)
-test.to_csv(args.output_dir + '/test.csv', index=False)
+fdir_train_test = args.output_dir
+
+if not os.path.exists(fdir_train_test):
+    os.mkdir(fdir_train_test)
+
+
+train.to_csv(fdir_train_test + '/train.csv', index=False)
+test.to_csv(fdir_train_test + '/test.csv', index=False)
