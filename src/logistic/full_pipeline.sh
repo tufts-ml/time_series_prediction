@@ -3,6 +3,7 @@
 # Path to directory with github code
 SOURCE_PATH="/cluster/home/onewla01/hughes/time_series_prediction/src"
 
+set -e
 # Paths to raw dataset
 TS_DATA_PATH="/cluster/tufts/hugheslab/datasets/mimic-iii-v1.4/v20181213/tidy/mimic3benchmarks_inhospital_mortality/20190406/vitals_data_per_tstamp.csv"
 TS_METADATA_PATH="/cluster/tufts/hugheslab/datasets/mimic-iii-v1.4/v20181213/tidy/mimic3benchmarks_inhospital_mortality/20190406/metadata_per_seq.csv"
@@ -38,6 +39,7 @@ if [ "$1" != "classifier" ]; then
     fi
     if [ ! -d "$TEMP_DATA_PATH" ]; then
         echo "Could not find directory TEMP_DATA_PATH: $TEMP_DATA_PATH"
+        mkdir "$TEMP_DATA_PATH"
         exit 1
     fi
 
@@ -92,6 +94,7 @@ if [ ! -f "$TEMP_DATA_PATH/collapsed_test_train/test.csv" ]; then
 fi
 if [ ! -d "$REPORT_DIR" ]; then
     echo "Could not find directory REPORT_DIR: $REPORT_DIR"
+    mkdir "$REPORT_DIR"
     exit 1
 fi
 

@@ -8,7 +8,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import (roc_curve, accuracy_score, log_loss, 
 							balanced_accuracy_score, confusion_matrix, multilabel_confusion_matrix,
-							roc_auc_score, label_ranking_average_precision_score, coverage_error, label_ranking_loss)
+							roc_auc_score)
 
 from yattag import Doc
 import matplotlib.pyplot as plt
@@ -66,29 +66,32 @@ def main():
 	print('Accuracy:', accuracy_score(y_test, y_pred))
 	print('Balanced Accuracy:', balanced_accuracy_score(y_test, y_pred))
 	print('Log Loss:', log_loss(y_test, y_pred_proba))
-	num_classes = float(np.amax(y_test))
-	scaledDowny_test = np.true_divide(y_test, num_classes)
-	scaledDowny_pred = np.true_divide(y_pred, num_classes)
-	print(scaledDowny_test)
-	print(scaledDowny_pred)
-	#print('Coverage Error:', coverage_error(scaledDowny_test, scaledDowny_pred))
-	#print('Ranking-based Average Precision:', label_ranking_average_precision_score(scaledDowny_test, scaledDowny_pred))
-	print('Ranking Loss:', label_ranking_loss(scaledDowny_test, scaledDowny_pred))
 	conf_matrix = multilabel_confusion_matrix(y_test, y_pred)
+	num_classes = len(conf_matrix)
 	print(conf_matrix)
-
-	for i in range(len(conf_matrix)):
+	macro_pre = 0.0
+	micro_pre= 0.0
+	tpsum = 0
+	fpsum = 0
+	pre_sum = 0.0
+	for i in range(num_classes):
+		print("Class %d" % i)
 		true_neg = conf_matrix[i][0][0]
 		true_pos = conf_matrix[i][1][1]
 		false_neg = conf_matrix[i][1][0]
 		false_pos = conf_matrix[i][0][1]
-		
+		ppv = float(true_pos) / (true_pos + false_pos)
+		pre_sum+=ppv
+		tpsum+=true_pos
+		fpsum+=false_pos
 		print('True Positive Rate:', float(true_pos) / (true_pos + false_neg))
 		print('True Negative Rate:', float(true_neg) / (true_neg + false_pos))
-		print('Positive Predictive Value:', float(true_pos) / (true_pos + false_pos))
+		print('Positive Predictive Value:', ppv)
 		print('Negative Predictive Value', float(true_neg) / (true_neg + false_pos))
-
-
+	micro_pre = tpsum/(tpsum+fpsum)
+	print('Micro Average:'+str(micro_pre))
+	macro_pre = pre_sum/num_classes
+	print('Macro Average:'+str(macro_pre))
 	create_html_report(args.report_dir, y_test, y_pred, y_pred_proba, 
 					   hyperparameters, best_penalty, best_C)
 
@@ -100,7 +103,9 @@ def create_html_report(report_dir, y_test, y_pred, y_pred_proba, hyperparameters
 
 	# Set up HTML report
 	doc, tag, text = Doc().tagtext()
-
+	tpsum = 0
+	fpsum = 0
+	pre_sum = 0
 	# Metadata
 	with tag('h2'):
 		text('Logistic Classifier Results')
@@ -128,19 +133,28 @@ def create_html_report(report_dir, y_test, y_pred, y_pred_proba, hyperparameters
 		text('Balanced Accuracy: ', balanced_accuracy_score(y_test, y_pred))
 	with tag('p'):
 		text('Log Loss: ', log_loss(y_test, y_pred_proba))
-	
+	fpr = dict()
+	tpr = dict()
+	roc_auc = dict()
 	conf_matrix = multilabel_confusion_matrix(y_test, y_pred)
 	print(conf_matrix)
 	for i in range(len(conf_matrix)):
 		conf_matrix_norm = conf_matrix[i].astype('float') / conf_matrix[i].sum(axis=1)[:, np.newaxis]
-
+		with tag('p'):
+			text('Class ', i)
 		true_neg = conf_matrix[i][0][0]
 		true_pos = conf_matrix[i][1][1]
 		false_neg = conf_matrix[i][1][0]
 		false_pos = conf_matrix[i][0][1]
+		tpr[i] =  float(true_pos) / (true_pos + false_neg)
+		fpr[i] = 1-tpr[i]
+		ppv = float(true_pos) / (true_pos + false_pos)
+		pre_sum+=ppv
+		tpsum+=true_pos
+		fpsum+=false_pos
 		#change way of calculating metrics and confusion matrix
 		with tag('p'):
-			text('True Positive Rate: ', float(true_pos) / (true_pos + false_neg))
+			text('True Positive Rate: ', tpr[i])
 		with tag('p'):
 			text('True Negative Rate: ', float(true_neg) / (true_neg + false_pos))
 		with tag('p'):
@@ -175,8 +189,14 @@ def create_html_report(report_dir, y_test, y_pred, y_pred_proba, hyperparameters
 		with tag('p'):
 			text('Confusion Matrix:')
 		doc.stag('img', src=('confusion_matrix_class'+str(i)+'.png'))
-
+	micro_pre = tpsum/(tpsum+fpsum)
+	with tag('p'):
+			text('Micro Average: ', micro_pre)
+	macro_pre = pre_sum/len(conf_matrix)
+	with tag('p'):
+			text('Macro Average: ', macro_pre)
 	# ROC curve/area
+	'''
 	y_pred_proba_neg, y_pred_proba_pos = zip(*y_pred_proba)
 	fpr, tpr, thresholds = roc_curve(y_test, y_pred_proba_pos)
 	roc_area = roc_auc_score(y_test, y_pred_proba_pos)
@@ -191,6 +211,7 @@ def create_html_report(report_dir, y_test, y_pred, y_pred_proba, hyperparameters
 	doc.stag('img', src=('roc_curve.png'))	
 	with tag('p'):
 		text('ROC Area: ', roc_area)
+	'''
 	with open(report_dir + '/report.html', 'w') as f:
 		f.write(doc.getvalue())
 
@@ -200,9 +221,21 @@ def extract_labels(seqs, metadata, data_dict):
 	outcome = parse_outcome_col(data_dict)
 	print(outcome)
 	print(id_cols)
-	df = pd.merge(seqs, metadata, on=id_cols, how='left')
+
+	'''
+	merge_col = id_cols[0]
+	
+	for i in id_cols:
+		if i in metadata.columns:
+			merge_col = i
+			break
+	'''
+	merge_col = id_cols
+	df = pd.merge(seqs, metadata, on=merge_col, how='left')
 	print(df)
+	print(len(seqs))
 	y = list(df[outcome])
+	print(len(y))
 	if len(seqs) != len(y):
 		raise Exception('Number of sequences did not match number of labels.')
 	print("extract")

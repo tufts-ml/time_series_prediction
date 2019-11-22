@@ -1,0 +1,71 @@
+# How to use this Logistic Classifier
+So you want to run some classifier experiments, and you've chosen the Logistic Regression? This README provides a detailed account of how to use this regression to classify your data. This document should be updated as bugs and logistical issues are overcome.
+## What kind of Data do you have?
+[Binary Data](#binary)
+[Multiclass Data](#Multiclass-Data)
+
+## Binary Data
+Input your data in `full_pipeline.sh` into the following variables:
+
+**The Following Paths MUST Exist**
+`SOURCE_PATH`: Path to directory with github code
+`TS_DATA_PATH`: This should be the file path to the data you want to predict based on. 
+`TS_METADATA_PATH`: This is the file path where your label/metadata is located. The outcome (Y label) should be here. This should be located in the same folder as `TS_DATA_PATH`
+`TS_DATA_DICT_PATH`: This should be the file path to a JSON file with all of the columns for `TS_DATA_PATH`
+**The Following Paths Will Be Generated If It Does Not Exist Already**
+`TEMP_DATA_PATH`: This is where all of the preprocessing, splitting, training and testing of the data will go.
+`REPORT_DIR`: This is where the reports of the classifier will go.
+### Usage
+To run the full pipeline (with all the data transformation):
+`sh full_pipeline.sh`
+To run **JUST** the classifier (if the data is already formatted):
+`sh full_pipeline.sh classifier`
+
+### Output
+
+Running the multiclass classifier outputs a report with a number of metrics, a confusion matrix and a ROC curve graph. Currently, 
+it will provide
+* Accuracy
+* Balanced Accuracy
+* Log Loss/Entropy
+* TPR
+* FPR
+* PPV
+* NPV
+The report will be in the path specified in REPORT_DIR in the form of a HTML file.
+
+## Multiclass Data
+Input your data in `multiclass_pipeline.sh` into the following variables:
+
+**The Following Paths MUST Exist**
+`SOURCE_PATH`: Path to directory with github code
+`TS_DATA_PATH`: This should be the file path to the data you want to predict based on. 
+`TS_METADATA_PATH`: This is the file path where your label/metadata is located. The outcome (Y label) should be here. This should be located in the same folder as `TS_DATA_PATH`
+`TS_DATA_DICT_PATH`: This should be the file path to a JSON file with all of the columns for `TS_DATA_PATH`
+`TS_METADATA_DICT_PATH`: This should be the file path to a JSON file with all of the columns for `TS_METADATA_PATH`. This should be located in the same folder as `TS_DATA_DICT_PATH`
+
+**The Following Paths Will Be Generated If It Does Not Exist Already**
+`TEMP_DATA_PATH`: This is where all of the preprocessing, splitting, training and testing of the data will go.
+`REPORT_DIR`: This is where the reports of the classifier will go.
+### Usage
+To run the full pipeline (with all the data transformation):
+`sh multiclass_pipeline.sh`
+To run **JUST** the classifier (if the data is already formatted):
+`sh multiclass_pipeline.sh classifier`
+
+### Output
+
+Running the multiclass classifier outputs a report with a number of metrics as well as several confusion matrices. It will also show
+the best hyper parameters based on a grid search. Currently, 
+it will provide
+* Accuracy
+* Balanced Accuracy
+* Log Loss/Entropy
+* Micro Average (More useful with class imbalances)
+* Macro Average (Treat all classes equally)
+* For each class, it will provide:
+	* TPR
+	* FPR
+	* PPV
+	* NPV
+The report will be in the path specified in REPORT_DIR in the form of a HTML file.

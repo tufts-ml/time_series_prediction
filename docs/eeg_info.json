@@ -1,0 +1,40 @@
+{
+    "fields": [
+        {
+            "name": "subj_id",
+            "description": "Unique identifier for individual",
+            "type": "string",
+            "role": "id",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "chunk_id",
+            "description": "Identifies which chunk of time data belongs to",
+            "type": "integer",
+            "role": "id",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "seq_num",
+            "description": "Sequential number of data reading within chunk",
+            "type": "integer",
+            "role": "sequence",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "eeg_signal",
+            "description": "Value of EEG signal reading",
+            "type": "integer",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+    ]
+}

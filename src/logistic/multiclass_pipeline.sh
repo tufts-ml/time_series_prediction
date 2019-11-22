@@ -2,9 +2,15 @@
 
 # Path to directory with github code
 SOURCE_PATH=".."
-#will stop the script if one thing goes wrong
-set -e
+
 # Paths to raw dataset
+# TS_DATA_PATH="../../datasets/eeg/v20190228/eeg_sensors_ts.csv"
+# TS_METADATA_PATH="../../datasets/eeg/v20190228/eeg_all_data.csv"
+# #ideally have both insame place
+# TS_DATA_DICT_PATH="../../docs/eeg/v20190228/eeg_info.json"
+# TS_METADATA_DICT_PATH="../../docs/eeg/v20190228/eeg_test.json"
+# # Path to directory in which modified dataset files will be stored
+# TEMP_DATA_PATH="../../misc_eeg"
 TS_DATA_PATH="../../datasets/unimib_shar_activities/v20190307/sensor_data_per_tstep.csv"
 TS_METADATA_PATH="../../datasets/unimib_shar_activities/v20190307/metadata_per_seq.csv"
 TS_DATA_DICT_PATH="../../docs/unimib_shar_activities/v20190307/sensor_data_per_tstep.json"
@@ -13,8 +19,10 @@ TS_METADATA_DICT_PATH="../../docs/unimib_shar_activities/v20190307/activity_dict
 TEMP_DATA_PATH="../../misc"
 
 # Path to directory in which html classifier performance report should be saved
+REPORT_DIR="html_eeg"
 REPORT_DIR="html"
-
+#will stop the script if one thing goes wrong
+set -e
 # Check directory and file exists
 if [ ! -d "$SOURCE_PATH" ]; then
     echo "Could not find directory SOURCE_PATH: $SOURCE_PATH"
@@ -45,11 +53,12 @@ if [ "$1" != "classifier" ]; then
     fi
 
     #Format data
+    
     echo "Align to grid"
     python $SOURCE_PATH/align_to_grid.py \
-        --input_ts_csv_path $TS_DATA_PATH \
-        --data_dict $TS_DATA_DICT_PATH \
-        --step_size 1 \
+       --input_ts_csv_path $TS_DATA_PATH \
+       --data_dict $TS_DATA_DICT_PATH \
+       --step_size 1 \
         --output $TEMP_DATA_PATH/temp.csv
 
     echo "Fill missing values"

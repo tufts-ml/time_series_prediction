@@ -1,0 +1,355 @@
+{
+    "fields": [
+        {
+            "name": "subj_id",
+            "description": "Unique identifier for individual",
+            "type": "string",
+            "role": "id",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "chunk_id",
+            "description": "Identifies which chunk of time data belongs to",
+            "type": "integer",
+            "role": "id",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "category_label",
+            "description": "Category of data reading (see documentation)",
+            "type": "string",
+            "role": "outcome",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "count_eeg_signal",
+            "description": "Value of EEG signal reading",
+            "type": "integer",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "count_seizure_binary_label",
+            "description": "Indicator for whether individual is having seizure at time of reading (category_label = 1)",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "mean_eeg_signal",
+            "description": "Value of EEG signal reading",
+            "type": "integer",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "mean_seizure_binary_label",
+            "description": "Indicator for whether individual is having seizure at time of reading (category_label = 1)",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "median_eeg_signal",
+            "description": "Value of EEG signal reading",
+            "type": "integer",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "median_seizure_binary_label",
+            "description": "Indicator for whether individual is having seizure at time of reading (category_label = 1)",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_eeg_signal",
+            "description": "Value of EEG signal reading",
+            "type": "integer",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_seizure_binary_label",
+            "description": "Indicator for whether individual is having seizure at time of reading (category_label = 1)",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "min_eeg_signal",
+            "description": "Value of EEG signal reading",
+            "type": "integer",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "min_seizure_binary_label",
+            "description": "Indicator for whether individual is having seizure at time of reading (category_label = 1)",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "max_eeg_signal",
+            "description": "Value of EEG signal reading",
+            "type": "integer",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "max_seizure_binary_label",
+            "description": "Indicator for whether individual is having seizure at time of reading (category_label = 1)",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_0_to_10_eeg_signal",
+            "description": "Value of EEG signal reading",
+            "type": "integer",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_0_to_10_seizure_binary_label",
+            "description": "Indicator for whether individual is having seizure at time of reading (category_label = 1)",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_0_to_25_eeg_signal",
+            "description": "Value of EEG signal reading",
+            "type": "integer",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_0_to_25_seizure_binary_label",
+            "description": "Indicator for whether individual is having seizure at time of reading (category_label = 1)",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_0_to_50_eeg_signal",
+            "description": "Value of EEG signal reading",
+            "type": "integer",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_0_to_50_seizure_binary_label",
+            "description": "Indicator for whether individual is having seizure at time of reading (category_label = 1)",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_50_to_100_eeg_signal",
+            "description": "Value of EEG signal reading",
+            "type": "integer",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_50_to_100_seizure_binary_label",
+            "description": "Indicator for whether individual is having seizure at time of reading (category_label = 1)",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_75_to_100_eeg_signal",
+            "description": "Value of EEG signal reading",
+            "type": "integer",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_75_to_100_seizure_binary_label",
+            "description": "Indicator for whether individual is having seizure at time of reading (category_label = 1)",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_90_to_100_eeg_signal",
+            "description": "Value of EEG signal reading",
+            "type": "integer",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "slope_90_to_100_seizure_binary_label",
+            "description": "Indicator for whether individual is having seizure at time of reading (category_label = 1)",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_0_to_10_eeg_signal",
+            "description": "Value of EEG signal reading",
+            "type": "integer",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_0_to_10_seizure_binary_label",
+            "description": "Indicator for whether individual is having seizure at time of reading (category_label = 1)",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_0_to_25_eeg_signal",
+            "description": "Value of EEG signal reading",
+            "type": "integer",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_0_to_25_seizure_binary_label",
+            "description": "Indicator for whether individual is having seizure at time of reading (category_label = 1)",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_0_to_50_eeg_signal",
+            "description": "Value of EEG signal reading",
+            "type": "integer",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_0_to_50_seizure_binary_label",
+            "description": "Indicator for whether individual is having seizure at time of reading (category_label = 1)",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_50_to_100_eeg_signal",
+            "description": "Value of EEG signal reading",
+            "type": "integer",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_50_to_100_seizure_binary_label",
+            "description": "Indicator for whether individual is having seizure at time of reading (category_label = 1)",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_75_to_100_eeg_signal",
+            "description": "Value of EEG signal reading",
+            "type": "integer",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_75_to_100_seizure_binary_label",
+            "description": "Indicator for whether individual is having seizure at time of reading (category_label = 1)",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_90_to_100_eeg_signal",
+            "description": "Value of EEG signal reading",
+            "type": "integer",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        },
+        {
+            "name": "std_90_to_100_seizure_binary_label",
+            "description": "Indicator for whether individual is having seizure at time of reading (category_label = 1)",
+            "type": "boolean",
+            "role": "feature",
+            "constraints": {
+                "required": true
+            }
+        }
+    ]
+}
