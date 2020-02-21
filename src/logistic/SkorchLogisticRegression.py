@@ -5,6 +5,8 @@ import sklearn.linear_model
 
 from scipy.special import expit as logistic_sigmoid
 from skorch.utils import TeeGenerator
+from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import make_scorer, roc_auc_score
 
 from SkorchLogisticRegressionModule import SkorchLogisticRegressionModule
 
@@ -18,9 +20,9 @@ class SkorchLogisticRegression(skorch.NeuralNet):
             l2_penalty_bias=0.0,
             clip=0.25,
             lr=1.00,
+            criterion=torch.nn.NLLLoss,
             batch_size=-1,
             max_epochs=100,
-            *args,
             **kwargs
             ):
         ## Fill in keyword arguments
@@ -28,13 +30,13 @@ class SkorchLogisticRegression(skorch.NeuralNet):
         self.l2_penalty_weights = l2_penalty_weights
         self.l2_penalty_bias = l2_penalty_bias
         self.clip = clip
-        super(SkorchLogisticRegression, self).__init__(
+        kwargs.update(dict(
             module=SkorchLogisticRegressionModule(n_features=n_features),
-            criterion=torch.nn.NLLLoss,
             lr=lr,
+            criterion=criterion,
             batch_size=batch_size,
-            max_epochs=max_epochs,
-            *args, **kwargs)
+            max_epochs=max_epochs))
+        super(SkorchLogisticRegression, self).__init__(**kwargs)
         self.initialize()
 
     def predict_proba(self, x_NF):
@@ -175,6 +177,7 @@ if __name__ == '__main__':
 
     true_w_F = np.arange(F) + 1
     true_y_proba_N = logistic_sigmoid(np.dot(x_NF, true_w_F))
+    
     true_y_N = np.asarray(
         true_y_proba_N >= np.random.rand(N),
         dtype=np.float64)
@@ -199,7 +202,7 @@ if __name__ == '__main__':
     print(clf.intercept_)
     print("TRUE w:")
     print(true_w_F)
-    from IPython import embed; embed()
+#     from IPython import embed; embed()
 
 
     '''
@@ -211,3 +214,13 @@ if __name__ == '__main__':
         print("y_proba[n=%d]" % n)
         print(y_proba_N2[n])
     '''
+    
+     
+    C = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e2, 1e3, 1e4]                  
+    penalty = ['l1','l2']                                                   
+    hyperparameters = dict(C=C, penalty=penalty)
+    roc_auc_scorer = make_scorer(roc_auc_score, greater_is_better=True, needs_threshold=True)
+    
+    classifier = GridSearchCV(lr_clf, hyperparameters, cv=5, verbose=10, scoring = roc_auc_scorer)
+    classifier.fit(x_NF, true_y_N)
+    

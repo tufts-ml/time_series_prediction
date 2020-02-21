@@ -43,11 +43,11 @@ if [ "$1" != "classifier" ]; then
 
 #     Format data
   echo "Align to grid"
-  python $SOURCE_PATH/align_to_grid.py \
-      --input_ts_csv_path $TS_DATA_PATH \
-      --data_dict $TS_DATA_DICT_PATH \
-      --step_size 1 \
-      --output $TEMP_DATA_PATH/temp.csv
+#   python $SOURCE_PATH/align_to_grid.py \
+#       --input_ts_csv_path $TS_DATA_PATH \
+#       --data_dict $TS_DATA_DICT_PATH \
+#       --step_size 1 \
+#       --output $TEMP_DATA_PATH/temp.csv
 
 #    echo "Fill missing values"
 #    python $SOURCE_PATH/fill_missing_values.py \
@@ -59,11 +59,11 @@ if [ "$1" != "classifier" ]; then
 #        --output $TEMP_DATA_PATH/temp.csv \
 #        --third_strategy nulls
 
-    echo "Normalize Features"
-    python $SOURCE_PATH/normalize_features.py \
-        --input $TEMP_DATA_PATH/temp.csv \
-        --data_dict $TS_DATA_DICT_PATH \
-        --output $TEMP_DATA_PATH/temp.csv 
+#     echo "Normalize Features"
+#     python $SOURCE_PATH/normalize_features.py \
+#         --input $TEMP_DATA_PATH/temp.csv \
+#         --data_dict $TS_DATA_DICT_PATH \
+#         --output $TEMP_DATA_PATH/temp.csv 
 
     echo "Feature transformations collapse"
     python $SOURCE_PATH/feature_transformation.py \
@@ -72,8 +72,8 @@ if [ "$1" != "classifier" ]; then
         --output $TEMP_DATA_PATH/temp.csv \
         --data_dict_output $TEMP_DATA_PATH/temp_dd.json \
         --collapse\
-        --collapse_features 'count mean median std min max slope' \
-        --collapse_range_features 'count mean median std min max slope'
+        --collapse_features 'slope ount mean median std min max' \
+        --collapse_range_features 'slope count mean median std min max'
 
    echo "Split dataset"
    python $SOURCE_PATH/split_dataset.py \

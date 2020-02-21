@@ -57,7 +57,9 @@ class SkorchLogisticRegressionModule(nn.Module):
 
     def forward(self, x_NF_, apply_logsigmoid=True):
         ''' Forward pass of input data through NN module
-
+            
+            Math : log(p(y=1|w,x)) = log(e^(w'x) / (1 + e^(w'x))) or log(p(y=1|w,x)) = log(sigmoid(w'x))
+            
         Args
         ----
         x_NF_ : 2D Torch array (n_examples, n_features)
@@ -99,7 +101,7 @@ if __name__ == '__main__':
     x_NF = np.random.randn(N, F)
     # Convert numpy to torch
     x_NF_ = torch.from_numpy(x_NF)
-
+    
     y_logproba_N_ = lr_module.forward(x_NF_)
     y_logproba_N = y_logproba_N_.detach().numpy()
     for n in range(N):

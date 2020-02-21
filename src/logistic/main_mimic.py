@@ -9,7 +9,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import (roc_curve, accuracy_score, log_loss, 
                             balanced_accuracy_score, confusion_matrix, 
-                            roc_auc_score)
+                            roc_auc_score, make_scorer)
 
 from yattag import Doc
 import matplotlib.pyplot as plt
@@ -54,14 +54,15 @@ def main():
     # define a auc scorer function
     roc_auc_scorer = make_scorer(roc_auc_score, greater_is_better=True,
                                  needs_threshold=True)
-
+    
+#     from IPython import embed; embed()
     # grid search
     logistic = LogisticRegression(solver='liblinear', max_iter=10000,\
                                   class_weight = 'balanced',\
                                   random_state = 42,\
                                   tol = 1e-3) 
     classifier = GridSearchCV(logistic, hyperparameters, cv=5, verbose=10, scoring = roc_auc_scorer)  
-    best_logistic_balanced = classifier.fit(X_train, y_train)
+    best_logistic = classifier.fit(X_train, y_train)
 
 #------------------------------------------- REPORT ----------------------------#
     # View best hyperparameters
