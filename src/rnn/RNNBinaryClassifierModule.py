@@ -156,5 +156,3 @@ if __name__ == '__main__':
         print(accuracy_scores_N2)        
         print("BCE loss:")
         print(bce_scores_N2.detach().numpy())
-
-

@@ -9,7 +9,7 @@ import skorch
 from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import (roc_curve, accuracy_score, log_loss, 
                             balanced_accuracy_score, confusion_matrix, 
-                            roc_auc_score)
+                            roc_auc_score, make_scorer)
 from yattag import Doc
 import matplotlib.pyplot as plt
 
@@ -79,8 +79,13 @@ def main():
         module__n_hiddens=10,
         module__n_layers=1,
         optimizer=torch.optim.SGD,)
-
-    classifier = GridSearchCV(rnn, hyperparameters, n_jobs=-1, cv=5, verbose=10)
+    
+    
+    # define a auc scorer function
+    roc_auc_scorer = make_scorer(roc_auc_score, greater_is_better=True,
+                                 needs_threshold=True)
+    
+    classifier = GridSearchCV(rnn, hyperparameters, n_jobs=-1, cv=5, scoring = roc_auc_scorer, verbose=10)
     best_rnn = classifier.fit(X_train, y_train)
 
     # View best hyperparameters
@@ -88,7 +93,8 @@ def main():
 
     y_pred_proba = best_rnn.predict_proba(X_test)
     y_pred = convert_proba_to_binary(y_pred_proba)
-
+    
+    from IPython import embed; embed()
     # Brief Summary
     print('Best lr:', best_rnn.best_estimator_.get_params()['lr'])
     print('Accuracy:', accuracy_score(y_test, y_pred))
