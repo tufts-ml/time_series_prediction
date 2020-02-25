@@ -2,6 +2,8 @@ from __future__ import print_function
 import torch
 import torch.nn as nn
 import numpy as np
+from torch.nn.functional import binary_cross_entropy
+from torch.autograd import Variable
 
 class RNNBinaryClassifierModule(nn.Module):
     ''' RNNBinaryClassifierModule
@@ -59,6 +61,12 @@ class RNNBinaryClassifierModule(nn.Module):
             total_predictions += 1
 
         return float(correct_predictions) / total_predictions
+    
+    def score_bce(self, X, y, sample_weight=None):
+        
+        # do forward computation
+        results = self.forward(torch.DoubleTensor(X))
+        return binary_cross_entropy(results[:,0],y.double())
 
     def forward(self, inputs_NTF, seq_lens_N=None, pad_val=0, return_hiddens=False):
         ''' Forward pass of input data through NN module
@@ -120,6 +128,9 @@ if __name__ == '__main__':
 
     # Generate random sequence data
     inputs_NTF = np.random.randn(N, T, F)
+#     y_N = np.random.randint(0, 2, size=N)
+    y_N_ = torch.rand(N, requires_grad = False)
+    y_N = y_N_.detach().numpy().astype(int)
     seq_lens_N = np.random.randint(low=1, high=T, size=N)
     
     # Convert numpy to torch
@@ -130,7 +141,9 @@ if __name__ == '__main__':
     yproba_N2_, hiddens_NTH_ = rnn_clf.forward(inputs_NTF_, seq_lens_N_, return_hiddens=True)
     yproba_N2 = yproba_N2_.detach().numpy()
     hiddens_NTH = hiddens_NTH_.detach().numpy()
-
+    accuracy_scores_N2 = rnn_clf.score(inputs_NTF, y_N)
+    bce_scores_N2 = rnn_clf.score_bce(inputs_NTF_, y_N_)
+    
     for n in range(N):
         print("==== Sequence %d" % n)
         print("X:")
@@ -139,5 +152,9 @@ if __name__ == '__main__':
         print(hiddens_NTH[n, :seq_lens_N[n]])
         print("yproba:")
         print(yproba_N2[n])
+        print("accuracy score:")
+        print(accuracy_scores_N2)        
+        print("BCE loss:")
+        print(bce_scores_N2.detach().numpy())
 
 

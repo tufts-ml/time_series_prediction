@@ -80,7 +80,7 @@ def main():
         module__n_layers=1,
         optimizer=torch.optim.SGD,)
 
-    classifier = GridSearchCV(rnn, hyperparameters, n_jobs=-1, cv=5, verbose=1)
+    classifier = GridSearchCV(rnn, hyperparameters, n_jobs=-1, cv=5, verbose=10)
     best_rnn = classifier.fit(X_train, y_train)
 
     # View best hyperparameters
