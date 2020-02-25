@@ -30,13 +30,18 @@ class SkorchLogisticRegression(skorch.NeuralNet):
         self.l2_penalty_weights = l2_penalty_weights
         self.l2_penalty_bias = l2_penalty_bias
         self.clip = clip
-        kwargs.update(dict(
-            module=SkorchLogisticRegressionModule(n_features=n_features),
-            lr=lr,
-            criterion=criterion,
-            batch_size=batch_size,
-            max_epochs=max_epochs))
-        super(SkorchLogisticRegression, self).__init__(**kwargs)
+#         kwargs.update(dict(
+#             module=SkorchLogisticRegressionModule(n_features=n_features),
+#             lr=lr,
+#             criterion=criterion,
+#             batch_size=batch_size,
+#             max_epochs=max_epochs))
+        kwargs.update(module=SkorchLogisticRegressionModule(n_features=n_features))
+        super(SkorchLogisticRegression, self).__init__(
+            lr=lr, 
+            criterion=criterion, 
+            batch_size=batch_size, 
+            max_epochs=max_epochs, **kwargs)
         self.initialize()
 
     def predict_proba(self, x_NF):
