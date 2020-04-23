@@ -117,7 +117,6 @@ def main():
             skorch.callbacks.GradientNormClipping(gradient_clip_value=0.2, gradient_clip_norm_type=2) ,
             skorch.callbacks.EpochScoring(roc_auc_scorer, lower_is_better=False, on_train=True, name='aucroc_score_train'),
             skorch.callbacks.EpochScoring(roc_auc_scorer, lower_is_better=False, on_train=False, name='aucroc_score_valid'),
-#             skorch.callbacks.EpochScoring(get_paramater_gradient_l2_norm, name='gradient_L2_norm'),
             ComputeGradientNorm(norm_type=2, f_history = args.report_dir + '/%s_running_rnn_classifer_gradient_norm_history.csv'%args.output_filename_prefix),
             skorch.callbacks.EarlyStopping(monitor='aucroc_score_valid', patience=3000, threshold=1e-10, threshold_mode='rel', lower_is_better=True),
 #             skorch.callbacks.Checkpoint(monitor='train_loss', f_pickle = args.report_dir + '/%s_running_rnn_classifer.pkl'%args.output_filename_prefix, f_history = args.report_dir + '/%s_running_rnn_classifer_history.json'%args.output_filename_prefix)
@@ -127,11 +126,12 @@ def main():
         module__rnn_type='LSTM',
         module__n_inputs=X_train.shape[-1],
         module__n_hiddens=args.hidden_units,
-        module__n_layers=1,
+        module__n_layers=2,
+        module__dropout_proba=0.3,
         optimizer=torch.optim.SGD,
         lr=args.lr)
 
-    from IPython import embed; embed()
+#     from IPython import embed; embed()
 
     rnn.fit(X_train, y_train)   
     
