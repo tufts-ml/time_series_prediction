@@ -88,11 +88,10 @@ if [ ! -d "$REPORT_DIR" ]; then
 fi
 
 # Run classifier
-echo "Run classifier" 
-python $SOURCE_PATH/rnn/main_mimic.py \
-    --train_vitals_csv $TEMP_DATA_PATH/ts_test_train/train.csv \
-    --test_vitals_csv $TEMP_DATA_PATH/ts_test_train/test.csv \
-    --metadata_csv $TS_METADATA_PATH \
-    --data_dict $TS_DATA_DICT_PATH \
-    --report_dir $SOURCE_PATH/rnn/html
-
+# echo "Run classifier" 
+# python $SOURCE_PATH/rnn/main_mimic.py \
+#     --train_vitals_csv $TEMP_DATA_PATH/ts_test_train/train.csv \
+#     --test_vitals_csv $TEMP_DATA_PATH/ts_test_train/test.csv \
+#     --metadata_csv $TS_METADATA_PATH \
+#     --data_dict $TS_DATA_DICT_PATH \
+#     --report_dir $SOURCE_PATH/rnn/html

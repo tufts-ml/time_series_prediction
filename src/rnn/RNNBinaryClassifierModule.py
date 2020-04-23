@@ -45,11 +45,15 @@ class RNNBinaryClassifierModule(nn.Module):
                 dropout=dropout_proba)
         else:
             raise ValueError("Invalid option for --rnn_type: %s" % rnn_type)
-        self.output = nn.Linear(n_hiddens, 2)
-
-        # Setup to use double-precision floats (like np.float64)
+        self.output = nn.Linear(n_hiddens, 2) # weights initialized as samples from uniform[-1,1]
+        
+        # initialize weights of the module as samples from N(0,1)
+#         nn_module = nn.Linear(n_hiddens,2)
+#         nn_module.apply(init_weights)
+#         self.output = nn_module
         self.double()
-
+    
+        
     def score(self, X, y, sample_weight=None):
         correct_predictions = 0
         total_predictions = 0
@@ -117,6 +121,13 @@ class RNNBinaryClassifierModule(nn.Module):
         else:
             return yproba_N2.index_select(0, rev_ids_N)
 
+# function to handle weight initialization 
+def init_weights(m):
+    if type(m) == nn.Linear:
+        torch.manual_seed(42)
+        m.weight.data = torch.randn(m.weight.shape)
+        print(m.weight)        
+        
 if __name__ == '__main__':
     N = 5   # n_sequences
     T = 10  # n_timesteps

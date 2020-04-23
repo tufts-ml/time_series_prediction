@@ -5,11 +5,14 @@ import pandas as pd
 import json
 import time
 
+import torch
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import (roc_curve, accuracy_score, log_loss, 
                             balanced_accuracy_score, confusion_matrix, 
-                            roc_auc_score)
+                            roc_auc_score, make_scorer)
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
 
 from yattag import Doc
 import matplotlib.pyplot as plt
@@ -18,55 +21,80 @@ import matplotlib.pyplot as plt
 def main():
     parser = argparse.ArgumentParser(description='sklearn LogisticRegression')
 
-    parser.add_argument('--train_vitals_csv', type=str, required=True,
+    parser.add_argument('--train_vitals_csv', type=str,
                         help='Location of vitals data for training')
-    parser.add_argument('--test_vitals_csv', type=str, required=True,
+    parser.add_argument('--test_vitals_csv', type=str,
                         help='Location of vitals data for testing')
-    parser.add_argument('--metadata_csv', type=str, required=True,
+    parser.add_argument('--metadata_csv', type=str,
                         help='Location of metadata for testing and training')
-    parser.add_argument('--data_dict', type=str, required=True)
+    parser.add_argument('--data_dict', type=str)
     parser.add_argument('--seed', type=int, default=1111,
                         help='random seed')
     parser.add_argument('--save', type=str,  default='LRmodel.pt',
                         help='path to save the final model')
     parser.add_argument('--report_dir', type=str, default='results',
                         help='dir in which to save results report')
+    parser.add_argument('--is_data_simulated', type=bool, default=False,
+                        help='boolean to check if data is simulated or from mimic')
+    parser.add_argument('--output_filename_prefix', type=str, default='current_config', help='file to save the loss and validation over epochs')    
     args = parser.parse_args()
-
-    # extract data
-    train_vitals = pd.read_csv(args.train_vitals_csv)
-    test_vitals = pd.read_csv(args.test_vitals_csv)
-    metadata = pd.read_csv(args.metadata_csv)
-
-    X_train, y_train = extract_labels(train_vitals, metadata, args.data_dict)
-    X_test, y_test = extract_labels(test_vitals, metadata, args.data_dict)
     
-    # remove subject_id and episode_id from the train and test features
-    X_train = X_train.iloc[:,2:]
-    X_test = X_test.iloc[:,2:]
-#------------------------------------------- TRAIN ----------------------------#
-    # hyperparameter space
+    if not(args.is_data_simulated):
+        # extract data
+        train_vitals = pd.read_csv(args.train_vitals_csv)
+        test_vitals = pd.read_csv(args.test_vitals_csv)
+        metadata = pd.read_csv(args.metadata_csv)
+
+        X_train, y_train = extract_labels(train_vitals, metadata, args.data_dict)
+        X_test, y_test = extract_labels(test_vitals, metadata, args.data_dict)
+
+        # remove subject_id and episode_id from the train and test features
+        X_train = X_train.iloc[:,2:]
+        X_test = X_test.iloc[:,2:]    
+    else:
+        simulated_data_dir = 'simulated_data/'
+        X_train = torch.load(simulated_data_dir + 'X_train.pt').numpy()
+        X_test = torch.load(simulated_data_dir + 'X_test.pt').numpy()
+        y_train = torch.load(simulated_data_dir + 'y_train.pt').long().numpy()
+        y_test = torch.load(simulated_data_dir + 'y_test.pt').long().numpy()
+    
+    
+    # build pipeline
+    step_list = list()
+    scaler_x = StandardScaler()
+    step_list.append(('standardize', scaler_x))
+#------------------------------------------- TRAIN ----------------------------#   
+
+    # initialize regressor
+    logistic = LogisticRegression(solver='saga', max_iter=10000,\
+                                  class_weight = 'balanced',\
+                                  random_state = 42,\
+                                  tol = 1e-2) 
+    step_list.append(('regressor',logistic))
+    
+    # hyperparameter space    
     penalty = ['l1','l2']
     C = [1e-5, 1e-4, \
          1e-3, 1e-2, 1e-1, 1e0, 1e2, 1e3, 1e4]
     hyperparameters = dict(C=C, penalty=penalty)
+    param_grid = dict(regressor__C=hyperparameters['C'], regressor__penalty=hyperparameters['penalty'])
 
     # define a auc scorer function
     roc_auc_scorer = make_scorer(roc_auc_score, greater_is_better=True,
-                                 needs_threshold=True)
+                                 needs_proba=True)
 
-    # grid search
-    logistic = LogisticRegression(solver='liblinear', max_iter=10000,\
-                                  class_weight = 'balanced',\
-                                  random_state = 42,\
-                                  tol = 1e-3) 
-    classifier = GridSearchCV(logistic, hyperparameters, cv=5, verbose=10, scoring = roc_auc_scorer)  
-    best_logistic_balanced = classifier.fit(X_train, y_train)
-
+    prediction_pipeline = Pipeline(step_list)
+    
+#     classifier = GridSearchCV(logistic, hyperparameters, cv=5, verbose=10, scoring = roc_auc_scorer)  
+    classifier = GridSearchCV(prediction_pipeline, param_grid, cv=5, verbose=10, scoring = roc_auc_scorer)  
+    t1=time.time()
+    best_logistic = classifier.fit(X_train, y_train)
+    
+#     from IPython import embed; embed()
 #------------------------------------------- REPORT ----------------------------#
     # View best hyperparameters
-    best_penalty = best_logistic.best_estimator_.get_params()['penalty']
-    best_C = best_logistic.best_estimator_.get_params()['C']
+    best_penalty = best_logistic.best_estimator_.get_params()['regressor__penalty']
+    best_C = best_logistic.best_estimator_.get_params()['regressor__C']
 
     y_pred = best_logistic.predict(X_test)
     y_pred_proba = best_logistic.predict_proba(X_test)
@@ -74,6 +102,7 @@ def main():
     # check performance on training data to check for overfitting 
     y_train_pred = best_logistic.predict(X_train)
     y_train_pred_proba = best_logistic.predict_proba(X_train)
+    
     
     # Brief Summary
     print('Best Penalty:', best_penalty)

@@ -1,0 +1,116 @@
+Predicting mortality on MIMIC with logistic regresssion
+Align to grid
+Feature transformations collapse
+done parsing...
+reading csv...
+done reading csv...
+collapsing data..
+collapsing with func count in 0 to 10 percentile range
+time taken : 0 seconds
+collapsing with func count in 0 to 25 percentile range
+time taken : 0 seconds
+collapsing with func count in 0 to 50 percentile range
+time taken : 0 seconds
+collapsing with func count in 50 to 100 percentile range
+time taken : 0 seconds
+collapsing with func count in 75 to 100 percentile range
+time taken : 0 seconds
+collapsing with func count in 90 to 100 percentile range
+time taken : 0 seconds
+collapsing with func count in 0 to 100 percentile range
+time taken : 0 seconds
+collapsing with func mean in 0 to 10 percentile range
+time taken : 4 seconds
+collapsing with func mean in 0 to 25 percentile range
+time taken : 4 seconds
+collapsing with func mean in 0 to 50 percentile range
+time taken : 4 seconds
+collapsing with func mean in 50 to 100 percentile range
+time taken : 4 seconds
+collapsing with func mean in 75 to 100 percentile range
+time taken : 4 seconds
+collapsing with func mean in 90 to 100 percentile range
+time taken : 4 seconds
+collapsing with func mean in 0 to 100 percentile range
+time taken : 4 seconds
+collapsing with func median in 0 to 10 percentile range
+time taken : 16 seconds
+collapsing with func median in 0 to 25 percentile range
+time taken : 16 seconds
+collapsing with func median in 0 to 50 percentile range
+time taken : 16 seconds
+collapsing with func median in 50 to 100 percentile range
+time taken : 16 seconds
+collapsing with func median in 75 to 100 percentile range
+time taken : 16 seconds
+collapsing with func median in 90 to 100 percentile range
+time taken : 16 seconds
+collapsing with func median in 0 to 100 percentile range
+time taken : 17 seconds
+collapsing with func std in 0 to 10 percentile range
+time taken : 5 seconds
+collapsing with func std in 0 to 25 percentile range
+time taken : 6 seconds
+collapsing with func std in 0 to 50 percentile range
+time taken : 6 seconds
+collapsing with func std in 50 to 100 percentile range
+time taken : 6 seconds
+collapsing with func std in 75 to 100 percentile range
+time taken : 5 seconds
+collapsing with func std in 90 to 100 percentile range
+time taken : 5 seconds
+collapsing with func std in 0 to 100 percentile range
+time taken : 6 seconds
+collapsing with func min in 0 to 10 percentile range
+time taken : 2 seconds
+collapsing with func min in 0 to 25 percentile range
+time taken : 2 seconds
+collapsing with func min in 0 to 50 percentile range
+time taken : 2 seconds
+collapsing with func min in 50 to 100 percentile range
+time taken : 2 seconds
+collapsing with func min in 75 to 100 percentile range
+time taken : 2 seconds
+collapsing with func min in 90 to 100 percentile range
+time taken : 2 seconds
+collapsing with func min in 0 to 100 percentile range
+time taken : 2 seconds
+collapsing with func max in 0 to 10 percentile range
+time taken : 2 seconds
+collapsing with func max in 0 to 25 percentile range
+time taken : 2 seconds
+collapsing with func max in 0 to 50 percentile range
+time taken : 2 seconds
+collapsing with func max in 50 to 100 percentile range
+time taken : 2 seconds
+collapsing with func max in 75 to 100 percentile range
+time taken : 2 seconds
+collapsing with func max in 90 to 100 percentile range
+time taken : 2 seconds
+collapsing with func max in 0 to 100 percentile range
+time taken : 2 seconds
+collapsing with func slope in 0 to 10 percentile range
+time taken : 31 seconds
+collapsing with func slope in 0 to 25 percentile range
+time taken : 31 seconds
+collapsing with func slope in 0 to 50 percentile range
+time taken : 31 seconds
+collapsing with func slope in 50 to 100 percentile range
+time taken : 31 seconds
+collapsing with func slope in 75 to 100 percentile range
+time taken : 31 seconds
+collapsing with func slope in 90 to 100 percentile range
+time taken : 31 seconds
+collapsing with func slope in 0 to 100 percentile range
+time taken : 31 seconds
+-----------------------------------------
+total time taken = 453 seconds
+-----------------------------------------
+done collapsing data..
+time taken to collapse data : 454.90375876426697 seconds
+saving data to output...
+Wrote to output CSV:
+/cluster/tufts/hugheslab/prath01/projects/mimic3_benchmarks/code_results/no_fill//temp.csv
+time taken to write to CSV is 19.02134418487549 seconds
+Split dataset
+Run classifier
