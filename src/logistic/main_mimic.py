@@ -4,12 +4,16 @@ import numpy as np
 import pandas as pd
 import json
 import time
-
+import torch
+import skorch
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import (roc_curve, accuracy_score, log_loss, 
                             balanced_accuracy_score, confusion_matrix, 
                             roc_auc_score, make_scorer)
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from SkorchLogisticRegression import SkorchLogisticRegression
 
 from yattag import Doc
 import matplotlib.pyplot as plt
@@ -42,48 +46,68 @@ def main():
     X_test, y_test = extract_labels(test_vitals, metadata, args.data_dict)
     
     # remove subject_id and episode_id from the train and test features
-    X_train = X_train.iloc[:,2:]
-    X_test = X_test.iloc[:,2:]
+    X_train_ = X_train.iloc[:,2:].to_numpy()
+    X_test_ = X_test.iloc[:,2:].to_numpy()
+    y_train_ = np.asarray(y_train)
+    y_test_ = np.asarray(y_test)
 #------------------------------------------- TRAIN ----------------------------#
     # hyperparameter space
-    penalty = ['l1','l2']
-    C = [1e-5, 1e-4, \
-         1e-3, 1e-2, 1e-1, 1e0, 1e2, 1e3, 1e4]
-    hyperparameters = dict(C=C, penalty=penalty)
+#     penalty = ['l1','l2']
+#     C = [1e-5, 1e-4, \
+#          1e-3, 1e-2, 1e-1, 1e0, 1e2, 1e3, 1e4]
+#     hyperparameters = dict(C=C, penalty=penalty)
 
     # define a auc scorer function
     roc_auc_scorer = make_scorer(roc_auc_score, greater_is_better=True,
                                  needs_threshold=True)
     
+    class_weights_ = torch.tensor(np.asarray([1/((y_train_==0).sum()), 1/((y_train_==1).sum())]))
+    
+    logistic = SkorchLogisticRegression(n_features=X_train_.shape[1],
+                                        l2_penalty_weights=0.1,
+                                        l2_penalty_bias=0.01,
+                                        clip=0.2,
+                                        lr=0.01,
+                                        batch_size=-1, 
+                                        max_epochs=1000,
+                                        criterion=torch.nn.CrossEntropyLoss,
+                                        criterion__weight=class_weights_,
+                                        callbacks=[skorch.callbacks.PrintLog(floatfmt='.2f'),
+                                                   skorch.callbacks.EarlyStopping(monitor='train_loss', patience=300, threshold=1e-10, threshold_mode='rel', lower_is_better=True)
+#             skorch.callbacks.BatchScoring(roc_auc_scorer, lower_is_better=False, on_train=False, name='aucroc_score_valid'),
+#             skorch.callbacks.EarlyStopping(monitor='aucroc_score_valid', patience=300, threshold=1e-10, threshold_mode='rel', lower_is_better=True),              
+        ],
+                                       optimizer=torch.optim.SGD)
+    
+    pipe = Pipeline([
+    ('scale', StandardScaler()),
+    ('classifier', logistic),
+])
+
+    best_logistic = pipe.fit(X_train_, y_train_)
+    
 #     from IPython import embed; embed()
-    # grid search
-    logistic = LogisticRegression(solver='liblinear', max_iter=10000,\
-                                  class_weight = 'balanced',\
-                                  random_state = 42,\
-                                  tol = 1e-3) 
-    classifier = GridSearchCV(logistic, hyperparameters, cv=5, verbose=10, scoring = roc_auc_scorer)  
-    best_logistic = classifier.fit(X_train, y_train)
 
 #------------------------------------------- REPORT ----------------------------#
     # View best hyperparameters
-    best_penalty = best_logistic.best_estimator_.get_params()['penalty']
-    best_C = best_logistic.best_estimator_.get_params()['C']
+    best_penalty = 'l2'
+    best_C = logistic.l2_penalty_weights
 
-    y_pred = best_logistic.predict(X_test)
-    y_pred_proba = best_logistic.predict_proba(X_test)
+    y_pred = best_logistic.predict(X_test_)
+    y_pred_proba = best_logistic.predict_proba(X_test_)
     
     # check performance on training data to check for overfitting 
-    y_train_pred = best_logistic.predict(X_train)
-    y_train_pred_proba = best_logistic.predict_proba(X_train)
+    y_train_pred = best_logistic.predict(X_train_)
+    y_train_pred_proba = best_logistic.predict_proba(X_train_)
     
     # Brief Summary
     print('Best Penalty:', best_penalty)
     print('Best C:', best_C)
-    print('Accuracy:', accuracy_score(y_test, y_pred))
-    print('Balanced Accuracy:', balanced_accuracy_score(y_test, y_pred))
-    print('Log Loss:', log_loss(y_test, y_pred_proba))
-    conf_matrix = confusion_matrix(y_test, y_pred)
-    conf_matrix_train = confusion_matrix(y_train, y_train_pred)# to check for overfitting
+    print('Accuracy:', accuracy_score(y_test_, y_pred))
+    print('Balanced Accuracy:', balanced_accuracy_score(y_test_, y_pred))
+    print('Log Loss:', log_loss(y_test_, y_pred_proba))
+    conf_matrix = confusion_matrix(y_test_, y_pred)
+    conf_matrix_train = confusion_matrix(y_train_, y_train_pred)# to check for overfitting
     true_neg = conf_matrix[0][0]
     true_pos = conf_matrix[1][1]
     false_neg = conf_matrix[1][0]
@@ -102,13 +126,13 @@ def main():
     print('True Negative Rate on training data:', float(true_neg_train) / (true_neg_train + false_pos_train))
     print('Positive Predictive Value on training data:', float(true_pos_train) / (true_pos_train + false_pos_train))
     print('Negative Predictive Value on training data:', float(true_neg_train) / (true_neg_train + false_pos_train))
-    t2 = time.time()
-    print('time taken to run classifier : {} seconds'.format(t2-t1))
-    create_html_report(args.report_dir, y_test, y_pred, y_pred_proba, 
-                       y_train, y_train_pred, y_train_pred_proba, hyperparameters, best_penalty, best_C)
+#     t2 = time.time()
+#     print('time taken to run classifier : {} seconds'.format(t2-t1))
+    create_html_report(args.report_dir, y_test_, y_pred, y_pred_proba, 
+                       y_train_, y_train_pred, y_train_pred_proba, best_penalty, best_C)
 
 def create_html_report(report_dir, y_test, y_pred, y_pred_proba, 
-                       y_train, y_train_pred, y_train_pred_proba, hyperparameters, best_penalty, best_C):
+                       y_train, y_train_pred, y_train_pred_proba, best_penalty, best_C):
     try:
         os.mkdir(report_dir)
     except OSError:
@@ -123,9 +147,9 @@ def create_html_report(report_dir, y_test, y_pred, y_pred_proba,
     with tag('h3'):
         text('Hyperparameters searched:')
     with tag('p'):
-        text('Penalty: ', str(hyperparameters['penalty']))
+        text('Penalty: ', best_penalty)
     with tag('p'):
-        text('C: ', str(hyperparameters['C']))
+        text('C: ', best_C)
 
     # Model
     with tag('h3'):

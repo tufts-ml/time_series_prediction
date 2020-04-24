@@ -20,9 +20,9 @@ class SkorchLogisticRegression(skorch.NeuralNet):
             l2_penalty_bias=0.0,
             clip=0.25,
             lr=1.00,
-            criterion=torch.nn.NLLLoss,
             batch_size=-1,
             max_epochs=100,
+            *args,
             **kwargs
             ):
         ## Fill in keyword arguments
@@ -30,18 +30,20 @@ class SkorchLogisticRegression(skorch.NeuralNet):
         self.l2_penalty_weights = l2_penalty_weights
         self.l2_penalty_bias = l2_penalty_bias
         self.clip = clip
-#         kwargs.update(dict(
-#             module=SkorchLogisticRegressionModule(n_features=n_features),
-#             lr=lr,
-#             criterion=criterion,
-#             batch_size=batch_size,
-#             max_epochs=max_epochs))
-        kwargs.update(module=SkorchLogisticRegressionModule(n_features=n_features))
+        kwargs.update(dict(module=SkorchLogisticRegressionModule, 
+                           module__n_features=n_features, 
+                           criterion=torch.nn.NLLLoss, 
+                           lr=lr,           
+                           batch_size=batch_size,
+                           max_epochs=max_epochs))
         super(SkorchLogisticRegression, self).__init__(
-            lr=lr, 
-            criterion=criterion, 
-            batch_size=batch_size, 
-            max_epochs=max_epochs, **kwargs)
+#             module=SkorchLogisticRegressionModule,
+#             module__n_features=n_features,
+#             criterion=torch.nn.NLLLoss,
+#             lr=lr,
+#             batch_size=batch_size,
+#             max_epochs=max_epochs,
+            *args, **kwargs)
         self.initialize()
 
     def predict_proba(self, x_NF):
@@ -80,7 +82,7 @@ class SkorchLogisticRegression(skorch.NeuralNet):
         self.module_.eval()
         y_logproba_N1 = self.module_.forward(torch.DoubleTensor(x_NF))
         y_hat_N1 = y_logproba_N1.detach().numpy() > 0.0
-        return np.asarray(y_hat_N, dtype=np.float64)
+        return np.asarray(y_hat_N1, dtype=np.float64)
 
 
     def calc_loss(
@@ -170,11 +172,12 @@ if __name__ == '__main__':
         lr=0.5,
         train_split=None,
         max_epochs=100)
+    
 
     print("Weights:")
-    print(lr_clf.module.linear_transform_layer.weight)
+    print(lr_clf.module_.linear_transform_layer.weight)
     print("Bias:")
-    print(lr_clf.module.linear_transform_layer.bias)
+    print(lr_clf.module_.linear_transform_layer.bias)
 
     print("Random Data!")
     # Generate random data
@@ -198,16 +201,15 @@ if __name__ == '__main__':
 
     print("EST BY SKORCH w:")
     print(
-        lr_clf.module.linear_transform_layer.weight.detach().numpy())
+        lr_clf.module_.linear_transform_layer.weight.detach().numpy())
     print(
-        lr_clf.module.linear_transform_layer.bias.detach().numpy())
+        lr_clf.module_.linear_transform_layer.bias.detach().numpy())
 
     print("EST BY SKLEARN w:")
     print(clf.coef_.flatten())
     print(clf.intercept_)
     print("TRUE w:")
     print(true_w_F)
-#     from IPython import embed; embed()
 
 
     '''
@@ -219,13 +221,13 @@ if __name__ == '__main__':
         print("y_proba[n=%d]" % n)
         print(y_proba_N2[n])
     '''
-    
      
     C = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e2, 1e3, 1e4]                  
-    penalty = ['l1','l2']                                                   
-    hyperparameters = dict(C=C, penalty=penalty)
+    params = {'lr': [0.01, 0.02],  
+           'module__l2_penalty_weights' : [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e2, 1e3, 1e4],
+          }    
     roc_auc_scorer = make_scorer(roc_auc_score, greater_is_better=True, needs_threshold=True)
     
-    classifier = GridSearchCV(lr_clf, hyperparameters, cv=5, verbose=10, scoring = roc_auc_scorer)
+    classifier = GridSearchCV(lr_clf, params, cv=5, scoring = roc_auc_scorer)
     classifier.fit(x_NF, true_y_N)
     

@@ -42,7 +42,7 @@ if [ "$1" != "classifier" ]; then
     fi
 
 #     Format data
-  echo "Align to grid"
+#   echo "Align to grid"
 #   python $SOURCE_PATH/align_to_grid.py \
 #       --input_ts_csv_path $TS_DATA_PATH \
 #       --data_dict $TS_DATA_DICT_PATH \

@@ -47,12 +47,14 @@ class SkorchLogisticRegressionModule(nn.Module):
         weights_1F = np.asarray([weights_F.flatten()], dtype=np.float64)
         assert weights_1F.shape == (1, self.n_features)
         weights_1F_ = torch.from_numpy(weights_1F)
-        self.linear_transform_layer.weight = torch.nn.Parameter(weights_1F_)
+#         self.linear_transform_layer.weight = torch.nn.Parameter(weights_1F_)
+        self.linear_transform_layer.weight.data = weights_1F_
 
         bias_1d_arr = np.asarray([float(bias)], dtype=np.float64)
         assert bias_1d_arr.shape == (1,)
         bias_ = torch.from_numpy(bias_1d_arr)
-        self.linear_transform_layer.bias = torch.nn.Parameter(bias_)
+#         self.linear_transform_layer.bias = torch.nn.Parameter(bias_)
+        self.linear_transform_layer.bias.data = bias_
 
 
     def forward(self, x_NF_, apply_logsigmoid=True):
