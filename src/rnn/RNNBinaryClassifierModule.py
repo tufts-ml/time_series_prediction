@@ -97,10 +97,16 @@ class RNNBinaryClassifierModule(nn.Module):
         N, T, F = inputs_NTF.shape
 
         if seq_lens_N is None:
-            seq_lens_N = torch.zeros(N, dtype=torch.int64)
-            for n in range(N):
-                bmask_T = torch.all(inputs_NTF[n] == pad_val, dim=-1)
-                seq_lens_N[n] = np.searchsorted(bmask_T, 1)
+            if T>1:
+                seq_lens_N = torch.zeros(N, dtype=torch.int64)
+                # account for collapsed features across time
+                for n in range(N):
+                    bmask_T = torch.all(inputs_NTF[n] == pad_val, dim=-1)
+                    seq_lens_N[n] = np.searchsorted(bmask_T, 1)
+            else:
+                seq_lens_N = torch.ones(N, dtype=torch.int64)
+                
+                    
 
         ## Create PackedSequence representation to handle variable-length sequences
         # Requires sorting all sequences in current batch in descending order by length
@@ -115,6 +121,7 @@ class RNNBinaryClassifierModule(nn.Module):
         ## Apply weights + softmax to final timestep of each sequence
         end_hiddens_NH = outputs_NTH[range(N), sorted_seq_lens_N - 1]
         yproba_N2 = nn.functional.softmax(self.output(end_hiddens_NH), dim=-1)
+#         yproba_N2 = nn.functional.logsigmoid(self.output(end_hiddens_NH))
         ## Unsort and return
         if return_hiddens:
             return yproba_N2.index_select(0, rev_ids_N), outputs_NTH.index_select(0, rev_ids_N)

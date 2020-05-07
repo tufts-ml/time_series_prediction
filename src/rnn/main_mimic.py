@@ -22,6 +22,11 @@ import warnings
 warnings.filterwarnings("ignore")
 
 from skorch.callbacks import Callback
+from MLPModule import MLPModule
+from skorch import NeuralNet
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from SkorchLogisticRegression import SkorchLogisticRegression
 
            
 def main():
@@ -41,7 +46,9 @@ def main():
     parser.add_argument('--hidden_units', type=int, default=10,
                         help='Number of hidden units')   
     parser.add_argument('--lr', type=float, default=1e-2,
-                        help='Learning rate for the optimizer')      
+                        help='Learning rate for the optimizer')
+    parser.add_argument('--dropout', type=float, default=0.3,
+                        help='dropout for optimizer')
     parser.add_argument('--seed', type=int, default=1111,
                         help='random seed')
     parser.add_argument('--save', type=str,  default='RNNmodel.pt',
@@ -64,13 +71,14 @@ def main():
     
     # extract data
     if not(args.is_data_simulated):
+#------------------------Loaded from TidySequentialDataCSVLoader--------------------#
         train_vitals = TidySequentialDataCSVLoader(
             per_tstep_csv_path=args.train_vitals_csv,
             per_seq_csv_path=args.metadata_csv,
             idx_col_names=['subject_id', 'episode_id'],
             x_col_names='__all__',
             y_col_name='inhospital_mortality',
-            y_label_type='')
+            y_label_type='per_tstep')
 
         test_vitals = TidySequentialDataCSVLoader(
             per_tstep_csv_path=args.test_vitals_csv,
@@ -78,62 +86,70 @@ def main():
             idx_col_names=['subject_id', 'episode_id'],
             x_col_names='__all__',
             y_col_name='inhospital_mortality',
-            y_label_type='')
-
+            y_label_type='per_tstep')
+        
         X_train_with_time_appended, y_train = train_vitals.get_batch_data(batch_id=0)
-        X_train = X_train_with_time_appended[:,:,1:]# removing hours column
         X_test_with_time_appended, y_test = test_vitals.get_batch_data(batch_id=0)
-        X_test = X_test_with_time_appended[:,:,1:]# removing hours column
-    
-    else:
-        # import the simulated data as a numpy array of time series data split into train/test
-#         simulated_data_dir = 'simulated_data/'
-        X_train = torch.load(args.simulated_data_dir + '/X_train.pt').numpy()
-        X_test = torch.load(args.simulated_data_dir + '/X_test.pt').numpy()
-        y_train = torch.load(args.simulated_data_dir + '/y_train.pt').long().numpy()
-        y_test = torch.load(args.simulated_data_dir + '/y_test.pt').long().numpy()
-    
-    # set class weights as 1/(number of samples in class) for each class to handle class imbalance
-#     class_weights = torch.tensor(np.asarray([1/(y_train==0).sum(), 1/(y_train==1).sum()]))
+        _,T,F = X_train_with_time_appended.shape
+        
+        if T>1:
+            X_train = X_train_with_time_appended[:,:,1:]# removing hours column
+            X_test = X_test_with_time_appended[:,:,1:]# removing hours column
+        else:# account for collapsed features across time
+            X_train = X_train_with_time_appended
+            X_test = X_test_with_time_appended
     
     # set class weights as (1-Beta)/(1-Beta^(number of training samples in class))
-    beta = (len(y_train)-1)/len(y_train)
-    class_weights = torch.tensor(np.asarray([(1-beta)/(1-beta**((y_train==0).sum())), (1-beta)/(1-beta**((y_train==1).sum()))]))
- 
+#     beta = (len(y_train)-1)/len(y_train)
+#     class_weights = torch.tensor(np.asarray([(1-beta)/(1-beta**((y_train==0).sum())), (1-beta)/(1-beta**((y_train==1).sum()))]))
+    
+    # set class weights as 1/(number of samples in class) for each class to handle class imbalance
+    class_weights = torch.tensor([1/(y_train==0).sum(),
+                                  1/(y_train==1).sum()]).double()
+    
+#     from IPython import embed; embed()
+    
     # define a auc scorer function and pass it as callback of skorch to track training and validation AUROC
     roc_auc_scorer = make_scorer(roc_auc_score, greater_is_better=True,
                                  needs_threshold=True)
-
+#---------------------------------------------------------------------#
+# Pseudo LSTM (hand engineered features through LSTM, collapsed across time)
+#---------------------------------------------------------------------#
     # instantiate RNN
     rnn = RNNBinaryClassifier(
         max_epochs=args.epochs,
         batch_size=args.batch_size,
-#         batch_size=-1,
         device=device,
         criterion=torch.nn.CrossEntropyLoss,
         criterion__weight=class_weights,
         train_split=skorch.dataset.CVSplit(4),
         callbacks=[
-            skorch.callbacks.GradientNormClipping(gradient_clip_value=0.2, gradient_clip_norm_type=2) ,
+            skorch.callbacks.GradientNormClipping(gradient_clip_value=0.4, gradient_clip_norm_type=2) ,
             skorch.callbacks.EpochScoring(roc_auc_scorer, lower_is_better=False, on_train=True, name='aucroc_score_train'),
             skorch.callbacks.EpochScoring(roc_auc_scorer, lower_is_better=False, on_train=False, name='aucroc_score_valid'),
             ComputeGradientNorm(norm_type=2, f_history = args.report_dir + '/%s_running_rnn_classifer_gradient_norm_history.csv'%args.output_filename_prefix),
-            skorch.callbacks.EarlyStopping(monitor='aucroc_score_valid', patience=3000, threshold=1e-10, threshold_mode='rel', lower_is_better=True),
-#             skorch.callbacks.Checkpoint(monitor='train_loss', f_pickle = args.report_dir + '/%s_running_rnn_classifer.pkl'%args.output_filename_prefix, f_history = args.report_dir + '/%s_running_rnn_classifer_history.json'%args.output_filename_prefix)
+#             LSTMtoLogReg(),# transformation to log reg for debugging
+            skorch.callbacks.EarlyStopping(monitor='aucroc_score_valid', patience=30, threshold=1e-10, threshold_mode='rel', lower_is_better=False),
             skorch.callbacks.Checkpoint(monitor='train_loss', f_history = args.report_dir + '/%s_running_rnn_classifer_history.json'%args.output_filename_prefix),
+#             skorch.callbacks.Checkpoint(monitor='aucroc_score_valid', f_pickle = args.report_dir + '/%s_running_rnn_classifer_model'%args.output_filename_prefix),
             skorch.callbacks.PrintLog(floatfmt='.2f')
         ],
         module__rnn_type='LSTM',
         module__n_inputs=X_train.shape[-1],
         module__n_hiddens=args.hidden_units,
         module__n_layers=2,
-        module__dropout_proba=0.3,
-        optimizer=torch.optim.SGD,
+        module__dropout_proba=args.dropout,
+#         optimizer=torch.optim.SGD,
+#         optimizer__weight_decay=0.01,
+#         optimizer__momentum=0.9,
+        optimizer=torch.optim.Adam,
         lr=args.lr)
 
-#     from IPython import embed; embed()
-
-    rnn.fit(X_train, y_train)   
+    # scale input features
+    X_train = standard_scaler_3d(X_train)
+    X_test = standard_scaler_3d(X_test) 
+    from IPython import embed; embed()
+    rnn.fit(X_train, y_train)
     
     
     # get the training history
@@ -164,6 +180,7 @@ def main():
     dump(rnn, args.report_dir + '/%s_rnn_classifer.pkl'%args.output_filename_prefix)
 
     
+    
     y_pred_proba = rnn.predict_proba(X_test)
     y_pred = convert_proba_to_binary(y_pred_proba)
     
@@ -171,6 +188,7 @@ def main():
     fpr, tpr, thresholds = roc_curve(y_test, y_pred_proba_pos)
     roc_area = roc_auc_score(y_test, y_pred_proba_pos)
     
+    from IPython import embed; embed()
     
     # Brief Summary
 #     print('Best lr:', rnn.best_estimator_.get_params()['lr'])
@@ -284,6 +302,26 @@ def create_html_report(report_dir, output_filename_prefix, y_test, y_pred, y_pre
     with open(report_dir + '/%s_report.html'%output_filename_prefix, 'w') as f:
         f.write(doc.getvalue())
 
+def standard_scaler_3d(X):
+    # input : X (N, T, F)
+    # ouput : scaled_X (N, T, F)
+    N, T, F = X.shape
+    if T==1:
+        scalers = {}
+        for i in range(X.shape[1]):
+            scalers[i] = StandardScaler()
+            X[:, i, :] = scalers[i].fit_transform(X[:, i, :]) 
+    else:
+        # zscore across subjects and time points for each feature
+        for i in range(F):
+            mean_across_NT = X[:,:,i].mean()
+            std_across_NT = X[:,:,i].std()
+            
+            X[:,:,i] = (X[:,:,i]-mean_across_NT)/std_across_NT
+    return X
+    
+        
+        
 def convert_proba_to_binary(probabilites):
     return [0 if probs[0] > probs[1] else 1 for probs in probabilites]
 
@@ -297,50 +335,30 @@ def get_loss_plots_from_training_history(train_history):
     
     return epochs, train_loss, valid_loss, aucroc_score_train, aucroc_score_valid
 
-# def get_paramater_gradient_l2_norm(net, X=None, y=None):
-#     parameters = [i for  _,i in net.module_.named_parameters()]
-#     total_norm = 0 
-#     for p in parameters: 
-#         param_norm = p.grad.data.norm(2) 
-#         total_norm += param_norm.item() ** 2 
-#     total_norm = total_norm ** (1. / 2)
-#     return total_norm
-
-# def get_paramater_gradient_l1_norm(net, X=None, y=None):
-#     parameters = [i for  _,i in net.module_.named_parameters()]
-#     total_norm = 0 
-#     for p in parameters: 
-#         total_norm += p.grad.data.norm(1) 
-#     return total_norm
-
-# def get_paramater_gradient_l2_norm(net, named_parameters=None):
-#     parameters = [i for  _,i in net.module_.named_parameters()]
-#     total_norm = 0 
-#     from IPython import embed; embed()
-#     for p in parameters: 
-#         param_norm = p.grad.data.norm(2) 
-#         total_norm += param_norm.item() ** 2 
-#     total_norm = total_norm ** (1. / 2)
-#     return total_norm
-
-# def get_paramater_gradient_inf_norm(net, named_parameters=None):
-#     parameters = [i for  _,i in net.module_.named_parameters()]
-#     total_norm = max(p.grad.data.abs().max() for p in parameters)
-#     return total_norm
-
 
 def get_paramater_gradient_l2_norm(net,**kwargs):
     parameters = [i for  _,i in net.module_.named_parameters()]
     total_norm = 0 
+#     from IPython import embed; embed()
     for p in parameters: 
-        param_norm = p.grad.data.norm(2) 
+        if p.requires_grad==True:
+            param_norm = p.grad.data.norm(2) 
+            total_norm += param_norm.item() ** 2 
+    total_norm = total_norm ** (1. / 2)
+    return total_norm
+
+def get_paramater_l2_norm(net,**kwargs):
+    parameters = [i for  _,i in net.module_.named_parameters()]
+    total_norm = 0 
+    for p in parameters: 
+        param_norm = p.norm(2) 
         total_norm += param_norm.item() ** 2 
     total_norm = total_norm ** (1. / 2)
     return total_norm
 
 def get_paramater_gradient_inf_norm(net, **kwargs):
     parameters = [i for  _,i in net.module_.named_parameters()]
-    total_norm = max(p.grad.data.abs().max() for p in parameters)
+    total_norm = max(p.grad.data.abs().max() for p in parameters if p.grad==True)
     return total_norm
 
 
@@ -354,8 +372,13 @@ class ComputeGradientNorm(Callback):
     def on_epoch_begin(self, net,  dataset_train=None, dataset_valid=None, **kwargs):
         self.batch_num = 1
         
-    def on_epoch_end(self, net,  dataset_train=None, dataset_valid=None, **kwargs):
+    def on_epoch_end(self, net, dataset_train=None, dataset_valid=None, **kwargs):
         self.epoch_num += 1
+        from IPython import embed; embed()
+        
+#     def on_batch_end(self, net, dataset_train=None, dataset_valid=None, **kwargs ):
+#         weights_norm = get_paramater_l2_norm(net)
+#         print('epoch: %d, batch: %d, weights_norm : %.3f'%(self.epoch_num, self.batch_num, weights_norm))
     
     def on_grad_computed(self, net, named_parameters, **kwargs):
         if self.norm_type == 1:
@@ -366,7 +389,6 @@ class ComputeGradientNorm(Callback):
         else:
             gradient_norm = get_paramater_gradient_l2_norm(net)
             print('epoch: %d, batch: %d, gradient_norm: %.3f'%(self.epoch_num, self.batch_num, gradient_norm))
-#             from IPython import embed; embed()
             self.write_to_file(gradient_norm)
             self.batch_num += 1
         
@@ -396,6 +418,32 @@ class ComputeGradientNorm(Callback):
             with open(self.f_history, 'a') as f:
                 f.write(csv_str)        
 
+                
+class LSTMtoLogReg(Callback):
+    def __init__(self):
+        self.batch_num = 1
+        self.epoch_num = 1
+        
+    def on_epoch_begin(self, net,  dataset_train=None, dataset_valid=None, **kwargs):
+        self.batch_num = 1
+#         from IPython import embed; embed()
+        # set the W_ho to zero remove time-dependence
+        net.module_.rnn.weight_hh_l0.requires_grad=False
+        net.module_.rnn.weight_hh_l0.data=torch.zeros(4*net.module__n_hiddens,net.module__n_hiddens, dtype=torch.float64)
+        # set the W_ho to zero remove time-dependence
+        net.module_.rnn.bias_hh_l0.requires_grad = False  
+        net.module_.rnn.bias_hh_l0.data = torch.zeros(128, dtype=torch.float64)
+        
+        
+        
+#     def on_epoch_end(self, net, dataset_train=None, dataset_valid=None, **kwargs):
+#         self.epoch_num += 1
+        # set the W_ho to zero remove time-dependence
+
+        
+#     def on_grad_computed(self, net, named_parameters, **kwargs):  
+#         from IPython import embed; embed()        
+    
 
 if __name__ == '__main__':
     main()
@@ -413,3 +461,63 @@ if __name__ == '__main__':
 #     epochs, train_loss, validation_loss = get_loss_plots_from_training_history(train_history)
     # View best hyperparameters
 #     best_lr = best_rnn.best_estimator_.get_params()['lr']
+
+
+## MLP ## 
+#     net = NeuralNet(
+#         module=MLPModule,
+#         module__num_inputs=X_train.shape[-1],
+#         criterion=torch.nn.CrossEntropyLoss,
+#         lr=1.0,
+#         max_epochs=args.epochs,
+#         batch_size=args.batch_size,
+# #         batch_size=-1,
+#         device=device,
+#         criterion__weight=class_weights,
+#         train_split=skorch.dataset.CVSplit(4),
+#         callbacks=[
+#             skorch.callbacks.EpochScoring(roc_auc_scorer, lower_is_better=False, on_train=True, name='aucroc_score_train'),
+#             skorch.callbacks.EpochScoring(roc_auc_scorer, lower_is_better=False, on_train=False, name='aucroc_score_valid'),
+#             skorch.callbacks.EarlyStopping(monitor='aucroc_score_valid', patience=3000, threshold=1e-10, threshold_mode='rel', lower_is_better=True),
+#             skorch.callbacks.PrintLog(floatfmt='.2f')
+#         ],
+#         optimizer=torch.optim.SGD,
+
+#     )
+    
+#     from IPython import embed; embed()
+#     # use only the last time step as feature for every subject
+#     X_train_mlp = X_train[:,-1,:]
+#     y_train_mlp = y_train[:,np.newaxis]
+#     net.fit(X_train_mlp, y_train)
+
+#---------------------------------------------------------------------#
+# Logistic Regression(features : data at last time point, No hidden units, sigmoid at output)
+#---------------------------------------------------------------------#
+#     logistic = SkorchLogisticRegression(n_features=X_train.shape[-1],
+#                                         l2_penalty_weights=0.1,
+#                                         l2_penalty_bias=0.01,
+#                                         clip=0.2,
+#                                         lr=0.01,
+#                                         batch_size=-1, 
+#                                         max_epochs=1600,
+#                                         criterion=torch.nn.CrossEntropyLoss,
+#                                         criterion__weight=class_weights,
+#                                         callbacks=[skorch.callbacks.PrintLog(floatfmt='.2f'),
+#                                                    skorch.callbacks.EarlyStopping(monitor='train_loss', patience=300, threshold=1e-10, threshold_mode='rel', lower_is_better=True),
+#                                                    ],
+#                                         optimizer=torch.optim.SGD)
+
+#     pipe = Pipeline([
+#     ('scale', StandardScaler()),
+#     ('classifier', logistic),
+#     ])
+#     X_train_mlp = X_train[:,-1,:]
+    
+#     best_logistic = pipe.fit(X_train_mlp, y_train)
+    
+#     X_test_mlp = X_test[:,-1,:] 
+#     y_pred_proba = best_logistic.predict_proba(X_test_mlp) 
+#     y_pred_proba_neg, y_pred_proba_pos = zip(*y_pred_proba)
+#     print(roc_auc_score(y_test, y_pred_proba_pos))
+

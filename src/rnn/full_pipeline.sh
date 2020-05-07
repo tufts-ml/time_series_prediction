@@ -59,11 +59,11 @@ if [ "$1" != "classifier" ]; then
         --output $TEMP_DATA_PATH/ts_temp.csv \
         --third_strategy nulls
 
-    echo "Normalize Features"
-    python $SOURCE_PATH/normalize_features.py \
-        --input $TEMP_DATA_PATH/ts_temp.csv \
-        --data_dict $TS_DATA_DICT_PATH \
-        --output $TEMP_DATA_PATH/ts_temp.csv 
+#     echo "Normalize Features"
+#     python $SOURCE_PATH/normalize_features.py \
+#         --input $TEMP_DATA_PATH/ts_temp.csv \
+#         --data_dict $TS_DATA_DICT_PATH \
+#         --output $TEMP_DATA_PATH/ts_temp.csv 
 
     echo "Split dataset"
     python $SOURCE_PATH/split_dataset.py \
