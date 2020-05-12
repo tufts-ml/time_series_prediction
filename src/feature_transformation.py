@@ -45,7 +45,7 @@ def main():
                              "from mean, std, min, max, "
                              "median, slope, count, present")
     parser.add_argument('--range_pairs', type=str, required=False,
-                        default='[(0, 10), (0, 25), (0, 50), (50, 100), (75, 100), (90, 100)]',
+                        default='[(0, 10), (0, 25), (0, 50), (50, 100), (75, 100), (90, 100), (0, 100)]',
                         help="Enclose pairs list with 's and [], list all desired ranges in "
                              "parentheses like this: '[(0, 50), (25, 75), (50, 100)]'")
     parser.add_argument('--max_time_step', type=int, required=False,
@@ -73,7 +73,8 @@ def main():
     print('collapsing data..')
     t1 = time.time()
     if args.collapse:
-        ts_df = collapse(ts_df, args)
+#         from IPython import embed; embed()
+        ts_df = collapse_np(ts_df, args)
         data_dict = update_data_dict_collapse(args)
     elif args.add_feature:
         ts_df = add_new_feature(ts_df, args)
@@ -109,37 +110,110 @@ def main():
         json.dump(data_dict, f, indent=4)
     f.close()
 
-
-# COLLAPSE TIME SERIES
-def collapse(ts_df, args): 
+def collapse_np(ts_df, args):   
     id_and_output_cols = parse_id_and_output_cols(args.data_dict)
     id_and_output_cols = remove_col_names_from_list_if_not_in_df(id_and_output_cols, ts_df)
     feature_cols = parse_feature_cols(args.data_dict)
     feature_cols = remove_col_names_from_list_if_not_in_df(feature_cols, ts_df)
-    operations = []
-#    print(args.collapse_range_features)
-    for op in args.collapse_features.split(' '):
-        operations.append(get_summary_stat_func(op, max_time_step=args.max_time_step))
- 
-    # without this check it still iterates once for some reason
-    if len(args.collapse_range_features) > 0: 
-        for op in args.collapse_range_features.split(' '):
-            for low, high in ast.literal_eval(args.range_pairs):
-                operations.append(get_summary_stat_func(op, low_perc=low, 
-                                                        high_perc=high,
-                                                        max_time_step=args.max_time_step))
-    # test if collapse range features is working
-#    for op in operations :
-#        print(op.__name__)
-	
-    # TODO: Retest when pandas updates and fixes their dropna=False bug. See
-    #       pandas-dev/pandas#25738 
-    new_df = pd.pivot_table(ts_df, values=feature_cols, index=id_and_output_cols, 
-                            aggfunc=operations, dropna=True)
+    time_col = parse_time_col(args.data_dict)
+    
+    # convert dataframe to numpy and perform all the computations    
+    ts_np = ts_df.to_numpy()
+    select_cols = id_and_output_cols + feature_cols
+    
+    
+    # get the indices of the id columns in the dataframe
+    id_col_inds = []
+    for i in range(len(id_and_output_cols)):
+        id_col_inds.append(ts_df.columns.get_loc(id_and_output_cols[i]))
+    id_col_inds = np.asarray(id_col_inds)
+    
+    # get the index of the time column
+    time_col_ind = ts_df.columns.get_loc(time_col)
+    
+    # get the id data
+    id_data = ts_np[:,id_col_inds]
+    # get the fenceposts for all the id columns in one shot
+    fp_all_ids = np.hstack([0, 1+np.flatnonzero(np.diff(id_data,axis=0).any(axis=1)), id_data.shape[0]]) 
+    
+    # create a dataframe of collapsed features
+    collapsed_ts_np = np.empty(0) 
+    
+    # define number of rows in collapsed dataframe
+    n_collapsed_ts_np = fp_all_ids.size-1   
+    
+    #start timer
+    total_time = 0
+    # get the percentiles         
+    for op in args.collapse_range_features.split(' '):
+        for low, high in ast.literal_eval(args.range_pairs):
+            
+            print('collapsing with func %s in %d to %d percentile range'%(op, low, high))
+            t1=time.time()
+            # initialize collapsed dataframe for the current summary function
+            collapsed_ts_np_curr_summary_func = np.zeros([len(fp_all_ids)-1, ts_np.shape[1]])
 
-    # format columns in a clean fashion
-    new_df.columns = ['_'.join(str(s).strip() for s in col if s) for col in new_df.columns]
-    return new_df
+            # loop through all the subject episode fenceposts
+            for p in range(n_collapsed_ts_np):
+                # get the data for the current fencepost
+                fp_start = fp_all_ids[p]
+                fp_end = fp_all_ids[p+1]
+                curr_fp_ts_np = ts_np[fp_start:fp_end,:]
+                lower_bound, upper_bound = evaluate_start_and_stop_indices_from_percentiles(curr_fp_ts_np, start_percentile=low, end_percentile=high, max_time_step = args.max_time_step)
+                
+                # compute summary function on that particular subject episode dataframe
+                curr_fp_ts_summary = COLLAPSE_FUNCTIONS_np[op](curr_fp_ts_np, lower_bound, upper_bound, time_column_index = time_col_ind)
+                # since the summary function is evaluated on all columns including the subject and episode ids, we reassign them back to their original value after the summary function evaluation 
+                for id_val in id_col_inds:
+                    curr_fp_ts_summary[id_val] = ts_np[fp_start, id_val].astype(int)
+                
+                collapsed_ts_np_curr_summary_func[p,:] = curr_fp_ts_summary
+            t2 = time.time()
+            print('time taken : %d seconds'%(t2-t1)) 
+            total_time = total_time + t2-t1 
+            
+            # remove hours from our summary (This assumes hours column is after subject_id and episode_id columns)
+            collapsed_ts_np_curr_summary_func = np.delete(collapsed_ts_np_curr_summary_func, time_col_ind, axis= 1)
+            
+            # add the collapse function name and percentile range to the columns of the function            
+            if len(collapsed_ts_np)==0:
+                collapsed_ts_np = collapsed_ts_np_curr_summary_func
+                
+                collapsed_ts_np_columns = id_and_output_cols + [op+'_'+str(low)+'_to_'+str(high)+'_'+x for x in feature_cols] 
+            else:
+                collapsed_ts_np = np.hstack([collapsed_ts_np, collapsed_ts_np_curr_summary_func[:,len(id_and_output_cols):]])     
+                
+                collapsed_ts_np_columns = collapsed_ts_np_columns + [op+'_'+str(low)+'_to_'+str(high)+'_'+x for x in feature_cols]
+    print('-----------------------------------------')
+    print('total time taken = %d seconds'%total_time)
+    print('-----------------------------------------')
+    
+    collapsed_ts_df = pd.DataFrame(collapsed_ts_np, columns = collapsed_ts_np_columns).set_index(id_and_output_cols)
+    return collapsed_ts_df
+
+def evaluate_start_and_stop_indices_from_percentiles(df, start_percentile, end_percentile, max_time_step):
+
+    # Treat the last data point as 100 percentile.
+    if max_time_step == -1: 
+        lower_bound = (len(df)*start_percentile)//100
+        upper_bound = (len(df)*end_percentile)//100
+    # Treat the max time step as 100 percentile.
+    elif max_time_step < len(df):
+        lower_bound = (max_time_step*start_percentile)//100
+        upper_bound = (max_time_step*end_percentile)//100
+    # Add nan values to list until it is the length of the max time step. 
+    # Treat that as 100 percentile.
+    else: 
+        data = data.append(pd.Series([np.nan for i in range(max_time_step - len(data))]),
+                           ignore_index=True)
+        lower_bound = (len(df)*start_percentile)//100
+        upper_bound = (len(df)*end_percentile)//100
+
+    # if lower bound and upper bound are the same, add 1 to the upper bound
+    if lower_bound == upper_bound :
+        upper_bound = lower_bound + 1
+    
+    return lower_bound, upper_bound
 
 def all_id_combinations(cols, df, combos, ids=[]):
     if len(cols) == 0:
@@ -152,12 +226,8 @@ def all_id_combinations(cols, df, combos, ids=[]):
         all_id_combinations(cols[1:], df.loc[df[cols[0]] == i], 
                             combos, ids_copy)
 
-def get_summary_stat_func(op, low_perc=0, high_perc=100, max_time_step=-1):	
-    return bind_func_for_range(op, low_perc, high_perc, max_time_step)
-
 
 # ADD NEW FEATURE COLUMN
-
 def add_new_feature(ts_df, args):
     new_col_name = '{}_{}'.format(args.new_feature, args.add_from) 
     original_values = ts_df[args.add_from].tolist()
@@ -237,7 +307,7 @@ def update_data_dict_add_feature(args):
     new_data_dict['fields'] = new_fields
     return new_data_dict
 
-def parse_id_and_output_cols(data_dict_file):	
+def parse_id_and_output_cols(data_dict_file):
     cols = []
     with open(data_dict_file, 'r') as f:
         data_dict = json.load(f)
@@ -261,9 +331,19 @@ def parse_feature_cols(data_dict_file):
             non_time_cols.append(col['name'])
     return non_time_cols
 
+def parse_time_col(data_dict_file):
+#     time_cols = []
+    with open(data_dict_file, 'r') as f:
+        data_dict = json.load(f)
+    f.close()
+
+    for col in data_dict['fields']:
+        if 'name' in col and col['name'] == 'hours':
+            return col['name']
+    
+
 def remove_col_names_from_list_if_not_in_df(col_list, df):
     ''' Remove column names from provided list if not in dataframe
-
     Examples
     --------
     >>> df = pd.DataFrame(np.eye(3), columns=['a', 'b', 'c'])
@@ -278,97 +358,79 @@ def remove_col_names_from_list_if_not_in_df(col_list, df):
     return col_list
 
 
-# COLLAPSE FUNCTIONS AND DICT
+# NEW collapse functions
+def replace_all_nan_cols_with_zeros(data_np, lower_bound, upper_bound, **kwargs):
+    percentile_data_np = data_np[lower_bound:upper_bound,:]
+    all_nan_col_ind = np.isnan(percentile_data_np).all(axis = 0)
+    percentile_data_np[:,all_nan_col_ind] = 0 
+    return percentile_data_np
 
-def slope(data):
-    if len(data.dropna()) > 1:
-        slope, _, _, _, _ = stats.linregress(x=range(len(data.dropna())), y=data.dropna())
-        return slope
-    else:
-        return 0
+def collapse_mean_np(data_np, lower_bound, upper_bound, **kwargs):
+    # replace columns containing all nans to 0 because nanfunc throws error on all nan columns
+    percentile_data_np = replace_all_nan_cols_with_zeros(data_np, lower_bound, upper_bound)
+    return np.nanmean(percentile_data_np, axis=0)
+    
+def collapse_median_np(data_np, lower_bound, upper_bound, **kwargs):
+    # replace columns containing all nans to 0 because nanfunc throws error on all nan columns
+    percentile_data_np = replace_all_nan_cols_with_zeros(data_np, lower_bound, upper_bound)  
+    return np.nanmedian(percentile_data_np, axis=0)
+    
+def collapse_standard_dev_np(data_np, lower_bound, upper_bound, **kwargs):
+    # replace columns containing all nans to 0 because nanfunc throws error on all nan columns
+    percentile_data_np = replace_all_nan_cols_with_zeros(data_np, lower_bound, upper_bound)   
+    return np.nanstd(percentile_data_np, axis=0)
+    
+def collapse_min_np(data_np, lower_bound, upper_bound, **kwargs):
+    # replace columns containing all nans to 0 because nanfunc throws error on all nan columns
+    percentile_data_np = replace_all_nan_cols_with_zeros(data_np, lower_bound, upper_bound)  
+    return np.nanmin(percentile_data_np, axis=0)
+    
+def collapse_max_np(data_np, lower_bound, upper_bound, **kwargs):
+    # replace columns containing all nans to 0 because nanfunc throws error on all nan columns
+    percentile_data_np = replace_all_nan_cols_with_zeros(data_np, lower_bound, upper_bound)   
+    return np.nanmax(percentile_data_np, axis=0)
 
-def standard_dev(data): 
-    if len(data.dropna()) > 1:
-        return np.std(data)
-    else: 
-        return 0
+def collapse_count_np(data_np, lower_bound, upper_bound, **kwargs):
+    return (~np.isnan(data_np[lower_bound:upper_bound,:])).sum(axis=0)
+ 
+def collapse_present_np(data_np, lower_bound, upper_bound, **kwargs):
+    return (~np.isnan(data_np[lower_bound:upper_bound,:])).any(axis=0)
 
-def count(data):
-    return len(data.dropna())
-
-def present(data): 
-    return 1 if len(data.dropna() > 0) else 0
-
-# define additional functions to deal with an entire row of missing data
-def nan_median(data):
-    if len(data.dropna()) > 0:
-        return np.nanmedian(data)
-    else:
-        return 0
-
-def nan_mean(data):
-    if len(data.dropna()) > 0:
-        return np.mean(data)
-    else:
-        return 0
-
-def nan_min(data): 
-    if len(data.dropna()) > 0:
-        return np.amin(data)
-    else: 
-        return 0    
-
-def nan_max(data): 
-    if len(data.dropna()) > 0:
-        return np.amax(data)
-    else: 
-        return 0 
-
-def bind_func_for_range(op, start_percentile, end_percentile, max_time_step):
-    if max_time_step < -1 or max_time_step == 0:
-        raise Exception('set_max_time_steps value must be -1 (for unlimited) '
-                        'or a positive number.')
-    def closure_func(data):
-        f = COLLAPSE_FUNCTIONS[op]
-        # Treat the last data point as 100 percentile.
-        if max_time_step == -1: 
-            lower_bound = (len(data)*start_percentile)//100
-            upper_bound = (len(data)*end_percentile)//100
-        # Treat the max time step as 100 percentile.
-        elif max_time_step < len(data):
-            lower_bound = (max_time_step*start_percentile)//100
-            upper_bound = (max_time_step*end_percentile)//100
-        # Add nan values to list until it is the length of the max time step. 
-        # Treat that as 100 percentile.
-        else: 
-            data = data.append(pd.Series([np.nan for i in range(max_time_step - len(data))]),
-                               ignore_index=True)
-            lower_bound = (len(data)*start_percentile)//100
-            upper_bound = (len(data)*end_percentile)//100
-       
-        # if lower bound and upper bound are the same, add 1 to the upper bound
-        if lower_bound == upper_bound :
-            upper_bound = lower_bound + 1
-
-        return f(data[lower_bound:upper_bound])
-
-    if start_percentile == 0 and end_percentile == 100:
-        closure_func.__name__ = op
-    else:
-        closure_func.__name__ = '{}_{}_to_{}'.format(op, start_percentile, end_percentile)
-
-    return closure_func
-
-COLLAPSE_FUNCTIONS = {
-    "mean": nan_mean,
-    "std":  standard_dev,
-    "median": nan_median,
-    "min": nan_min,
-    "max": nan_max,
-    "slope": slope, 
-    "count": count,
-    "present": present
+def collapse_slope_np(data_np, lower_bound, upper_bound, **kwargs): 
+    percentile_t_np = data_np[lower_bound:upper_bound, kwargs['time_column_index']]
+    percentile_data_np = data_np[lower_bound:upper_bound,:]
+    n_cols = percentile_data_np.shape[1]
+    collapsed_slope = np.zeros(n_cols)
+    
+    for col in range(n_cols):
+        mask = ~np.isnan(percentile_data_np[:,col])
+        if mask.sum():
+            xs = percentile_data_np[mask,col]
+            ts = percentile_t_np[mask]
+            x_mean = np.mean(xs)
+            ts -= np.mean(ts)
+            xs -= x_mean
+            numer = np.sum(ts * xs)
+            denom = np.sum(np.square(xs))
+            if denom == 0:
+                collapsed_slope[col] = 0
+            else:
+                collapsed_slope[col] = numer/denom
+        else:
+            collapsed_slope[col] = 0
+    return collapsed_slope  
+    
+COLLAPSE_FUNCTIONS_np = {
+    "mean": collapse_mean_np,
+    "std":  collapse_standard_dev_np,
+    "median": collapse_median_np,
+    "min": collapse_min_np,
+    "max": collapse_max_np,
+    "slope": collapse_slope_np, 
+    "count": collapse_count_np,
+    "present": collapse_present_np
 }
+
 
 if __name__ == '__main__':
     main()
