@@ -22,7 +22,7 @@ for lr in 0.1 0.01  0.003  0.005 0.007 0.001 0.0005 0.0001
 do
     export lr=$lr
 # try multiple dropouts
-for dropout in 0.1 0.3 0.5 0.8
+for dropout in 0.01 0.03 0.05 0.1 0.3 0.5 0.8
 do
    export dropout=$dropout
 

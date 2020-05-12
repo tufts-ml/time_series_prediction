@@ -13,10 +13,10 @@
 SOURCE_PATH="/cluster/home/prath01/projects/mimic3_benchmarks/Code/time_series_prediction/src"
 
 # Path for RNN train test data
-TEMP_DATA_PATH="/cluster/tufts/hugheslab/prath01/projects/mimic3_benchmarks/code_results/rnn"
+# TEMP_DATA_PATH="/cluster/tufts/hugheslab/prath01/projects/mimic3_benchmarks/code_results/rnn"
 
 # Path for Logistic regression train test data
-# TEMP_DATA_PATH="/cluster/tufts/hugheslab/prath01/projects/mimic3_benchmarks/code_results/no_fill"
+TEMP_DATA_PATH="/cluster/tufts/hugheslab/prath01/projects/mimic3_benchmarks/code_results/no_fill"
 
 TS_METADATA_PATH="/cluster/tufts/hugheslab/datasets/mimic-iii-v1.4/v20181213/tidy/mimic3benchmarks_inhospital_mortality/20190406/metadata_per_seq.csv"
 TS_DATA_DICT_PATH="/cluster/home/prath01/projects/mimic3_benchmarks/Code/time_series_prediction/docs/mimic-iii-v1.4/20190406/mimic_dict.json"
@@ -33,7 +33,7 @@ if [[ -z $hidden_layer_sizes ]]; then
     hidden_layer_sizes=32
 fi
 if [[ -z $lr ]]; then
-    lr=0.001
+    lr=.1
 fi
 if [[ -z $filename_prefix ]]; then
     filename_prefix="rnn-mimic-mortality-prediction-max-epochs=$n_epochs-arch=$hidden_layer_sizes-lr=$lr-dropout=$dropout-interactive"
@@ -42,7 +42,7 @@ if [[ -z $batch_size ]]; then
     batch_size=3000
 fi
 if [[ -z $dropout ]]; then
-    dropout=0.5
+    dropout=0.1
 fi
 
 # echo "pre-processing data..."
@@ -52,29 +52,29 @@ fi
 echo "running RNN with params max-epochs=$n_epochs hidden_layer_sizes=$hidden_layer_sizes lr=$lr dropout=$dropout"
 # Pass along all ENV variables as arguments to my Python script
        
-python $SOURCE_PATH/rnn/main_mimic.py \
-    --train_vitals_csv $TEMP_DATA_PATH/ts_test_train/train.csv \
-    --test_vitals_csv $TEMP_DATA_PATH/ts_test_train/test.csv \
-    --metadata_csv $TS_METADATA_PATH \
-    --data_dict $TS_DATA_DICT_PATH \
-    --batch_size $batch_size \
-    --epochs $n_epochs \
-    --lr $lr \
-    --hidden_units $hidden_layer_sizes \
-    --dropout $dropout \
-    --report_dir $REPORT_DIR \
-    --output_filename_prefix $filename_prefix \
-
 #python $SOURCE_PATH/rnn/main_mimic.py \
-#    --train_vitals_csv $TEMP_DATA_PATH/collapsed_test_train/train.csv \
-#    --test_vitals_csv $TEMP_DATA_PATH/collapsed_test_train/test.csv \
+#    --train_vitals_csv $TEMP_DATA_PATH/ts_test_train/train.csv \
+#    --test_vitals_csv $TEMP_DATA_PATH/ts_test_train/test.csv \
 #    --metadata_csv $TS_METADATA_PATH \
 #    --data_dict $TS_DATA_DICT_PATH \
 #    --batch_size $batch_size \
 #    --epochs $n_epochs \
 #    --lr $lr \
 #    --hidden_units $hidden_layer_sizes \
+#    --dropout $dropout \
 #    --report_dir $REPORT_DIR \
 #    --output_filename_prefix $filename_prefix \
+
+python $SOURCE_PATH/rnn/main_mimic.py \
+    --train_vitals_csv $TEMP_DATA_PATH/collapsed_test_train/train.csv \
+    --test_vitals_csv $TEMP_DATA_PATH/collapsed_test_train/test.csv \
+    --metadata_csv $TS_METADATA_PATH \
+    --data_dict $TS_DATA_DICT_PATH \
+    --batch_size $batch_size \
+    --epochs $n_epochs \
+    --lr $lr \
+    --hidden_units $hidden_layer_sizes \
+    --report_dir $REPORT_DIR \
+    --output_filename_prefix $filename_prefix \
 
 source deactivate

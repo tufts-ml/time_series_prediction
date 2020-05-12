@@ -26,9 +26,10 @@ class RNNBinaryClassifierModule(nn.Module):
     '''
     def __init__(self,
             rnn_type='LSTM', n_inputs=1, n_hiddens=1, n_layers=1,
-            dropout_proba=0.0, bidirectional=False):
+            dropout_proba=0.0, dropout_proba_non_recurrent=0.0, bidirectional=False):
         super(RNNBinaryClassifierModule, self).__init__()
         self.drop = nn.Dropout(dropout_proba)
+        self.dropout_proba_non_recurrent = dropout_proba_non_recurrent
         if rnn_type in ['LSTM', 'GRU']:
             self.rnn = getattr(nn, rnn_type)(
                 n_inputs, n_hiddens, n_layers,
@@ -114,7 +115,18 @@ class RNNBinaryClassifierModule(nn.Module):
         _, rev_ids_N = ids_N.sort(0, descending=False)
         sorted_inputs_NTF = inputs_NTF[ids_N] 
         packed_inputs_PF = nn.utils.rnn.pack_padded_sequence(sorted_inputs_NTF, sorted_seq_lens_N, batch_first=True)
-        ## Apply the RNN
+        
+        # Apply dropout to the non-recurrent layer weights between LSTM layers before output ie is weights for h_(l-1)^t
+        # See https://pytorch.org/docs/stable/nn.html#torch.nn.LSTM for choosing the right weights
+        if (self.dropout_proba_non_recurrent>0.0 and self.rnn.num_layers>1):
+            dropout = nn.Dropout(p=self.dropout_proba_non_recurrent)
+            self.rnn.weight_ih_l1 = torch.nn.Parameter(dropout(self.rnn.weight_ih_l1), 
+                                                                      requires_grad=True)
+            self.rnn.bias_ih_l1 = torch.nn.Parameter(dropout(self.rnn.bias_ih_l1), 
+                                                                    requires_grad=True)
+        
+        ## Apply the RNN  
+#         from IPython import embed; embed()
         packed_outputs_PH, _ = self.rnn(packed_inputs_PF)
         ## Unpack to N x T x H padded representation
         outputs_NTH, _ = nn.utils.rnn.pad_packed_sequence(packed_outputs_PH, batch_first=True)

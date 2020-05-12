@@ -70,16 +70,3 @@ python $SOURCE_PATH/rnn/main_mimic.py \
     --output_filename_prefix $filename_prefix \
 
 source deactivate
-
-# echo "Creating simulated data with 2 states"
-# python $SOURCE_PATH/rnn/create_synthetic_dataset_for_rnn_validation.py \
-#    --T 100 \
-#    --D 1 \
-#    --N 600 \
-    
-# Create simulated data with 3 states
-# echo "Creating simulated data with 3 states"
-# python $SOURCE_PATH/rnn/create_harder_synthetic_dataset_for_rnn_validation.py \
-#    --T 100 \
-#    --D 1 \
-#    --N 600 \

@@ -107,11 +107,19 @@ def main():
     class_weights = torch.tensor([1/(y_train==0).sum(),
                                   1/(y_train==1).sum()]).double()
     
-#     from IPython import embed; embed()
     
     # define a auc scorer function and pass it as callback of skorch to track training and validation AUROC
     roc_auc_scorer = make_scorer(roc_auc_score, greater_is_better=True,
                                  needs_threshold=True)
+    
+        # use only last time step as feature for LR debugging
+#     X_train = X_train[:,-1,:][:,np.newaxis,:]
+#     X_test = X_test[:,-1,:][:,np.newaxis,:]
+    
+    # use time steps * features as vectorized feature into RNN for LR debugging
+#     X_train = X_train.reshape((X_train.shape[0], 1, X_train.shape[1]*X_train.shape[2]))
+#     X_test = X_test.reshape((X_test.shape[0], 1, X_test.shape[1]*X_test.shape[2]))
+    
 #---------------------------------------------------------------------#
 # Pseudo LSTM (hand engineered features through LSTM, collapsed across time)
 #---------------------------------------------------------------------#
@@ -129,7 +137,7 @@ def main():
             skorch.callbacks.EpochScoring(roc_auc_scorer, lower_is_better=False, on_train=False, name='aucroc_score_valid'),
             ComputeGradientNorm(norm_type=2, f_history = args.report_dir + '/%s_running_rnn_classifer_gradient_norm_history.csv'%args.output_filename_prefix),
 #             LSTMtoLogReg(),# transformation to log reg for debugging
-            skorch.callbacks.EarlyStopping(monitor='aucroc_score_valid', patience=30, threshold=1e-10, threshold_mode='rel', lower_is_better=False),
+            skorch.callbacks.EarlyStopping(monitor='aucroc_score_valid', patience=1000, threshold=1e-10, threshold_mode='rel', lower_is_better=False),
             skorch.callbacks.Checkpoint(monitor='train_loss', f_history = args.report_dir + '/%s_running_rnn_classifer_history.json'%args.output_filename_prefix),
 #             skorch.callbacks.Checkpoint(monitor='aucroc_score_valid', f_pickle = args.report_dir + '/%s_running_rnn_classifer_model'%args.output_filename_prefix),
             skorch.callbacks.PrintLog(floatfmt='.2f')
@@ -137,18 +145,20 @@ def main():
         module__rnn_type='LSTM',
         module__n_inputs=X_train.shape[-1],
         module__n_hiddens=args.hidden_units,
-        module__n_layers=2,
-        module__dropout_proba=args.dropout,
-#         optimizer=torch.optim.SGD,
-#         optimizer__weight_decay=0.01,
+        module__n_layers=1,
+#         module__dropout_proba_non_recurrent=args.dropout,
+#         module__dropout_proba=args.dropout,
+        optimizer=torch.optim.SGD,
+        optimizer__weight_decay=1e-2,
 #         optimizer__momentum=0.9,
-        optimizer=torch.optim.Adam,
+#         optimizer=torch.optim.Adam,
         lr=args.lr)
-
+    
+    from IPython import embed; embed()
+    
     # scale input features
     X_train = standard_scaler_3d(X_train)
     X_test = standard_scaler_3d(X_test) 
-    from IPython import embed; embed()
     rnn.fit(X_train, y_train)
     
     
@@ -373,9 +383,7 @@ class ComputeGradientNorm(Callback):
         self.batch_num = 1
         
     def on_epoch_end(self, net, dataset_train=None, dataset_valid=None, **kwargs):
-        self.epoch_num += 1
-        from IPython import embed; embed()
-        
+        self.epoch_num += 1        
 #     def on_batch_end(self, net, dataset_train=None, dataset_valid=None, **kwargs ):
 #         weights_norm = get_paramater_l2_norm(net)
 #         print('epoch: %d, batch: %d, weights_norm : %.3f'%(self.epoch_num, self.batch_num, weights_norm))
@@ -433,6 +441,19 @@ class LSTMtoLogReg(Callback):
         # set the W_ho to zero remove time-dependence
         net.module_.rnn.bias_hh_l0.requires_grad = False  
         net.module_.rnn.bias_hh_l0.data = torch.zeros(128, dtype=torch.float64)
+        
+# class NonRecurrentUnitsDropout(Callback):
+#     def __init__(self, dropout_proba=.3):
+#         self.dropout=torch.nn.Dropout(p=dropout_proba, inplace=True)
+        
+#     def on_epoch_end(self, net,  dataset_train=None, dataset_valid=None, **kwargs): 
+#         # apply dropout to the non-recurrent layer weights between LSTM layers before output ie is weights for h_(l-1)^t
+#         # See https://pytorch.org/docs/stable/nn.html#torch.nn.LSTM for choosing the right weights
+#         from IPython import embed; embed()
+#         self.dropout(net.module_.rnn.weight_ih_l1)
+#         self.dropout(net.module_.rnn.bias_ih_l1)
+        
+        
         
         
         
