@@ -440,30 +440,7 @@ class LSTMtoLogReg(Callback):
         net.module_.rnn.weight_hh_l0.data=torch.zeros(4*net.module__n_hiddens,net.module__n_hiddens, dtype=torch.float64)
         # set the W_ho to zero remove time-dependence
         net.module_.rnn.bias_hh_l0.requires_grad = False  
-        net.module_.rnn.bias_hh_l0.data = torch.zeros(128, dtype=torch.float64)
-        
-# class NonRecurrentUnitsDropout(Callback):
-#     def __init__(self, dropout_proba=.3):
-#         self.dropout=torch.nn.Dropout(p=dropout_proba, inplace=True)
-        
-#     def on_epoch_end(self, net,  dataset_train=None, dataset_valid=None, **kwargs): 
-#         # apply dropout to the non-recurrent layer weights between LSTM layers before output ie is weights for h_(l-1)^t
-#         # See https://pytorch.org/docs/stable/nn.html#torch.nn.LSTM for choosing the right weights
-#         from IPython import embed; embed()
-#         self.dropout(net.module_.rnn.weight_ih_l1)
-#         self.dropout(net.module_.rnn.bias_ih_l1)
-        
-        
-        
-        
-        
-#     def on_epoch_end(self, net, dataset_train=None, dataset_valid=None, **kwargs):
-#         self.epoch_num += 1
-        # set the W_ho to zero remove time-dependence
-
-        
-#     def on_grad_computed(self, net, named_parameters, **kwargs):  
-#         from IPython import embed; embed()        
+        net.module_.rnn.bias_hh_l0.data = torch.zeros(128, dtype=torch.float64)       
     
 
 if __name__ == '__main__':
@@ -483,62 +460,4 @@ if __name__ == '__main__':
     # View best hyperparameters
 #     best_lr = best_rnn.best_estimator_.get_params()['lr']
 
-
-## MLP ## 
-#     net = NeuralNet(
-#         module=MLPModule,
-#         module__num_inputs=X_train.shape[-1],
-#         criterion=torch.nn.CrossEntropyLoss,
-#         lr=1.0,
-#         max_epochs=args.epochs,
-#         batch_size=args.batch_size,
-# #         batch_size=-1,
-#         device=device,
-#         criterion__weight=class_weights,
-#         train_split=skorch.dataset.CVSplit(4),
-#         callbacks=[
-#             skorch.callbacks.EpochScoring(roc_auc_scorer, lower_is_better=False, on_train=True, name='aucroc_score_train'),
-#             skorch.callbacks.EpochScoring(roc_auc_scorer, lower_is_better=False, on_train=False, name='aucroc_score_valid'),
-#             skorch.callbacks.EarlyStopping(monitor='aucroc_score_valid', patience=3000, threshold=1e-10, threshold_mode='rel', lower_is_better=True),
-#             skorch.callbacks.PrintLog(floatfmt='.2f')
-#         ],
-#         optimizer=torch.optim.SGD,
-
-#     )
-    
-#     from IPython import embed; embed()
-#     # use only the last time step as feature for every subject
-#     X_train_mlp = X_train[:,-1,:]
-#     y_train_mlp = y_train[:,np.newaxis]
-#     net.fit(X_train_mlp, y_train)
-
-#---------------------------------------------------------------------#
-# Logistic Regression(features : data at last time point, No hidden units, sigmoid at output)
-#---------------------------------------------------------------------#
-#     logistic = SkorchLogisticRegression(n_features=X_train.shape[-1],
-#                                         l2_penalty_weights=0.1,
-#                                         l2_penalty_bias=0.01,
-#                                         clip=0.2,
-#                                         lr=0.01,
-#                                         batch_size=-1, 
-#                                         max_epochs=1600,
-#                                         criterion=torch.nn.CrossEntropyLoss,
-#                                         criterion__weight=class_weights,
-#                                         callbacks=[skorch.callbacks.PrintLog(floatfmt='.2f'),
-#                                                    skorch.callbacks.EarlyStopping(monitor='train_loss', patience=300, threshold=1e-10, threshold_mode='rel', lower_is_better=True),
-#                                                    ],
-#                                         optimizer=torch.optim.SGD)
-
-#     pipe = Pipeline([
-#     ('scale', StandardScaler()),
-#     ('classifier', logistic),
-#     ])
-#     X_train_mlp = X_train[:,-1,:]
-    
-#     best_logistic = pipe.fit(X_train_mlp, y_train)
-    
-#     X_test_mlp = X_test[:,-1,:] 
-#     y_pred_proba = best_logistic.predict_proba(X_test_mlp) 
-#     y_pred_proba_neg, y_pred_proba_pos = zip(*y_pred_proba)
-#     print(roc_auc_score(y_test, y_pred_proba_pos))
 
