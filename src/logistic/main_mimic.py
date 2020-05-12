@@ -90,7 +90,6 @@ def main():
     t1=time.time()
     best_logistic = classifier.fit(X_train, y_train)
     
-#     from IPython import embed; embed()
 #------------------------------------------- REPORT ----------------------------#
     # View best hyperparameters
     best_penalty = best_logistic.best_estimator_.get_params()['regressor__penalty']
