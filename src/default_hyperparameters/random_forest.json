@@ -1,0 +1,5 @@
+{
+    "class_weight": "balanced",
+    "grid_n_estimators": [100],
+    "grid_max_depth": ["None"]
+}

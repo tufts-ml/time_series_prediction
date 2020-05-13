@@ -1,0 +1,97 @@
+'''
+Train collapsed feature classifier on EEG binary seizure/not dataset
+
+
+'''
+
+# Default environment variables
+# Can override with local env variables
+
+EEG_VERSION = os.environ.get('EEG_VERSION', 'v20200501')
+PROJECT_REPO_DIR = os.environ.get("PROJECT_REPO_DIR", os.path.abspath("../../../"))
+PROJECT_CONDA_ENV_YAML = os.path.join(PROJECT_REPO_DIR, "ts_pred.yml")
+
+EEG_DATASET_TOP_PATH = os.path.join(PROJECT_REPO_DIR, "datasets/eeg/")
+EEG_DATASET_STD_PATH = os.path.join(EEG_DATASET_TOP_PATH, 'std', EEG_VERSION)
+
+rule normalize_features:
+    input:
+        normalize_script=os.path.join(PROJECT_REPO_DIR, 'src', 'normalize_features.py'),
+        x_csv=os.path.join(EEG_DATASET_STD_PATH, 'features_per_tstep.csv'),
+        x_spec_json=os.path.join(EEG_DATASET_STD_PATH, 'Spec_FeaturesPerTimestep.json')
+
+    output:
+        normx_csv=os.path.join(EEG_DATASET_STD_PATH, 'normfeatures_per_tstep.csv')
+
+
+    conda:
+        PROJECT_CONDA_ENV_YAML
+
+    shell:
+        '''
+        python -u {input.normalize_script} \
+            --input {input.x_csv} \
+            --data_dict {input.x_spec_json} \
+            --output {output.normx_csv} \
+        '''
+
+rule collapse_features:
+    input:
+        script=os.path.join(PROJECT_REPO_DIR, 'src', 'feature_transformation.py'),
+        x_csv=os.path.join(EEG_DATASET_STD_PATH, 'features_per_tstep.csv'),
+        x_spec_json=os.path.join(EEG_DATASET_STD_PATH, 'Spec_FeaturesPerTimestep.json')
+
+    output:
+        collapsedx_csv=os.path.join(EEG_DATASET_STD_PATH, 'CollapsedFeaturesPerSequence.csv'),
+        collapsedx_json=os.path.join(EEG_DATASET_STD_PATH, 'Spec_CollapsedFeaturesPerSequence.json')
+
+    conda:
+        PROJECT_CONDA_ENV_YAML
+
+    shell:
+        '''
+        python -u {input.script} \
+            --input {input.x_csv} \
+            --data_dict {input.x_spec_json} \
+            --output {output.collapsedx_csv} \
+            --data_dict_output {output.collapsedx_json} \
+            --range_pairs "[(0,100)]" \
+            --collapse
+        '''
+
+
+rule split_into_train_and_test:
+    input:
+        script=os.path.join(PROJECT_REPO_DIR, 'src', 'split_dataset.py'),
+        collapsedx_csv=os.path.join(EEG_DATASET_STD_PATH, 'CollapsedFeaturesPerSequence.csv'),
+        collapsedx_json=os.path.join(EEG_DATASET_STD_PATH, 'Spec_CollapsedFeaturesPerSequence.json'),
+        collapsedy_csv=os.path.join(EEG_DATASET_STD_PATH, 'outcomes_per_seq.csv'),
+        collapsedy_json=os.path.join(EEG_DATASET_STD_PATH, 'Spec_OutcomesPerSequence.json')
+
+    output:
+        x_train_csv=os.path.join(EEG_DATASET_STD_PATH, 'x_train.csv'),
+        x_test_csv=os.path.join(EEG_DATASET_STD_PATH, 'x_test.csv'),
+        y_train_csv=os.path.join(EEG_DATASET_STD_PATH, 'y_train.csv'),
+        y_test_csv=os.path.join(EEG_DATASET_STD_PATH, 'y_test.csv')
+
+    conda:
+        PROJECT_CONDA_ENV_YAML
+
+    shell:
+        '''
+        python -u {input.script} \
+            --input {input.collapsedx_csv} \
+            --data_dict {input.collapsedx_json} \
+            --test_size 0.1 \
+            --group_cols subject_id \
+            --train_csv_filename {output.x_train_csv} \
+            --test_csv_filename {output.x_test_csv}
+
+        python -u {input.script} \
+            --input {input.collapsedy_csv} \
+            --data_dict {input.collapsedy_json} \
+            --test_size 0.1 \
+            --group_cols subject_id \
+            --train_csv_filename {output.y_train_csv} \
+            --test_csv_filename {output.y_test_csv}
+        '''

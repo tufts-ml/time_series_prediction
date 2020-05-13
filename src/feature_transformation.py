@@ -1,15 +1,15 @@
 # feature_transformation.py
 
 # Input: Requires a dataframe, specification of whether to collapse
-#		 into summary statistics and which statistics, or whether to
-# 		 add a transformation of a column and the operation with which
-#		 to transform
+#        into summary statistics and which statistics, or whether to
+#        add a transformation of a column and the operation with which
+#        to transform
 
-#		 Requires a json data dictionary to accompany the dataframe,
-#		 data dictionary columns must all have a defined "role" field
+#        Requires a json data dictionary to accompany the dataframe,
+#        data dictionary columns must all have a defined "role" field
 
 # Output: Puts transformed dataframe into ts_transformed.csv and 
-#		  updated data dictionary into transformed.json
+#         updated data dictionary into transformed.json
 
 
 import sys
@@ -20,6 +20,7 @@ import numpy as np
 from scipy import stats
 import ast
 import time
+import copy
 
 def main():
     parser = argparse.ArgumentParser(description="Script for collapsing"
@@ -49,7 +50,7 @@ def main():
                         help="Enclose pairs list with 's and [], list all desired ranges in "
                              "parentheses like this: '[(0, 50), (25, 75), (50, 100)]'")
     parser.add_argument('--max_time_step', type=int, required=False,
-                        default=-1, help="Specify the maximum number of time "
+                        default=None, help="Specify the maximum number of time "
                                          "steps to collapse on, for example, "
                                          "input 48 for 48 hours at 1 hour time steps. "
                                          "Set to -1 for no limit.")
@@ -63,6 +64,15 @@ def main():
                                  'abs', 'z-score', 'ceiling', 'float'])
 
     args = parser.parse_args()
+
+    args.data_dict_path = args.data_dict
+    with open(args.data_dict_path, 'r') as f:
+        args.data_dict = json.load(f)
+    try:
+        args.data_dict['fields'] = args.data_dict['schema']['fields']
+    except KeyError:
+        pass
+
     print('done parsing...')
     print('reading csv...')
     ts_df = pd.read_csv(args.input)
@@ -73,7 +83,6 @@ def main():
     print('collapsing data..')
     t1 = time.time()
     if args.collapse:
-#         from IPython import embed; embed()
         ts_df = collapse_np(ts_df, args)
         data_dict = update_data_dict_collapse(args)
     elif args.add_feature:
@@ -85,7 +94,6 @@ def main():
    
     # save data to file
     print('saving data to output...')
-    t1 = time.time()
     if args.output is None:
         file_name = args.input.split('/')[-1].split('.')[0]
         data_output = '{}_transformed.csv'.format(file_name)
@@ -93,14 +101,12 @@ def main():
         data_output = args.output
     else:
         data_output = '{}.csv'.format(args.output)
-    ts_df.to_csv(data_output)
-    t2 = time.time()
+    ts_df.to_csv(data_output, index=False)
     print("Wrote to output CSV:\n%s" % (data_output))
-    print('time taken to write to CSV is {} seconds'.format(t2-t1))    
 
     # save data dictionary to file
     if args.data_dict_output is None:
-        file_name = args.data_dict.split('/')[-1].split('.')[0]
+        file_name = args.data_dict_path.split('/')[-1].split('.')[0]
         dict_output = '{}_transformed.json'.format(file_name)
     elif args.data_dict_output[-5:] == '.json':
         dict_output = args.data_dict_output
@@ -108,112 +114,124 @@ def main():
         dict_output = '{}.json'.format(args.data_dict_output)
     with open(dict_output, 'w') as f:
         json.dump(data_dict, f, indent=4)
-    f.close()
 
-def collapse_np(ts_df, args):   
-    id_and_output_cols = parse_id_and_output_cols(args.data_dict)
-    id_and_output_cols = remove_col_names_from_list_if_not_in_df(id_and_output_cols, ts_df)
+
+def collapse_np(ts_df, args):
+    id_cols = parse_id_cols(args.data_dict)
+    id_cols = remove_col_names_from_list_if_not_in_df(id_cols, ts_df)
     feature_cols = parse_feature_cols(args.data_dict)
     feature_cols = remove_col_names_from_list_if_not_in_df(feature_cols, ts_df)
     time_col = parse_time_col(args.data_dict)
-    
-    # convert dataframe to numpy and perform all the computations    
-    ts_np = ts_df.to_numpy()
-    select_cols = id_and_output_cols + feature_cols
-    
-    
-    # get the indices of the id columns in the dataframe
-    id_col_inds = []
-    for i in range(len(id_and_output_cols)):
-        id_col_inds.append(ts_df.columns.get_loc(id_and_output_cols[i]))
-    id_col_inds = np.asarray(id_col_inds)
-    
-    # get the index of the time column
-    time_col_ind = ts_df.columns.get_loc(time_col)
-    
-    # get the id data
-    id_data = ts_np[:,id_col_inds]
-    # get the fenceposts for all the id columns in one shot
-    fp_all_ids = np.hstack([0, 1+np.flatnonzero(np.diff(id_data,axis=0).any(axis=1)), id_data.shape[0]]) 
-    
-    # create a dataframe of collapsed features
-    collapsed_ts_np = np.empty(0) 
-    
-    # define number of rows in collapsed dataframe
-    n_collapsed_ts_np = fp_all_ids.size-1   
-    
-    #start timer
+
+    # Obtain fenceposts based on where any key differs
+    # Be sure keys are converted to a numerical datatype (so fencepost detection is possible)
+    keys_df = ts_df[id_cols].copy()
+    for col in id_cols:
+        if not pd.api.types.is_numeric_dtype(keys_df[col].dtype):
+            keys_df[col] = keys_df[col].astype('category')
+            keys_df[col] = keys_df[col].cat.codes
+    fp = np.hstack([0, 1 + np.flatnonzero(np.diff(keys_df.values, axis=0).any(axis=1)), keys_df.shape[0]]) 
+
+    list_of_collapsed_feat_arr = list()
+    list_of_collapsed_feat_names = list()
+
+    # Start timer
     total_time = 0
-    # get the percentiles         
+
+    timestamp_arr = np.asarray(ts_df[time_col].values.copy(), dtype=np.float64)
+    features_arr = ts_df[feature_cols].values
+
     for op in args.collapse_range_features.split(' '):
-        for low, high in ast.literal_eval(args.range_pairs):
-            
-            print('collapsing with func %s in %d to %d percentile range'%(op, low, high))
-            t1=time.time()
+        for low, high in ast.literal_eval(args.range_pairs):           
+            print('Collapsing with func %s in %d to %d percentile range'%(op, low, high))
+            t1 = time.time()
             # initialize collapsed dataframe for the current summary function
-            collapsed_ts_np_curr_summary_func = np.zeros([len(fp_all_ids)-1, ts_np.shape[1]])
+            n_rows = len(fp) - 1
+            n_feats = len(feature_cols)
+            collapsed_feat_arr = np.zeros([n_rows, n_feats])
 
             # loop through all the subject episode fenceposts
-            for p in range(n_collapsed_ts_np):
+            for p in range(n_rows):
                 # get the data for the current fencepost
-                fp_start = fp_all_ids[p]
-                fp_end = fp_all_ids[p+1]
-                curr_fp_ts_np = ts_np[fp_start:fp_end,:]
-                lower_bound, upper_bound = evaluate_start_and_stop_indices_from_percentiles(curr_fp_ts_np, start_percentile=low, end_percentile=high, max_time_step = args.max_time_step)
-                
+                fp_start = fp[p]
+                fp_end = fp[p+1]
+                lower_bound, upper_bound = calc_start_and_stop_indices_from_percentiles(
+                    timestamp_arr[fp_start:fp_end], start_percentile=low, end_percentile=high, max_timestamp=args.max_time_step)
+
+                cur_feat_arr = features_arr[fp_start:fp_end,:].copy()
+                cur_timestamp_arr = timestamp_arr[fp_start:fp_end]
+
                 # compute summary function on that particular subject episode dataframe
-                curr_fp_ts_summary = COLLAPSE_FUNCTIONS_np[op](curr_fp_ts_np, lower_bound, upper_bound, time_column_index = time_col_ind)
-                # since the summary function is evaluated on all columns including the subject and episode ids, we reassign them back to their original value after the summary function evaluation 
-                for id_val in id_col_inds:
-                    curr_fp_ts_summary[id_val] = ts_np[fp_start, id_val].astype(int)
-                
-                collapsed_ts_np_curr_summary_func[p,:] = curr_fp_ts_summary
+                collapsed_feat_arr[p,:] = COLLAPSE_FUNCTIONS_np[op](cur_feat_arr, lower_bound, upper_bound, cur_timestamp_arr=cur_timestamp_arr)
+
             t2 = time.time()
-            print('time taken : %d seconds'%(t2-t1)) 
+            print('done in %d seconds'%(t2-t1)) 
             total_time = total_time + t2-t1 
             
-            # remove hours from our summary (This assumes hours column is after subject_id and episode_id columns)
-            collapsed_ts_np_curr_summary_func = np.delete(collapsed_ts_np_curr_summary_func, time_col_ind, axis= 1)
-            
-            # add the collapse function name and percentile range to the columns of the function            
-            if len(collapsed_ts_np)==0:
-                collapsed_ts_np = collapsed_ts_np_curr_summary_func
-                
-                collapsed_ts_np_columns = id_and_output_cols + [op+'_'+str(low)+'_to_'+str(high)+'_'+x for x in feature_cols] 
-            else:
-                collapsed_ts_np = np.hstack([collapsed_ts_np, collapsed_ts_np_curr_summary_func[:,len(id_and_output_cols):]])     
-                
-                collapsed_ts_np_columns = collapsed_ts_np_columns + [op+'_'+str(low)+'_to_'+str(high)+'_'+x for x in feature_cols]
+            list_of_collapsed_feat_arr.append(collapsed_feat_arr)
+            list_of_collapsed_feat_names.extend([x+'_'+op+'_'+str(low)+'_to_'+str(high) for x in feature_cols])
+
     print('-----------------------------------------')
     print('total time taken = %d seconds'%total_time)
     print('-----------------------------------------')
-    
-    collapsed_ts_df = pd.DataFrame(collapsed_ts_np, columns = collapsed_ts_np_columns).set_index(id_and_output_cols)
-    return collapsed_ts_df
+    collapsed_df = pd.DataFrame(np.hstack(list_of_collapsed_feat_arr), columns=list_of_collapsed_feat_names)
 
-def evaluate_start_and_stop_indices_from_percentiles(df, start_percentile, end_percentile, max_time_step):
+    for col_name in id_cols[::-1]:
+        collapsed_df.insert(0, col_name, ts_df[col_name].values[fp[:-1]].copy())
+    return collapsed_df
+
+
+def calc_start_and_stop_indices_from_percentiles(timestamp_arr, start_percentile, end_percentile, max_timestamp=None):
+    ''' Find start and stop indices to select specific percentile range
+    
+    Args
+    ----
+    timestamp_df : pd.DataFrame
+
+    Returns
+    -------
+    lower_bound : int
+        First index to consider in current sequence 
+    upper_bound : int
+        Last index to consider in current sequence
+
+    Examples
+    --------
+    >>> timestamp_arr = np.arange(100)
+    >>> calc_start_and_stop_indices_from_percentiles(timestamp_arr, 0, 10, None)
+    (0, 10)
+    >>> calc_start_and_stop_indices_from_percentiles(timestamp_arr, 25, 33, None)
+    (25, 33)
+    >>> calc_start_and_stop_indices_from_percentiles(timestamp_arr, 0, 0, 100)
+    (0, 1)
+
+    >>> timestamp_arr = np.asarray([0.7, 0.8, 0.9, 0.95, 0.99, 50.0, 98.1])
+    >>> calc_start_and_stop_indices_from_percentiles(timestamp_arr, 0, 1, 100)
+    (0, 5)
+    >>> calc_start_and_stop_indices_from_percentiles(timestamp_arr, 1, 100, 100)
+    (5, 7)
+    '''
 
     # Treat the last data point as 100 percentile.
-    if max_time_step == -1: 
-        lower_bound = (len(df)*start_percentile)//100
-        upper_bound = (len(df)*end_percentile)//100
-    # Treat the max time step as 100 percentile.
-    elif max_time_step < len(df):
-        lower_bound = (max_time_step*start_percentile)//100
-        upper_bound = (max_time_step*end_percentile)//100
+    if max_timestamp is None:
+        max_timestamp = timestamp_arr[-1]
+    lower_bound = np.searchsorted(timestamp_arr, max_timestamp * start_percentile/100)
+    upper_bound = np.searchsorted(timestamp_arr, max_timestamp * (end_percentile + 0.001)/100)
+    # if lower bound and upper bound are the same, add 1 to the upper bound
+    if lower_bound >= upper_bound:
+        upper_bound = lower_bound + 1
+    assert upper_bound <= timestamp_arr.size + 1
+    return int(lower_bound), int(upper_bound)
+
+    # TODO handle this case??
     # Add nan values to list until it is the length of the max time step. 
     # Treat that as 100 percentile.
-    else: 
-        data = data.append(pd.Series([np.nan for i in range(max_time_step - len(data))]),
-                           ignore_index=True)
-        lower_bound = (len(df)*start_percentile)//100
-        upper_bound = (len(df)*end_percentile)//100
+    #else: 
+    #    data = data.append(pd.Series([np.nan for i in range(max_time_step - len(data))]),
+    #                       ignore_index=True)
+    #    lower_bound = (len(df)*start_percentile)//100
+    #    upper_bound = (len(df)*end_percentile)//100
 
-    # if lower bound and upper bound are the same, add 1 to the upper bound
-    if lower_bound == upper_bound :
-        upper_bound = lower_bound + 1
-    
-    return lower_bound, upper_bound
 
 def all_id_combinations(cols, df, combos, ids=[]):
     if len(cols) == 0:
@@ -256,43 +274,45 @@ def add_new_feature(ts_df, args):
 
 # DATA DICTIONARY STUFF: PARSING FUNCTIONS AND DICT UPDATING
 def update_data_dict_collapse(args): 
-    with open(args.data_dict, 'r') as f:
-        data_dict = json.load(f)
-    f.close()
+    data_dict = args.data_dict
 
-    id_and_output_cols = parse_id_and_output_cols(args.data_dict)
+    id_cols = parse_id_cols(args.data_dict)
     feature_cols = parse_feature_cols(args.data_dict)
 
     new_fields = []
-    for name in id_and_output_cols:
+    for name in id_cols:
         for col in data_dict['fields']:
             if col['name'] == name: 
                 new_fields.append(col)
+    '''
     for op in args.collapse_features.split(' '):
         for name in feature_cols:
             for col in data_dict['fields']:
                 if col['name'] == name: 
                     new_dict = dict(col)
-                    new_dict['name'] = '{}_{}'.format(op, name)
+                    new_dict['name'] = '{}_{}'.format(name, op)
                     new_fields.append(new_dict)
-    if len(args.collapse_range_features) > 0: 
-        for op in args.collapse_range_features.split(' '):
-            for low, high in ast.literal_eval(args.range_pairs):
-                for name in feature_cols:
-                    for col in data_dict['fields']:
-                        if col['name'] == name: 
-                            new_dict = dict(col)
-                            new_dict['name'] = '{}_{}_to_{}_{}'.format(op, low, high, name)
-                            new_fields.append(new_dict)
+    '''
+    for op in args.collapse_range_features.split(' '):
+        for low, high in ast.literal_eval(args.range_pairs):
+            for name in feature_cols:
+                for col in data_dict['fields']:
+                    if col['name'] == name: 
+                        new_dict = dict(col)
+                        new_dict['name'] = '{}_{}_{}_to_{}'.format(name, op, low, high)
+                        new_fields.append(new_dict)
 
-    new_data_dict = dict()
-    new_data_dict['fields'] = new_fields
+    new_data_dict = copy.deepcopy(data_dict)
+    if 'schema' in new_data_dict:
+        new_data_dict['schema']['fields'] = new_fields
+        del new_data_dict['fields']
+    else:
+        new_data_dict['fields'] = new_fields
+
     return new_data_dict
 
 def update_data_dict_add_feature(args): 
-    with open(args.data_dict, 'r') as f:
-        data_dict = json.load(f)
-    f.close()
+    data_dict = args.data_dict
 
     new_fields = []
     for col in data_dict['fields']:
@@ -307,43 +327,39 @@ def update_data_dict_add_feature(args):
     new_data_dict['fields'] = new_fields
     return new_data_dict
 
-def parse_id_and_output_cols(data_dict_file):
+def parse_id_cols(data_dict):
     cols = []
-    with open(data_dict_file, 'r') as f:
-        data_dict = json.load(f)
-    f.close()
-
     for col in data_dict['fields']:
         if 'role' in col and (col['role'] == 'id' or 
-                              col['role'] == 'outcome' or 
-                              col['role'] == 'other'):
+                              col['role'] == 'key'):
             cols.append(col['name'])
     return cols
 
-def parse_feature_cols(data_dict_file):
-    non_time_cols = []
-    with open(data_dict_file, 'r') as f:
-        data_dict = json.load(f)
-    f.close()
-
+def parse_output_cols(data_dict):
+    cols = []
     for col in data_dict['fields']:
-        if 'role' in col and col['role'] == 'feature':
+        if 'role' in col and (col['role'] == 'outcome' or 
+                              col['role'] == 'output'):
+            cols.append(col['name'])
+    return cols
+
+def parse_feature_cols(data_dict):
+    non_time_cols = []
+    for col in data_dict['fields']:
+        if 'role' in col and col['role'] in ('feature', 'measurement', 'covariate'):
             non_time_cols.append(col['name'])
     return non_time_cols
 
-def parse_time_col(data_dict_file):
-#     time_cols = []
-    with open(data_dict_file, 'r') as f:
-        data_dict = json.load(f)
-    f.close()
-
+def parse_time_col(data_dict):
     for col in data_dict['fields']:
-        if 'name' in col and col['name'] == 'hours':
+        # TODO avoid hardcoding a column name
+        if (col['role'].count('time') or col['name'] == 'hours'):
             return col['name']
     
 
 def remove_col_names_from_list_if_not_in_df(col_list, df):
     ''' Remove column names from provided list if not in dataframe
+
     Examples
     --------
     >>> df = pd.DataFrame(np.eye(3), columns=['a', 'b', 'c'])
@@ -396,8 +412,8 @@ def collapse_count_np(data_np, lower_bound, upper_bound, **kwargs):
 def collapse_present_np(data_np, lower_bound, upper_bound, **kwargs):
     return (~np.isnan(data_np[lower_bound:upper_bound,:])).any(axis=0)
 
-def collapse_slope_np(data_np, lower_bound, upper_bound, **kwargs): 
-    percentile_t_np = data_np[lower_bound:upper_bound, kwargs['time_column_index']]
+def collapse_slope_np(data_np, lower_bound, upper_bound, cur_timestamp_arr=None, **kwargs): 
+    percentile_t_np = cur_timestamp_arr[lower_bound:upper_bound]
     percentile_data_np = data_np[lower_bound:upper_bound,:]
     n_cols = percentile_data_np.shape[1]
     collapsed_slope = np.zeros(n_cols)
