@@ -51,7 +51,8 @@ rule train_and_evaluate_classifier:
             --validation_size 0.1 \
             --n_splits 3 \
             --key_cols_to_group_when_splitting subject_id \
-            --scoring balanced_accuracy \
+            --scoring roc_auc \
+            --threshold_scoring balanced_accuracy \
             --grid_C 1e-9 1e-7 1e-5 0.001 0.01 0.1 1 10 100 1000 \
             --class_weight balanced \
         '''.replace("{{RESULTS_PATH}}", RESULTS_PATH)

@@ -1,44 +1,31 @@
-# eval_classifier.py
+'''
+Train and evaluate binary classifier
 
-# Input:  First argument: a classifier type ('logistic', 'dtree', 'rforest',
-#             'mlp')
-#         --ts_dir: (required) a directory containing time-series files
-#             train.csv and test.csv
-#         --data_dict: (required) data dictionary for the above files
-#         --static_files: joins the indicated static files to the time-series
-#             data on all columns in each static file of role 'id'
-#         --validation_size: fraction of the training data to be used for
-#             model selection (default 0.1)
-#         --scoring: scoring method to determine best hyperparameters, passed
-#             directly to GridSearchCV as 'scoring' parameter
-#         --thresholds: list of threshold values to be tested; classifier must
-#             support a 'threshold' parameter
-#         --threshold_scoring: scoring method to determine best threshold;
-#             default is 'balanced_accuracy'
-#         - Arguments starting with '--grid_' specify the hyperparameter values
-#           to be tested as a list following the hyperparameter name: for
-#           example, "--grid_C 0.1 1 10". These arguments should go at the end.
-#           They must be implemented for individual classifiers.
-#         - Any other arguments are passed through to the classifier.
-#
-#         Example (with TS files in src directory):
-            # python eval_classifier.py logistic
-            #     --ts_dir .
-            #     --data_dict transformed.json
-            #     --static_files ../datasets/eeg/eeg_static.csv
-            #     --validation_size 0.1
-            #     --scoring roc_auc
-            #     --max_iter 100
-            #     --grid_C 0.1 1 10
-            #     --thresholds -1 0 1
-            #     --threshold_scoring balanced_accuracy
-#
-# Output: An HTML report of the results, "report.html", in the current
-#         working directory
+Produce a human-readable HTML report with performance plots and metrics
 
-# TODO: allow specifying classifer settings implemented for grid search without
-#       applying to grid search. For example, '--C 1' instead of '--grid_C 1'.
-# TODO: clean up this file
+Usage
+-----
+```
+python eval_classifier.py {classifier_name} --output_dir /path/ \
+    {clf_specific_kwargs} {data_kwargs} {protocol_kwargs}
+```
+
+For detailed help message:
+```
+python eval_classifier.py {classifier_name} --help
+```
+
+Will produce
+
+Examples
+--------
+
+TODO
+----
+* Save classifiers in reproducible format on disk (ONNX??)
+* Add reporting for calibration (and perhaps adjustment to improve calibration)
+
+'''
 
 import argparse
 import ast
@@ -65,13 +52,29 @@ from sklearn.metrics import (accuracy_score, balanced_accuracy_score, f1_score,
 from sklearn.model_selection import GridSearchCV, ShuffleSplit
 
 from split_dataset import Splitter
+from utils_scoring import (THRESHOLD_SCORING_OPTIONS, calc_score_for_binary_predictions)
 
 def get_sorted_list_of_kwargs_specific_to_group_parser(group_parser):
     keys = [a.option_strings[0].replace('--', '') for a in group_parser._group_actions]
     return [k for k in sorted(keys)]
 
+DEFAULT_PROJECT_REPO = os.path.sep.join(__file__.split(os.path.sep)[:-2])
+PROJECT_REPO_DIR = os.path.abspath(
+    os.environ.get('PROJECT_REPO_DIR', DEFAULT_PROJECT_REPO))
 
-TEMPLATE_HTML_PATH = os.path.join(os.environ['PROJECT_REPO_DIR'], 'src', 'template.html')
+default_json_dir = os.path.join(PROJECT_REPO_DIR, 'src', 'default_hyperparameters')
+if not os.path.exists(default_json_dir):
+    raise ValueError("Could not read default hyperparameters from file")
+
+DEFAULT_SETTINGS_JSON_FILES = glob.glob(os.path.join(default_json_dir, '*.json'))
+if len(DEFAULT_SETTINGS_JSON_FILES) == 0:
+    raise ValueError("Could not read default hyperparameters from file")
+
+try:
+    TEMPLATE_HTML_PATH = os.path.join(PROJECT_REPO_DIR, 'src', 'template.html')
+except KeyError:
+    TEMPLATE_HTML_PATH = None
+
 
 if __name__ == '__main__':
 
@@ -80,8 +83,7 @@ if __name__ == '__main__':
     subparsers = parser.add_subparsers(title="clf_name", dest="clf_name")
 
     subparsers_by_name = dict()
-    json_list = glob.glob(os.path.join(os.environ['PROJECT_REPO_DIR'], 'src', 'default_hyperparameters', '*.json'))
-    for json_file in json_list:
+    for json_file in DEFAULT_SETTINGS_JSON_FILES:
         with open(json_file, 'r') as f:
             defaults = json.load(f)
         clf_name = os.path.basename(json_file).split('.')[0]
@@ -152,12 +154,13 @@ if __name__ == '__main__':
         protocol_group = p.add_argument_group('protocol')
         protocol_group.add_argument('--outcome_col_name', type=str, required=False)
         protocol_group.add_argument('--validation_size', type=float, default=0.1)
-        protocol_group.add_argument('--key_cols_to_group_when_splitting', type=str, default=None, nargs='*')
+        protocol_group.add_argument('--key_cols_to_group_when_splitting', type=str,
+            default=None, nargs='*')
         protocol_group.add_argument('--scoring', type=str, default='roc_auc_score')
         protocol_group.add_argument('--random_seed', type=int, default=8675309)
         protocol_group.add_argument('--n_splits', type=int, default=1)
-        protocol_group.add_argument('--grid_thresholds', type=float, nargs='*', default=None)
-        protocol_group.add_argument('--threshold_scoring', type=str, default='balanced_accuracy')
+        protocol_group.add_argument('--threshold_scoring', type=str,
+            default=None, choices=[None, 'None'] + THRESHOLD_SCORING_OPTIONS)
         #p.add_argument('-a-ts_dir', required=True)
         #p.add_argument('--data_dict', required=True)
         #p.add_argument('--static_files', nargs='*')
@@ -168,7 +171,6 @@ if __name__ == '__main__':
     # key[5:] strips the 'grid_' prefix from the argument
     param_grid = {key[5:]: vars(args)[key] for key in vars(args)
                   if key.startswith('grid_')}
-    thresh_grid = param_grid.pop('thresholds')
     # Parse unspecified arguments to be passed through to the classifier
 
     def auto_convert_str(x):
@@ -246,10 +248,10 @@ if __name__ == '__main__':
             outcome_col_name))
 
     # Prepare data for classification
-    x_train = df_by_split['train'][feature_cols]
+    x_train = df_by_split['train'][feature_cols].values
     y_train = np.ravel(df_by_split['train'][outcome_col_name])
 
-    x_test = df_by_split['test'][feature_cols]
+    x_test = df_by_split['test'][feature_cols].values
     y_test = np.ravel(df_by_split['test'][outcome_col_name])
     is_multiclass = len(np.unique(y_train)) > 2
 
@@ -274,31 +276,91 @@ if __name__ == '__main__':
     # Create classifier object
     clf = args.clf_constructor(**fixed_args, **passthrough_args)
 
-    # Perform grid search
+    # Perform hyper_searcher search
     splitter = Splitter(size=args.validation_size, random_state=args.random_seed, n_splits=args.n_splits, cols_to_group=args.key_cols_to_group_when_splitting)
-    grid = GridSearchCV(clf, param_grid,
+    hyper_searcher = GridSearchCV(clf, param_grid,
         scoring=args.scoring, cv=splitter, refit=True, return_train_score=True)
     key_train = splitter.make_groups_from_df(df_by_split['train'][key_cols])
-    grid.fit(x_train, y_train, groups=key_train)
+    hyper_searcher.fit(x_train, y_train, groups=key_train)
 
-    # Pretty tables for results of grid search
-    cv_perf_df = pd.DataFrame(grid.cv_results_)
+    # Pretty tables for results of hyper_searcher search
+    cv_perf_df = pd.DataFrame(hyper_searcher.cv_results_)
     tr_split_keys = ['mean_train_score'] + ['split%d_train_score' % a for a in range(args.n_splits)]
     te_split_keys = ['mean_test_score'] + ['split%d_test_score' % a for a in range(args.n_splits)]
     cv_tr_perf_df = cv_perf_df[['params'] + tr_split_keys].copy()
     cv_te_perf_df = cv_perf_df[['params'] + te_split_keys].copy()
 
     # Threshold search
-    if args.grid_thresholds is not None:
-        thr_grid = GridSearchCV(
-            ThresholdClassifier(grid.best_estimator_),
-            {'threshold': thresh_grid},
-            scoring=args.threshold_scoring,
-            cv=splitter)
-        thr_grid.fit(x_train, y_train, groups=key_train)
+    # TODO make cast wider net at nearby settings to the best estimator??
+    if str(args.threshold_scoring) != 'None':
+        # hyper_searcher search on validation over possible threshold values
+        # Make sure all candidates at least provide
+        # one instance of each class (positive and negative)
+        yproba_class1_vals = list()
+        for tr_inds, va_inds in splitter.split(x_train, groups=key_train):
+            x_valid = x_train[va_inds]
+            yproba_valid = hyper_searcher.best_estimator_.predict_proba(x_valid)[:,1]
+            yproba_class1_vals.extend(yproba_valid)
+
+        unique_yproba_vals = np.unique(yproba_class1_vals)
+        if unique_yproba_vals.shape[0] == 1:
+            nontrivial_thr_vals = unique_yproba_vals
+        else:
+            # Try all thr values that would give at least one pos and one neg decision
+            nontrivial_thr_vals = np.unique(unique_yproba_vals)[1:-1]
+
+        if nontrivial_thr_vals.size > 100:
+            # Too many for possible thr values for typical compute power
+            # Cover the space of typical computed values well
+            # But also include some extreme values
+            dense_thr_grid = np.linspace(
+                np.percentile(nontrivial_thr_vals, 5),
+                np.percentile(nontrivial_thr_vals, 95),
+                90)
+            extreme_thr_grid = np.linspace(
+                nontrivial_thr_vals[0],
+                nontrivial_thr_vals[-1],
+                10)
+            thr_grid = np.unique(np.hstack([extreme_thr_grid, dense_thr_grid]))
+        else:
+            # Seems feasible to just look at all possible thresholds
+            # that give distinct operating points.
+            thr_grid = nontrivial_thr_vals
+
+        print("Searching thresholds...")
+        if thr_grid.shape[0] > 3:
+            print("thr_grid = %.4f, %.4f, %.4f ... %.4f, %.4f" % (
+                thr_grid[0], thr_grid[1], thr_grid[2], thr_grid[-2], thr_grid[-1]))
+
+        ## TODO find better way to do this fast
+        # So we dont need to call fit at each thr value
+        score_grid_SG = np.zeros((splitter.n_splits, thr_grid.size))
+        for ss, (tr_inds, va_inds) in enumerate(
+                splitter.split(x_train, y_train, groups=key_train)):
+            x_tr = x_train[tr_inds].copy()
+            y_tr = y_train[tr_inds].copy()
+            x_va = x_train[va_inds]
+            y_va = y_train[va_inds]
+
+            tmp_clf = ThresholdClassifier(hyper_searcher.best_estimator_)
+            tmp_clf.fit(x_tr, y_tr)
+
+            for gg, thr in enumerate(thr_grid):
+                tmp_clf = tmp_clf.set_params(threshold=thr)
+                yhat = tmp_clf.predict(x_va)
+                score_grid_SG[ss, gg] = calc_score_for_binary_predictions(y_va, yhat, scoring=args.threshold_scoring)
+        ## TODO read off best average score
+        avg_score_G = np.mean(score_grid_SG, axis=0)
+        gg = np.argmax(avg_score_G)
+
+        # Keep best scoring estimator 
+        best_thr = thr_grid[gg]
+        print("Chosen Threshold: %.4f" % best_thr)
+        best_clf = ThresholdClassifier(hyper_searcher.best_estimator_, threshold=best_thr)
+    else:
+        best_clf = hyper_searcher.best_estimator_
 
     # Evaluation
-    best_clf = grid.best_estimator_
     row_dict_list = list()
     extra_list = list()
     for split_name, x, y in [
@@ -365,9 +427,10 @@ if __name__ == '__main__':
     pd.set_option('precision', 4)
 
     with tag('html'):
-        with open(TEMPLATE_HTML_PATH, 'r') as f:
-            for line in f.readlines():
-                doc.asis(line)
+        if os.path.exists(TEMPLATE_HTML_PATH):
+            with open(TEMPLATE_HTML_PATH, 'r') as f:
+                for line in f.readlines():
+                    doc.asis(line)
 
         with tag('div', klass="container-fluid text-center"):
             with tag('div', klass='row content'):
@@ -402,8 +465,8 @@ if __name__ == '__main__':
                             text(x, ': ', str(vars(args)[x]), '\n')
 
                     with tag('h3'):
-                        with tag('a', name='results-grid-search'):
-                            text('Grid Search results')
+                        with tag('a', name='results-hyper_searcher-search'):
+                            text('hyper_searcher Search results')
                     with tag('h4'):
                         text('Train Scores across splits')
 
@@ -416,7 +479,7 @@ if __name__ == '__main__':
                     with tag('h3'):
                         text('Hyperparameters of best model')
                     with tag('pre'):
-                        text(str(grid.best_estimator_))
+                        text(str(best_clf))
 
                     with tag('h3'):
                         with tag('a', name='results-data-summary'):

@@ -17,6 +17,7 @@ import json
 import pandas as pd
 import os
 import numpy as np
+import copy
 
 from sklearn.model_selection import GroupShuffleSplit
 
@@ -25,7 +26,10 @@ class Splitter:
         self.n_splits = n_splits
         self.size = size
         self.cols_to_group = cols_to_group
-        self.random_state = np.random.RandomState(random_state)
+        if hasattr(random_state, 'rand'):
+            self.random_state = random_state
+        else:
+            self.random_state = np.random.RandomState(int(random_state))
 
     def make_groups_from_df(self, data_df):
         grp = data_df[self.cols_to_group]
@@ -33,16 +37,15 @@ class Splitter:
         return grp
 
     def split(self, X, y=None, groups=None):
-        gss1 = GroupShuffleSplit(random_state=self.random_state, test_size=self.size, n_splits=self.n_splits)
+        gss1 = GroupShuffleSplit(random_state=copy.deepcopy(self.random_state), test_size=self.size, n_splits=self.n_splits)
         for tr_inds, te_inds in gss1.split(X, y=y, groups=groups):
             yield tr_inds, te_inds
 
     def get_n_splits(self, X, y=None, groups=None):
         return self.n_splits
 
-
 def split_dataframe_by_keys(data_df=None, size=0, random_state=0, cols_to_group=None):
-    gss1 = Splitter(n_splits=1, random_state=args.seed, size=size, cols_to_group=cols_to_group)
+    gss1 = Splitter(n_splits=1, size=size, random_state=random_state, cols_to_group=cols_to_group)
     for a, b in gss1.split(df, groups=gss1.make_groups_from_df(data_df)):
         train_df = df.iloc[a].copy()
         test_df = df.iloc[b].copy()
