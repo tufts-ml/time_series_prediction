@@ -1,5 +1,5 @@
 '''
-Train collapsed feature classifier on EEG binary seizure/not dataset
+Produce a collapsed feature representation on EEG binary seizure/not dataset
 
 
 '''
