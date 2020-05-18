@@ -1,0 +1,117 @@
+# Default environment variables
+# Can override with local env variables
+
+EEG_VERSION = os.environ.get('EEG_VERSION', 'v20200501')
+PROJECT_REPO_DIR = os.environ.get("PROJECT_REPO_DIR", os.path.abspath("../../"))
+PROJECT_SPEC_UTILS_DIR = os.path.join(PROJECT_REPO_DIR, 'scripts', 'utils_specs')
+PROJECT_CONDA_ENV_YAML = os.path.join(PROJECT_REPO_DIR, "ts_pred.yml")
+
+EEG_DATASET_TOP_PATH = os.path.join(PROJECT_REPO_DIR, "datasets/eeg/")
+EEG_DATASET_RAW_PATH = os.path.join(EEG_DATASET_TOP_PATH, 'raw', EEG_VERSION)
+EEG_DATASET_STD_PATH = os.path.join(EEG_DATASET_TOP_PATH, 'std', EEG_VERSION)
+
+configfile: "config.json"
+
+rule all:
+    input:
+        raw_data_csv=os.path.join(EEG_DATASET_RAW_PATH, 'data.csv'),
+        x_std_data_csv=os.path.join(EEG_DATASET_STD_PATH, 'features_per_tstep.csv'),
+        y_std_data_csv=os.path.join(EEG_DATASET_STD_PATH, 'outcomes_per_seq.csv'),
+        spec_jsons=[os.path.join(
+                EEG_DATASET_STD_PATH,
+                config['output_json_path_pattern'].replace(
+                    '{{sheet_name}}', sname))
+                for sname in config['spec_sheet_name_list']]
+
+
+rule download_raw_dataset:
+    input:
+        PROJECT_CONDA_ENV_YAML
+
+    output:
+        raw_data_csv=os.path.join(EEG_DATASET_RAW_PATH, 'data.csv')
+
+    conda:
+        PROJECT_CONDA_ENV_YAML
+
+    shell:
+        '''
+        mkdir -p {EEG_DATASET_RAW_PATH} && \
+        wget {raw_data_url} --directory-prefix {EEG_DATASET_RAW_PATH};
+        '''.format(EEG_DATASET_RAW_PATH=EEG_DATASET_RAW_PATH, raw_data_url=config['raw_data_url'])
+
+rule build_std_dataset_from_raw:
+    input:
+        raw_data_csv=os.path.join(EEG_DATASET_RAW_PATH, 'data.csv'),
+        script=os.path.join(PROJECT_REPO_DIR, 'scripts/eeg/src/build_std_eeg_dataset_from_raw.py')
+
+    output:
+        x_std_data_csv=os.path.join(EEG_DATASET_STD_PATH, 'features_per_tstep.csv'),
+        y_std_data_csv=os.path.join(EEG_DATASET_STD_PATH, 'outcomes_per_seq.csv')
+
+    conda:
+        PROJECT_CONDA_ENV_YAML
+
+    shell:
+        '''
+        mkdir -p {EEG_DATASET_STD_PATH} && \
+        python -u {{input.script}} \
+            --input_csv_path {{input.raw_data_csv}} \
+            --output_sensors_ts_csv_path {{output.x_std_data_csv}} \
+            --output_labels_static_csv_path {{output.y_std_data_csv}} \
+        '''.format(EEG_DATASET_STD_PATH=EEG_DATASET_STD_PATH)
+
+
+# Download google sheet as CSV
+rule download_spec_from_gsheet_as_csv:
+    input:
+        download_script=os.path.expandvars(os.path.join(PROJECT_REPO_DIR, 'scripts/utils_specs/download_spec_csv_from_gsheet.py')),
+        config_path='config.json'        
+
+    output:
+        spec_csvs=[os.path.join(
+                EEG_DATASET_STD_PATH,
+                config['output_csv_path_pattern'].replace(
+                    '{{sheet_name}}', sname))
+                for sname in config['spec_sheet_name_list']]
+
+    conda:
+        PROJECT_CONDA_ENV_YAML
+
+    shell:
+        '''
+        python {{input.download_script}} \
+            --config_json_path {{input.config_path}} \
+            --output_dir {output_dir} \
+        '''.format(output_dir=EEG_DATASET_STD_PATH)
+
+rule build_spec_json_from_csv:
+    input:
+        convert_script=os.path.expandvars(os.path.join(PROJECT_SPEC_UTILS_DIR, 'convert_spec_csv_to_json.py')),
+        sheet_template_json_path=os.path.expandvars(os.path.join(PROJECT_SPEC_UTILS_DIR, 'sheet_template.json')),
+        row_template_json_path=os.path.expandvars(os.path.join(PROJECT_SPEC_UTILS_DIR, 'row_template.json')),
+        config_json_path='config.json',
+        spec_csvs=[os.path.join(
+                EEG_DATASET_STD_PATH,
+                config['output_csv_path_pattern'].replace(
+                    '{{sheet_name}}', sname))
+                for sname in config['spec_sheet_name_list']]
+
+    output:
+        spec_jsons=[os.path.join(
+                EEG_DATASET_STD_PATH,
+                config['output_json_path_pattern'].replace(
+                    '{{sheet_name}}', sname))
+                for sname in config['spec_sheet_name_list']]
+
+    conda:
+        PROJECT_CONDA_ENV_YAML
+
+    shell:
+        '''
+        python {{input.convert_script}} \
+            --config_json_path {{input.config_json_path}} \
+            --sheet_template_json {{input.sheet_template_json_path}} \
+            --row_template_json {{input.row_template_json_path}} \
+            --output_dir {output_dir}
+        '''.format(output_dir=EEG_DATASET_STD_PATH)

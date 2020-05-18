@@ -1,0 +1,8 @@
+{
+	"clf_constructor": "sklearn.linear_model.LogisticRegression",
+    "class_weight": "balanced",
+    "solver": "lbfgs",
+    "C": "1.0",
+    "penalty": "l2",
+    "grid_C": [0.001, 0.01, 0.1, 1.0, 10.0, 100.0, 1000.0]
+}

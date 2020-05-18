@@ -15,47 +15,81 @@
 import argparse
 import json
 import pandas as pd
-from sklearn.model_selection import GroupShuffleSplit
 import os
+import numpy as np
+import copy
 
-# Parse command line arguments
-parser = argparse.ArgumentParser()
-parser.add_argument('--input', required=True)
-parser.add_argument('--data_dict', required=True)
-parser.add_argument('--test_size', required=True, type=float)
-parser.add_argument('--output_dir', required=True)
-parser.add_argument('--group_cols', nargs='*', default=[None])
-parser.add_argument('--seed', required=False, default=20190206)
-args = parser.parse_args()
+from sklearn.model_selection import GroupShuffleSplit
 
-# Import data
-df = pd.read_csv(args.input)
-data_dict = json.load(open(args.data_dict))
+class Splitter:
+    def __init__(self, n_splits=1, size=0, random_state=0, cols_to_group=None):
+        self.n_splits = n_splits
+        self.size = size
+        self.cols_to_group = cols_to_group
+        if hasattr(random_state, 'rand'):
+            self.random_state = random_state
+        else:
+            self.random_state = np.random.RandomState(int(random_state))
 
-# Split dataset
-train_test = None
-train = None
-test = None
-valid = None
-gss1 = GroupShuffleSplit(n_splits=1, random_state=args.seed, 
-                         test_size=args.test_size)
-if len(args.group_cols) == 0 or args.group_cols[0] is not None:
-    group_cols = args.group_cols
-elif args.group_cols[0] is None:
-    group_cols = [c['name'] for c in data_dict['fields']
-                  if c['role'] == 'id' and c['name'] in df.columns]
-grp = df[group_cols]
-grp = [' '.join(row) for row in grp.astype(str).values]
-for a, b in gss1.split(df, groups=grp):
-    train = df.iloc[a]
-    test = df.iloc[b]
+    def make_groups_from_df(self, data_df):
+        grp = data_df[self.cols_to_group]
+        grp = [' '.join(row) for row in grp.astype(str).values]
+        return grp
 
-# Output data
-fdir_train_test = args.output_dir
+    def split(self, X, y=None, groups=None):
+        gss1 = GroupShuffleSplit(random_state=copy.deepcopy(self.random_state), test_size=self.size, n_splits=self.n_splits)
+        for tr_inds, te_inds in gss1.split(X, y=y, groups=groups):
+            yield tr_inds, te_inds
 
-if not os.path.exists(fdir_train_test):
-    os.mkdir(fdir_train_test)
+    def get_n_splits(self, X, y=None, groups=None):
+        return self.n_splits
+
+def split_dataframe_by_keys(data_df=None, size=0, random_state=0, cols_to_group=None):
+    gss1 = Splitter(n_splits=1, size=size, random_state=random_state, cols_to_group=cols_to_group)
+    for a, b in gss1.split(df, groups=gss1.make_groups_from_df(data_df)):
+        train_df = df.iloc[a].copy()
+        test_df = df.iloc[b].copy()
+    return train_df, test_df
 
 
-train.to_csv(fdir_train_test + '/train.csv', index=False)
-test.to_csv(fdir_train_test + '/test.csv', index=False)
+if __name__ == '__main__':
+    # Parse command line arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--input', required=True)
+    parser.add_argument('--data_dict', required=True)
+    parser.add_argument('--test_size', required=True, type=float)
+    parser.add_argument('--output_dir', default=None)
+    parser.add_argument('--train_csv_filename', default='train.csv')
+    parser.add_argument('--test_csv_filename', default='test.csv')
+    parser.add_argument('--group_cols', nargs='*', default=[None])
+    parser.add_argument('--seed', required=False, default=20190206)
+    args = parser.parse_args()
+
+    # Import data
+    df = pd.read_csv(args.input)
+    data_dict = json.load(open(args.data_dict))
+
+    # Split dataset
+    if len(args.group_cols) == 0 or args.group_cols[0] is not None:
+        group_cols = args.group_cols
+    elif args.group_cols[0] is None:
+        try:
+            fields = data_dict['fields']
+        except KeyError:
+            fields = data_dict['schema']['fields']
+        group_cols = [c['name'] for c in fields
+                      if c['role'] in ('id', 'key') and c['name'] in df.columns]
+
+    train_df, test_df = split_dataframe_by_keys(
+        df, cols_to_group=group_cols, size=args.test_size, random_state=args.seed)
+
+    # Write split data frames to CSV
+    fdir_train_test = args.output_dir
+    if fdir_train_test is not None:
+        if not os.path.exists(fdir_train_test):
+            os.mkdir(fdir_train_test)
+        args.train_csv_filename = os.path.join(fdir_train_test, args.train_csv_filename)
+        args.test_csv_filename = os.path.join(fdir_train_test, args.test_csv_filename)
+
+    train_df.to_csv(args.train_csv_filename, index=False)
+    test_df.to_csv(args.test_csv_filename, index=False)
