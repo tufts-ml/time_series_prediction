@@ -1,0 +1,12 @@
+ {
+    "name": "{{ColumnName}}",
+    "type": "{{Type}}",
+    "role": "{{Role}}",
+    "description": "{{Description}}",
+    "units": "{{Units}}",
+    "constraints" : {
+        "required": "{{Required}}",
+        "minimum": "{{Minimum}}",
+        "maximum": "{{Maximum}}"
+    }
+ }
