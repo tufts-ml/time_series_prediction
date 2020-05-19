@@ -3,6 +3,9 @@
 **/*.json
 **/*.txt
 
+**/.snakemake/
+**/.snakemake*
+
 # But not these files...
 !.gitignore
 

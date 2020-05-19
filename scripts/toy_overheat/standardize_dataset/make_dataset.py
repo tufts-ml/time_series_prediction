@@ -3,7 +3,7 @@ Create toy data
 
 
 '''
-
+import time
 import numpy as np
 import pandas as pd
 from scipy.stats import rv_discrete
@@ -143,12 +143,12 @@ if __name__ == "__main__":
     # If the sequences have a transition from A to B in any channel label it as 1 
     state_sequences_TN = np.nan + np.zeros([Tmax, Nmax])
     y = -1 * np.ones(Nmax)
+    start_time_sec = time.time()
     for j in range(Nmax):
         T = np.random.randint(low=Tmin, high=Tmax+1)
         state_sequences_TN[:T,j] = generate_state_sequence(T, states, init_proba_K, 
                                                           trans_proba_KK, 
                                                           duration)
-
 
         # fp : fenceposts for current sequence
         fp = np.hstack([0, np.flatnonzero(np.diff(state_sequences_TN[:T,j]))+1])
@@ -171,11 +171,15 @@ if __name__ == "__main__":
 
         has_enough_pos = np.sum(y == 1) >= args.min_num_sequences_per_label
         has_enough_neg = np.sum(y == 0) >= args.min_num_sequences_per_label
+
+
+        if ((n_pos + n_neg) % 50 == 0) and y[j] >= 0:
+            print("Generated %5d pos and %5d neg sequences after %6.1f sec" % (
+                n_pos, n_neg, time.time() - start_time_sec))
+
         if has_enough_neg and has_enough_pos:
             break
 
-    print(np.sum(y == 1), 'positive sequences')
-    print(np.sum(y == 0), 'negative sequences')
     if not (has_enough_pos and has_enough_neg):
         raise ValueError("Did not generate enough positive and negative labeled sequences")
     
@@ -196,12 +200,13 @@ if __name__ == "__main__":
         tidy_df = pd.DataFrame(data_DTN[:, :, n][:, mask_T].T, columns=feature_columns)
         tidy_df['timestep'] = np.arange(np.sum(mask_T))
         tidy_df['sequence_id'] = n
-        tidy_df['did_overheat_binary_label'] = y[n]
+        tidy_df['did_overheat_binary_label'] = int(y[n])
         seq_list.append(tidy_df)
 
     tidy_df = pd.concat(seq_list)
     tidy_pertstep_df = tidy_df[['sequence_id', 'timestep'] + feature_columns].copy()
-    tidy_perseq_df = tidy_df[['sequence_id', 'did_overheat_binary_label']].copy()
+    tidy_perseq_df = tidy_df[['sequence_id', 'did_overheat_binary_label']]
+    tidy_perseq_df = tidy_perseq_df.drop_duplicates().copy()
 
     tidy_pertstep_df.to_csv(
         os.path.join(args.output_dir, 'features_per_tstep.csv'),
@@ -209,6 +214,13 @@ if __name__ == "__main__":
     tidy_perseq_df.to_csv(
         os.path.join(args.output_dir, 'outcomes_per_seq.csv'),
         index=False)
+
+    print("Wrote features to:")
+    print(
+        os.path.join(args.output_dir, 'features_per_tstep.csv'))
+    print("Wrote outcomes to:")
+    print(
+        os.path.join(args.output_dir, 'outcomes_per_seq.csv'))
 
     '''
     # create train test split
@@ -242,17 +254,12 @@ if __name__ == "__main__":
     # plot time series sequence of example with label 0
     axs[0].plot(range(Tmax), data_DTN[:,:,inds_label_0[0]].T, '-.')
     axs[0].set_ylim([-8,8])
-    axs[0].set_ylabel('Time series : x(t)', fontsize = fontsize)
+    axs[0].set_ylabel('Temperature (deg C)', fontsize = fontsize)
 
     # plot time series sequence of example with label 0
     axs[1].plot(range(Tmax), data_DTN[:,:,inds_label_1[0]].T, '-.')
     axs[1].set_ylim([-8,8])
-    axs[1].set_ylabel('Time series : x(t)', fontsize = fontsize)
-    axs[1].set_xlabel('Time (t)', fontsize = fontsize)
-
-    plt.show()
-
-    '''
-    
-    f.savefig(fdir_train_test + '/simulated_data.png')
-    '''
+    axs[1].set_ylabel('Temperature (deg C)', fontsize=fontsize)
+    axs[1].set_xlabel('Timestep (t)', fontsize = fontsize)
+   
+    f.savefig(os.path.join(args.output_dir, 'example_pos_and_neg_sequences.png'))

@@ -1,0 +1,10 @@
+{
+    "raw_data_url": "http://archive.ics.uci.edu/ml/machine-learning-databases/00388/data.csv",
+    "spec_gsheet_url_pattern": "https://docs.google.com/spreadsheets/d/{{spec_gsheet_key}}/export?format=csv&gid={{gid}}",
+    "spec_gsheet_key": "1BVtSa7yU3uE-sWP800hT0REOe0npd2KY39tuDLIBlSY",
+    "spec_sheet_name_list": ["FeaturesPerTimestep", "OutcomesPerSequence"],
+    "spec_csv_filename_list": ["features_per_tstep.csv", "outcomes_per_seq.csv"],
+    "spec_gid_list": ["0", "730384488"],
+    "output_csv_path_pattern": ".Spec_{{sheet_name}}.csv",
+    "output_json_path_pattern": "Spec_{{sheet_name}}.json"
+}

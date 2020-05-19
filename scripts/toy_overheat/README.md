@@ -1,21 +1,48 @@
-EEG dataset
+Toy Overheat dataset
 
 # Prereqs
 
 It's assumed you have the `tspred_env` conda environment installed locally.
 
-For detailed instructions, see `../setup_env/README.md`.
 
 # Workflow
 
-You can use the given 'Makefile' to complete every step of the required pipeline. The associated commands are:
+You can use the provided "*.smk" files or "Snakefile" files to complete every step of the required pipeline.
 
+
+### Prepare standardized dataset
+
+```console
+$ cd standardize_dataset/
+$ snakemake --use-conda --cores 1 all
 ```
-help                         Show help messages for each command
-download_raw_dataset         Download dataset from UCI repository
-build_std_dataset_from_raw   Build standardized flat file time-series dataset
-align_to_grid                Build time-series aligned to regular intervals
-normalize_features           Build time series with normalized feature cols
-collapse_ts                  Collapse time-series into fixed-size feature vector
-split_into_train_and_test    Split into train and test
+
+**Expected output**
+
+CSV data files and JSON data-dictionary files on disk.
+
+* datasets/toy_overheat/v20200515/features_per_tstep.csv
+* datasets/toy_overheat/v20200515/Spec_FeaturesPerTimestep.json
+
+* datasets/toy_overheat/v20200515/outcomes_per_seq.csv
+* datasets/toy_overheat/v20200515/Spec_OutcomesPerSequence.csv
+
+
+### Prepare collapsed features representation, then train LR and RF models
+
+```console
+$ cd predictions_collapsed/
+$ snakemake --use-conda --cores 4 -s make_collapsed_dataset_and_split_train_test.smk all
+$ snakemake --use-conda --cores 4 -s train_logistic_regression.smk all
+$ snakemake --use-conda --cores 4 -s train_random_forest.smk all
 ```
+
+**Expected output**
+
+HTML reports on binary classifier performance
+
+Point your browser to:
+
+* </tmp/results/toy_overheat/v20200515/split-by=sequence_id/collapsed_features_per_sequence/logistic_regression/report.html>
+* </tmp/results/toy_overheat/v20200515/split-by=sequence_id/collapsed_features_per_sequence/random_forest/report.html>
+
