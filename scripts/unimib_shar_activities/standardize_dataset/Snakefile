@@ -1,5 +1,5 @@
 '''
-Reproducible workflow for building toy dataset
+Reproducible workflow for building EEG dataset
 
 Usage
 -----
@@ -16,7 +16,7 @@ PROJECT_REPO_DIR = os.environ.get("PROJECT_REPO_DIR", os.path.abspath("../../../
 PROJECT_SPEC_UTILS_DIR = os.path.join(PROJECT_REPO_DIR, 'scripts', 'utils_specs')
 PROJECT_CONDA_ENV_YAML = os.path.join(PROJECT_REPO_DIR, "ts_pred.yml")
 
-DATASET_SCRIPTS_ROOT = os.path.join(PROJECT_REPO_DIR, 'scripts', 'toy_overheat')
+DATASET_SCRIPTS_ROOT = os.path.join(PROJECT_REPO_DIR, 'scripts', 'unimib_shar_activities')
 
 # Dataset config file
 # Input/output paths, etc.
@@ -44,54 +44,65 @@ print(DATASET_STD_PATH)
 with open('spec_config.json', 'r') as f:
     SPEC_CONFIG = json.load(f)
 
+DATASET_RAW_PATH = os.path.join(DATASET_PATH, 'raw')
 
 rule all:
     input:
-        x_std_data_csv=os.path.join(DATASET_STD_PATH, 'features_per_tstep.csv'),
-        y_std_data_csv=os.path.join(DATASET_STD_PATH, 'outcomes_per_seq.csv'),
+        raw_data_mat=os.path.join(DATASET_RAW_PATH, 'full_data.mat'),
+        x_std_metadata_csv=os.path.join(DATASET_STD_PATH, 'features_per_subject.csv'),
+        x_std_data_csv=os.path.join(DATASET_STD_PATH, 'features_per_timestep.csv'),
+        y_std_data_csv=os.path.join(DATASET_STD_PATH, 'outcomes_per_sequence.csv'),
         spec_jsons=[os.path.join(
                 DATASET_STD_PATH,
                 SPEC_CONFIG['output_json_path_pattern'].replace(
                     '{{sheet_name}}', sname))
                 for sname in SPEC_CONFIG['spec_sheet_name_list']]
 
-rule make_directory:
-    output:
-        mkdir_complete=touch(os.path.join(DATASET_STD_PATH, '.snakemake_directory_complete')),
 
-    params:
-        output_dir=DATASET_STD_PATH
-
-    conda:
-        PROJECT_CONDA_ENV_YAML
-
-    shell:
-        '''
-        mkdir -p {params.output_dir}
-        '''
-
-rule build_csv_dataset:
+rule unzip_raw_dataset:
     input:
-        output_dir=DATASET_STD_PATH,
-        script=os.path.join(DATASET_SCRIPTS_ROOT, 'standardize_dataset', 'make_dataset.py')
+        raw_zip_file=os.path.join(DATASET_RAW_PATH, 'UniMiB-SHAR.zip'),
+        conda_file=PROJECT_CONDA_ENV_YAML
 
     output:
-        x_std_data_csv=os.path.join(DATASET_STD_PATH, 'features_per_tstep.csv'),
-        y_std_data_csv=os.path.join(DATASET_STD_PATH, 'outcomes_per_seq.csv')
+        raw_data_csv=os.path.join(DATASET_RAW_PATH, 'full_data.mat')
 
     conda:
         PROJECT_CONDA_ENV_YAML
 
     shell:
         '''
-        python -u {input.script} \
-            --output_dir {input.output_dir} \
-            --min_num_sequences_per_label 200 \
-            --max_num_sequences_per_label 400 \
-            --Nmax 5000 \
-            --Tmin 100 \
-            --Tmax 200
+        cd {DATASET_RAW_PATH} \
+            && unzip UniMiB-SHAR.zip \
+            && mv UniMiB-SHAR/* ./ \
+            && rmdir UniMiB-SHAR/ \
+            && mv data/* ./ \
+            && rmdir data/ \
+            && echo "> DONE. MAT files exist {DATASET_RAW_PATH}/full_data.mat"; \
+        '''.format(DATASET_RAW_PATH=DATASET_RAW_PATH)
+
+rule build_std_dataset_from_raw:
+    input:
+        raw_mat_file=os.path.join(DATASET_RAW_PATH, 'full_data.mat'),
+        script=os.path.join(DATASET_SCRIPTS_ROOT, 'standardize_dataset', 'make_csv_dataset_from_raw.py')
+
+    output:
+        x_std_metadata_csv=os.path.join(DATASET_STD_PATH, 'features_per_subject.csv'),
+        x_std_data_csv=os.path.join(DATASET_STD_PATH, 'features_per_timestep.csv'),
+        y_std_data_csv=os.path.join(DATASET_STD_PATH, 'outcomes_per_sequence.csv')
+
+    conda:
+        PROJECT_CONDA_ENV_YAML
+
+    shell:
         '''
+        mkdir -p {DATASET_STD_PATH} && \
+        python -u {{input.script}} \
+            --dataset_path {DATASET_RAW_PATH} \
+            --output_sensors_ts_csv_path {{output.x_std_data_csv}} \
+            --output_metadata_for_each_ts_csv_path {{output.y_std_data_csv}} \
+            --output_metadata_for_each_subj_csv_path {{output.x_std_metadata_csv}}
+        '''.format(DATASET_STD_PATH=DATASET_STD_PATH, DATASET_RAW_PATH=DATASET_RAW_PATH)
 
 
 # Download google sheet as CSV
