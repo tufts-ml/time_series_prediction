@@ -60,10 +60,8 @@ class TidySequentialDataCSVLoader(object):
         else:
             self.max_seq_len = int(max_seq_len)
         
-#         from IPython import embed; embed()
         ## Parse y
         if y_label_type == 'per_tstep':
-#             y_P = per_tstep_csv_df[y_col_name].values.copy()
             y_P = pd.merge(per_tstep_csv_df, 
                            per_seq_csv_df[idx_col_names+[y_col_name]], 
                            on=idx_col_names, how='left')[y_col_name]

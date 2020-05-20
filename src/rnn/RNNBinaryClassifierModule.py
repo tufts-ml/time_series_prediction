@@ -49,9 +49,9 @@ class RNNBinaryClassifierModule(nn.Module):
         self.output = nn.Linear(n_hiddens, 2) # weights initialized as samples from uniform[-1,1]
         
         # initialize weights of the module as samples from N(0,1)
-#         nn_module = nn.Linear(n_hiddens,2)
-#         nn_module.apply(init_weights)
-#         self.output = nn_module
+        #         nn_module = nn.Linear(n_hiddens,2)
+        #         nn_module.apply(init_weights)
+        #         self.output = nn_module
         self.double()
     
         
@@ -68,8 +68,6 @@ class RNNBinaryClassifierModule(nn.Module):
         return float(correct_predictions) / total_predictions
     
     def score_bce(self, X, y, sample_weight=None):
-        
-        # do forward computation
         results = self.forward(torch.DoubleTensor(X))
         return binary_cross_entropy(results[:,0],y.double())
 
@@ -106,8 +104,6 @@ class RNNBinaryClassifierModule(nn.Module):
                     seq_lens_N[n] = np.searchsorted(bmask_T, 1)
             else:
                 seq_lens_N = torch.ones(N, dtype=torch.int64)
-                
-                    
 
         ## Create PackedSequence representation to handle variable-length sequences
         # Requires sorting all sequences in current batch in descending order by length
@@ -126,14 +122,14 @@ class RNNBinaryClassifierModule(nn.Module):
                                                                     requires_grad=True)
         
         ## Apply the RNN  
-#         from IPython import embed; embed()
         packed_outputs_PH, _ = self.rnn(packed_inputs_PF)
         ## Unpack to N x T x H padded representation
         outputs_NTH, _ = nn.utils.rnn.pad_packed_sequence(packed_outputs_PH, batch_first=True)
         ## Apply weights + softmax to final timestep of each sequence
         end_hiddens_NH = outputs_NTH[range(N), sorted_seq_lens_N - 1]
         yproba_N2 = nn.functional.softmax(self.output(end_hiddens_NH), dim=-1)
-#         yproba_N2 = nn.functional.logsigmoid(self.output(end_hiddens_NH))
+        # yproba_N2 = nn.functional.logsigmoid(self.output(end_hiddens_NH))
+
         ## Unsort and return
         if return_hiddens:
             return yproba_N2.index_select(0, rev_ids_N), outputs_NTH.index_select(0, rev_ids_N)
@@ -158,7 +154,6 @@ if __name__ == '__main__':
 
     # Generate random sequence data
     inputs_NTF = np.random.randn(N, T, F)
-#     y_N = np.random.randint(0, 2, size=N)
     y_N_ = torch.rand(N, requires_grad = False)
     y_N = y_N_.detach().numpy().astype(int)
     seq_lens_N = np.random.randint(low=1, high=T, size=N)
