@@ -28,6 +28,11 @@ import pandas as pd
 import argparse
 import json
 
+def diff_from_start(timestamp_df):
+     tstart = timestamp_df.iloc[0,0]
+     timestamp_df['hours'] = [(pd.to_datetime(i)-pd.to_datetime(tstart)).total_seconds()/3600 for i in timestamp_df.iloc[:,0]]
+     return timestamp_df
+
 # Parse command line arguments
 parser = argparse.ArgumentParser()
 parser.add_argument('--input_ts_csv_path', required=True)
@@ -40,17 +45,21 @@ args = parser.parse_args()
 df = pd.read_csv(args.input_ts_csv_path)
 with open(args.data_dict, 'r') as f:
     data_dict = json.load(f)
+
+if 'fields' not in data_dict.keys():
+    data_dict = data_dict['schema']
+
 id_cols = [c['name'] for c in data_dict['fields']
            if c['role'] == 'id' and c['name'] in df.columns]
-time_cols = [c['name'] for c in data_dict['fields'] if c['role'] == 'time']
-seq_cols = [c['name'] for c in data_dict['fields'] if c['role'] == 'sequence']
+time_cols = [c['name'] for c in data_dict['fields'] if c['role'] in ('time', 'timestamp')]
+seq_cols = [c['name'] for c in data_dict['fields'] if c['role'] == 'sequence' ]
+relative_time_cols = [c['name'] for c in data_dict['fields'] if c['role'] == 'timestamp_relative']
 
 # Align data to grid
-if len(time_cols) + len(seq_cols) != 1:
-    raise Exception('File must contain exactly one time or sequence column')
-elif len(id_cols) < 1:
+if len(id_cols) < 1:
     raise Exception('File must contain at least one id column')
-elif len(time_cols) == 1:
+
+if len(time_cols) == 1:
     time_col = time_cols[0]
     df['_time'] = pd.to_datetime(df[time_col])
     df = df.drop(time_col, axis='columns')
@@ -58,7 +67,12 @@ elif len(time_cols) == 1:
     grouped = df.groupby(id_cols)
     aligned = grouped.resample(args.step_size, on=time_col, label='right',
                                closed='right').mean()
-    aligned = aligned.drop(id_cols, axis='columns')
+    aligned = aligned.drop(id_cols+relative_time_cols, axis='columns')
+    aligned.reset_index(inplace=True)
+    aligned.loc[:,time_col] = aligned.reset_index()[id_cols + time_cols].groupby(id_cols)[time_cols].apply(diff_from_start)['hours']
+    aligned = aligned.set_index(id_cols+time_cols)
+
+    #TODO handle timestamps in datetime format throughout the pipeline
 elif len(seq_cols) == 1:
     seq_col = seq_cols[0]
     length = float(args.step_size)

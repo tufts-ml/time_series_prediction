@@ -79,7 +79,6 @@ if __name__ == '__main__':
             fields = data_dict['schema']['fields']
         group_cols = [c['name'] for c in fields
                       if c['role'] in ('id', 'key') and c['name'] in df.columns]
-
     train_df, test_df = split_dataframe_by_keys(
         df, cols_to_group=group_cols, size=args.test_size, random_state=args.seed)
 
