@@ -11,8 +11,9 @@ MADRID_VERSION = os.environ.get('MADRID_VERSION', 'v20200424')
 PROJECT_REPO_DIR = os.environ.get("PROJECT_REPO_DIR", os.path.abspath("../../../../"))
 PROJECT_CONDA_ENV_YAML = os.path.join(PROJECT_REPO_DIR, "ts_pred.yml")
 
-MADRID_DATASET_TOP_PATH = os.path.join(os.path.abspath("../../../../../"), "datasets/")
-MADRID_DATASET_STD_PATH = os.path.join(MADRID_DATASET_TOP_PATH, MADRID_VERSION, "HUF_maxN21000/")
+MADRID_DATASET_TOP_PATH = os.path.expandvars(os.path.join("$HOME", "datasets/"))
+SITE_NAME = "HUF_maxN21000/"
+MADRID_DATASET_STD_PATH = os.path.join(MADRID_DATASET_TOP_PATH, MADRID_VERSION, SITE_NAME)
 
 RESULTS_PATH = os.path.abspath('/tmp/html/')
 
@@ -56,5 +57,5 @@ rule train_and_evaluate_classifier:
             --grid_C 1e-9 1e-7 1e-5 0.001 0.01 0.1 1 10 100 1000 \
             --class_weight balanced \
 	    --tol 0.001\
-	    --max_iter 1000
+	    --max_iter 10000
         '''.replace("{{RESULTS_PATH}}", RESULTS_PATH)
