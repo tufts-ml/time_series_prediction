@@ -283,7 +283,6 @@ if __name__ == '__main__':
     key_train = splitter.make_groups_from_df(df_by_split['train'][key_cols])
     hyper_searcher.fit(x_train, y_train, groups=key_train)
     
-    from IPython import embed; embed()
     # Pretty tables for results of hyper_searcher search
     cv_perf_df = pd.DataFrame(hyper_searcher.cv_results_)
     tr_split_keys = ['mean_train_score'] + ['split%d_train_score' % a for a in range(args.n_splits)]
