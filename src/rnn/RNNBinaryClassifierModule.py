@@ -26,7 +26,7 @@ class RNNBinaryClassifierModule(nn.Module):
     '''
     def __init__(self,
             rnn_type='LSTM', n_inputs=1, n_hiddens=1, n_layers=1,
-            dropout_proba=0.0, dropout_proba_non_recurrent=0.0, bidirectional=False):
+            dropout_proba=0.0, dropout_proba_non_recurrent=0.0, bidirectional=False, convert_to_log_reg=False):
         super(RNNBinaryClassifierModule, self).__init__()
         self.drop = nn.Dropout(dropout_proba)
         self.dropout_proba_non_recurrent = dropout_proba_non_recurrent
@@ -36,6 +36,8 @@ class RNNBinaryClassifierModule(nn.Module):
                 bidirectional=bidirectional,
                 batch_first=True,
                 dropout=dropout_proba)
+            # convert to logistic regression for debugging/warm starting
+            self.convert_to_log_reg = convert_to_log_reg
         elif rnn_type in ['ELMAN+tanh', 'ELMAN+relu']:
             nonlinearity = rnn_type.split("+")[1]
             self.rnn = nn.RNN(
@@ -46,19 +48,20 @@ class RNNBinaryClassifierModule(nn.Module):
                 dropout=dropout_proba)
         else:
             raise ValueError("Invalid option for --rnn_type: %s" % rnn_type)
-        self.output = nn.Linear(n_hiddens, 2) # weights initialized as samples from uniform[-1,1]
-        
-        # initialize weights of the module as samples from N(0,1)
-#         nn_module = nn.Linear(n_hiddens,2)
-#         nn_module.apply(init_weights)
-#         self.output = nn_module
+        self.output = nn.Linear(
+            in_features=n_hiddens,
+            out_features=2,
+            bias=True) # weights initialized as samples from uniform[-1/n_features,1/n_features]
+
+        # initalize weight for logistic regression conversion
+        if self.convert_to_log_reg:
+            init_weights_for_logistic_regression_conversion(self.rnn)
+            self.first_pass=True
         self.double()
-    
         
     def score(self, X, y, sample_weight=None):
         correct_predictions = 0
         total_predictions = 0
-
         results = self.forward(torch.DoubleTensor(X))
         for probabilties, outcome in zip(results, y):
             if probabilties[outcome] > 0.5:
@@ -120,33 +123,96 @@ class RNNBinaryClassifierModule(nn.Module):
         # See https://pytorch.org/docs/stable/nn.html#torch.nn.LSTM for choosing the right weights
         if (self.dropout_proba_non_recurrent>0.0 and self.rnn.num_layers>1):
             dropout = nn.Dropout(p=self.dropout_proba_non_recurrent)
-            self.rnn.weight_ih_l1 = torch.nn.Parameter(dropout(self.rnn.weight_ih_l1), 
-                                                                      requires_grad=True)
-            self.rnn.bias_ih_l1 = torch.nn.Parameter(dropout(self.rnn.bias_ih_l1), 
-                                                                    requires_grad=True)
+            self.rnn.weight_ih_l1 = torch.nn.Parameter(dropout(self.rnn.weight_ih_l1), requires_grad=True)
+            self.rnn.bias_ih_l1 = torch.nn.Parameter(dropout(self.rnn.bias_ih_l1), requires_grad=True)
         
-        ## Apply the RNN  
-#         from IPython import embed; embed()
-        packed_outputs_PH, _ = self.rnn(packed_inputs_PF)
-        ## Unpack to N x T x H padded representation
-        outputs_NTH, _ = nn.utils.rnn.pad_packed_sequence(packed_outputs_PH, batch_first=True)
-        ## Apply weights + softmax to final timestep of each sequence
-        end_hiddens_NH = outputs_NTH[range(N), sorted_seq_lens_N - 1]
-        yproba_N2 = nn.functional.softmax(self.output(end_hiddens_NH), dim=-1)
-#         yproba_N2 = nn.functional.logsigmoid(self.output(end_hiddens_NH))
-        ## Unsort and return
-        if return_hiddens:
-            return yproba_N2.index_select(0, rev_ids_N), outputs_NTH.index_select(0, rev_ids_N)
-        else:
-            return yproba_N2.index_select(0, rev_ids_N)
+        # Apply the RNN
+        if (self.convert_to_log_reg==False) :
+            packed_outputs_PH, _ = self.rnn(packed_inputs_PF)
+            # Unpack to N x T x H padded representation
+            outputs_NTH, _ = nn.utils.rnn.pad_packed_sequence(packed_outputs_PH, batch_first=True)
+            # Apply weights + softmax to final timestep of each sequence
+            end_hiddens_NH = outputs_NTH[range(N), sorted_seq_lens_N - 1]
+            yproba_N2 = nn.functional.softmax(self.output(end_hiddens_NH), dim=-1)
+            #yproba_N2 = nn.functional.logsigmoid(self.output(end_hiddens_NH))
+            # Unsort and return
+            if return_hiddens:
+                return yproba_N2.index_select(0, rev_ids_N), outputs_NTH.index_select(0, rev_ids_N)
+            else:
+                return yproba_N2.index_select(0, rev_ids_N)    
+        
+        else:# convert to logistic regression
+            assert (self.rnn.hidden_size == F),"Number of hidden units must equal number of input features for conversion to logistic regression!"
+            
+            if (self.first_pass==False):# weird handling of validation set of gridsearchcv and validation set of LSTM object
+                if (N!=self.ht.shape[1])&(N!=self.htval.shape[1]):
+                    init_weights_for_logistic_regression_conversion(self.rnn)
+                    self.first_pass=True
+
+            # set end hidden layer output to be same as input for logistic regression conversion
+            h0 = torch.zeros(self.rnn.num_layers, N, self.rnn.hidden_size).double()
+            c0 = torch.ones(self.rnn.num_layers, N, self.rnn.hidden_size).double()
+            if (self.first_pass) & (self.training):
+                packed_outputs_PH, (self.ht, self.ct) = self.rnn(packed_inputs_PF, (h0, c0))
+            elif (self.first_pass==False) & (self.training):
+                packed_outputs_PH, (self.ht, self.ct) = self.rnn(packed_inputs_PF, (self.ht,self.ct))
+            elif (self.first_pass) & (self.training==False):# eval mode
+                packed_outputs_PH, (self.htval, self.ctval) = self.rnn(packed_inputs_PF, (h0, c0))
+                self.first_pass=False
+            elif (self.first_pass==False) & (self.training==False):
+                packed_outputs_PH, (self.htval, self.ctval) = self.rnn(packed_inputs_PF, (self.htval,self.ctval))
+            outputs_NTH, _ = nn.utils.rnn.pad_packed_sequence(packed_outputs_PH, batch_first=True)
+            outputs_NTH = torch.log(outputs_NTH/(1-outputs_NTH))# inverse sigmoid the output of hidden units to get back input features
+            outputs_NTH[torch.isinf(outputs_NTH)]=0 # remove inf's from sigmoid inversion
+            end_hiddens_NH = outputs_NTH[range(N), sorted_seq_lens_N - 1]
+            yproba_N2 = nn.functional.logsigmoid(self.output(end_hiddens_NH)).index_select(0, rev_ids_N)
+            return yproba_N2
 
 # function to handle weight initialization 
 def init_weights(m):
     if type(m) == nn.Linear:
         torch.manual_seed(42)
         m.weight.data = torch.randn(m.weight.shape)
-        print(m.weight)        
+        print(m.weight)  
         
+def init_weights_for_logistic_regression_conversion(rnn):
+    # for this to work number of hidden units MUST be equal to number of input features
+    
+    try:
+        # set the W_hi, W_hf, W_hg to large non-trainable values
+        large_w_val = 10**6
+        n_hiddens=int(rnn.weight_hh_l0.shape[0]/4)
+        n_features=rnn.weight_hh_l0.shape[1]
+
+        rnn.weight_hh_l0.requires_grad=False
+        # W_hi, W_hf, W_hg
+        rnn.weight_hh_l0[:3*n_hiddens,:]=torch.zeros((3*n_hiddens, n_features))
+        # W_ho
+        rnn.weight_hh_l0[3*n_hiddens:,:]=torch.zeros([n_hiddens, n_features])
+        # set the b_ho to zero remove time-dependence and set the rest of the biases as large non-trainable values
+        rnn.bias_hh_l0.requires_grad = False  
+        # b_hi, b_hf, b_hg
+        rnn.bias_hh_l0[:3*n_hiddens]=torch.zeros(3*n_hiddens)
+        #b_ho
+        rnn.bias_hh_l0[3*n_hiddens:] = torch.zeros(n_hiddens) 
+
+        # set input to hidden connections such that W_io is identity and the rest of the input weights are all large non-trainable
+        rnn.weight_ih_l0.requires_grad=False
+        # W_ii, W_if, W_ig
+        rnn.weight_ih_l0[:3*n_hiddens,:]=torch.zeros((3*n_hiddens, n_features))
+        # W_io
+        rnn.weight_ih_l0[3*n_hiddens:,:]=torch.eye(n_hiddens)
+
+
+        # b_ii, b_if, b_ig
+        rnn.bias_ih_l0.requires_grad=False
+        rnn.bias_ih_l0[:3*n_hiddens]=torch.zeros(3*n_hiddens)+large_w_val
+        # b_io
+        rnn.bias_ih_l0[3*n_hiddens:] = torch.zeros(n_hiddens)    
+    except RuntimeError:
+        print('Number of hidden units must match number of input features for conversion to logistic regression!')
+    
+
 if __name__ == '__main__':
     N = 5   # n_sequences
     T = 10  # n_timesteps
