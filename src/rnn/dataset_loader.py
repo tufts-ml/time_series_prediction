@@ -28,10 +28,16 @@ class TidySequentialDataCSVLoader(object):
         per_tstep_csv_df = pd.read_csv(per_tstep_csv_path)
         if per_seq_csv_path is not None and os.path.exists(per_seq_csv_path):
             per_seq_csv_df = pd.read_csv(per_seq_csv_path)
-
+        
         ## Parse sequence ids and compute fenceposts
         idx_P = per_tstep_csv_df[idx_col_names].values.copy()
-        per_tstep_csv_df.drop(columns=idx_col_names, inplace=True)
+        
+        # get the labels for the sequences in vitals file
+#         self.y_P = np.asarray(pd.merge(per_tstep_csv_df, 
+#                                         per_seq_csv_df[idx_col_names+[y_col_name]], 
+#                                         on=idx_col_names, how='left')[y_col_name])
+        
+        
         uvals = np.unique(idx_P)
         seq_fp = list()
         prev_uval = None
@@ -48,18 +54,19 @@ class TidySequentialDataCSVLoader(object):
         N = len(seq_fp) - 1
         self.N = N
         self.n_sequences = N
-        self.seq_lens_N = np.asarray(
-            [seq_fp[n+1] - seq_fp[n] for n in range(N)],
-            dtype=np.int64)
+        self.seq_lens_N = np.asarray([seq_fp[n+1] - seq_fp[n] for n in range(N)],dtype=np.int64)
         if max_seq_len is None:
             self.max_seq_len = np.max(self.seq_lens_N)
         else:
             self.max_seq_len = int(max_seq_len)
-
+        
         ## Parse y
         if y_label_type == 'per_tstep':
-            y_P = per_tstep_csv_df[y_col_name].values.copy()
-            del per_tstep_csv_df[y_col_name]
+            y_P = pd.merge(per_tstep_csv_df, 
+                           per_seq_csv_df[idx_col_names+[y_col_name]], 
+                           on=idx_col_names, how='left')[y_col_name]
+            if y_col_name in per_tstep_csv_df.columns:
+                del per_tstep_csv_df[y_col_name]
             # TODO load full seq labels when needed
             laststep_N = np.cumsum(self.seq_lens_N) - 1
             self.y_N = np.asarray(y_P[laststep_N], dtype=np.int64)
@@ -67,6 +74,8 @@ class TidySequentialDataCSVLoader(object):
             y_N = per_seq_csv_df[y_col_name].values.copy()
             del per_seq_csv_df[y_col_name]
             self.y_N = np.asarray(y_N, dtype=np.int64)
+            
+        per_tstep_csv_df.drop(columns=idx_col_names, inplace=True)
 
         ## Parse x
         if x_col_names == '__all__':
@@ -154,7 +163,7 @@ class TidySequentialDataCSVLoader(object):
             T = stop - start
             batch_x[ii, :T] = self.x_PF[start:stop]
             batch_y[ii] = self.y_N[n]
-
+        
         if not to_pytorch_tensor:
             return batch_x, batch_y
         else:

@@ -1,0 +1,55 @@
+import glob
+
+TOY_OVERHEAT_VERSION = os.environ.get('TOY_OVERHEAT_VERSION', 'v20200501')
+PROJECT_REPO_DIR = os.environ.get("PROJECT_REPO_DIR", os.path.abspath("../../../../"))
+PROJECT_CONDA_ENV_YAML = os.path.join(PROJECT_REPO_DIR, "ts_pred.yml")
+
+DATASET_SPLIT_PATH = os.path.join(PROJECT_REPO_DIR, 'datasets', 'toy_overheat', 'std', TOY_OVERHEAT_VERSION, 'ts')
+
+RESULTS_PATH = os.path.join(os.environ.get("RESULTS_PATH", '/tmp/html/'), 'rnn')
+
+item_list = [(k, v) for (k,v) in locals().items() if k.startswith('PROJECT_')]
+for key, val in item_list:
+    if key.startswith('PROJECT_'):
+        print(val)
+        os.environ[key] = val
+
+rule all:
+    input:
+        os.path.join(RESULTS_PATH, 'report.html')
+
+
+rule train_and_evaluate_classifier:
+    input:
+        script=os.path.join(PROJECT_REPO_DIR, 'src', 'eval_classifier.py'),
+        python_src_files=glob.glob(os.path.join(PROJECT_REPO_DIR, 'src', '*.py')),
+        x_train_csv=os.path.join(DATASET_SPLIT_PATH, 'x_train.csv'),
+        x_test_csv=os.path.join(DATASET_SPLIT_PATH, 'x_test.csv'),
+        y_train_csv=os.path.join(DATASET_SPLIT_PATH, 'y_train.csv'),
+        y_test_csv=os.path.join(DATASET_SPLIT_PATH, 'y_test.csv'),
+        x_dict_json=os.path.join(DATASET_SPLIT_PATH, 'x.json'),
+        y_dict_json=os.path.join(DATASET_SPLIT_PATH, 'y.json')
+
+    output:
+        os.path.join(RESULTS_PATH, 'report.html')
+
+    conda:
+        PROJECT_CONDA_ENV_YAML
+
+    shell:
+        '''
+        mkdir -p {{RESULTS_PATH}} && \
+        python -u {input.script} \
+            rnn \
+            --outcome_col_name did_overheat_binary_label \
+            --output_dir {{RESULTS_PATH}} \
+            --train_csv_files {input.x_train_csv},{input.y_train_csv} \
+            --test_csv_files {input.x_test_csv},{input.y_test_csv} \
+            --data_dict_files {input.x_dict_json},{input.y_dict_json} \
+            --validation_size 0.1 \
+            --n_splits 3 \
+            --key_cols_to_group_when_splitting sequence_id \
+            --scoring roc_auc \
+            --threshold_scoring balanced_accuracy \
+            --class_weight balanced \
+        '''.replace("{{RESULTS_PATH}}", RESULTS_PATH)

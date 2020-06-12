@@ -15,7 +15,6 @@ For detailed help message:
 python eval_classifier.py {classifier_name} --help
 ```
 
-Will produce
 
 Examples
 --------
@@ -41,10 +40,6 @@ import sklearn.linear_model
 import sklearn.tree
 import sklearn.ensemble
 
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.neural_network import MLPClassifier
-from sklearn.tree import DecisionTreeClassifier
 from custom_classifiers import ThresholdClassifier
 from sklearn.metrics import (accuracy_score, balanced_accuracy_score, f1_score,
                              average_precision_score, confusion_matrix, log_loss,
@@ -53,6 +48,7 @@ from sklearn.model_selection import GridSearchCV, ShuffleSplit
 
 from split_dataset import Splitter
 from utils_scoring import (THRESHOLD_SCORING_OPTIONS, calc_score_for_binary_predictions)
+from utils_calibration import plot_binary_clf_calibration_curve_and_histograms
 
 def get_sorted_list_of_kwargs_specific_to_group_parser(group_parser):
     keys = [a.option_strings[0].replace('--', '') for a in group_parser._group_actions]
@@ -75,6 +71,9 @@ try:
 except KeyError:
     TEMPLATE_HTML_PATH = None
 
+FIG_KWARGS = dict(
+    figsize=(4, 4),
+    tight_layout=True)
 
 if __name__ == '__main__':
 
@@ -90,6 +89,7 @@ if __name__ == '__main__':
         clf_parser = subparsers.add_parser(clf_name)
 
         default_group = clf_parser.add_argument_group('fixed_clf_settings')
+        filter_group = clf_parser.add_argument_group('filter_hypers')
         hyperparam_group = clf_parser.add_argument_group('hyperparameters')
         for key, val in defaults.items():
             if key.count('constructor'):
@@ -111,6 +111,8 @@ if __name__ == '__main__':
                 assert has_simple_type
                 if key.startswith('grid_'):
                     hyperparam_group.add_argument("--%s" % key, default=val, type=type(val))
+                elif key.startswith('filter__'):
+                    filter_group.add_argument("--%s" % key, default=val, type=type(val))
                 else:
                     default_group.add_argument("--%s" % key, default=val, type=type(val))
         subparsers_by_name[clf_name] = clf_parser
@@ -169,10 +171,11 @@ if __name__ == '__main__':
     fig_dir = os.path.abspath(args.output_dir)
 
     # key[5:] strips the 'grid_' prefix from the argument
-    param_grid = {key[5:]: vars(args)[key] for key in vars(args)
-                  if key.startswith('grid_')}
-    # Parse unspecified arguments to be passed through to the classifier
+    argdict = vars(args)
+    raw_param_grid = {
+        key[5:]: argdict[key] for key in argdict if key.startswith('grid_')}
 
+    # Parse unspecified arguments to be passed through to the classifier
     def auto_convert_str(x):
         try:
             x_float = float(x)
@@ -253,9 +256,6 @@ if __name__ == '__main__':
 
     x_test = df_by_split['test'][feature_cols].values
     y_test = np.ravel(df_by_split['test'][outcome_col_name])
-    is_multiclass = len(np.unique(y_train)) > 2
-
-
 
     fixed_args = {}
     fixed_group = None
@@ -264,7 +264,11 @@ if __name__ == '__main__':
             fixed_group = g
             break
     for key in get_sorted_list_of_kwargs_specific_to_group_parser(fixed_group):
-        fixed_args[key] = vars(args)[key]
+        val = vars(args)[key]
+        if isinstance(val, str):
+            if val.lower() == 'none':
+                val = None
+        fixed_args[key] = val
 
     passthrough_args = {}
     for i in range(len(unknown_args)):
@@ -273,12 +277,34 @@ if __name__ == '__main__':
             val = unknown_args[i+1]
             passthrough_args[arg[2:]] = auto_convert_str(val)
 
-    # Create classifier object
-    clf = args.clf_constructor(**fixed_args, **passthrough_args)
-
     # Perform hyper_searcher search
-    splitter = Splitter(size=args.validation_size, random_state=args.random_seed, n_splits=args.n_splits, cols_to_group=args.key_cols_to_group_when_splitting)
-    hyper_searcher = GridSearchCV(clf, param_grid,
+    n_examples = int(np.ceil(x_train.shape[0] * (1 - args.validation_size)))
+    n_features = x_train.shape[1]
+
+    param_grid = dict()
+    for key, grid in raw_param_grid.items():
+        fkey = 'filter__' + key
+        if fkey in argdict:
+            filter_func = eval(argdict[fkey])
+            filtered_grid = np.unique([filter_func(g, n_examples, n_features) for g in grid]).tolist()
+        else:
+            filtered_grid = np.unique(grid).tolist()
+        if len(filtered_grid) == 0:
+            raise Warning("Bad grid for parameter: %s")
+        elif len(filtered_grid) == 1:
+            fixed_args[key] = filtered_grid[0]
+            raise Warning("Skipping parameter %s with only one grid value")
+        else:
+            param_grid[key] = filtered_grid
+
+    # Create classifier object
+    clf = args.clf_constructor(
+        random_state=int(args.random_seed), **fixed_args, **passthrough_args)
+    splitter = Splitter(
+        size=args.validation_size, random_state=args.random_seed,
+        n_splits=args.n_splits, cols_to_group=args.key_cols_to_group_when_splitting)
+    hyper_searcher = GridSearchCV(
+        clf, param_grid,
         scoring=args.scoring, cv=splitter, refit=True, return_train_score=True)
     key_train = splitter.make_groups_from_df(df_by_split['train'][key_cols])
     hyper_searcher.fit(x_train, y_train, groups=key_train)
@@ -349,9 +375,19 @@ if __name__ == '__main__':
                 tmp_clf = tmp_clf.set_params(threshold=thr)
                 yhat = tmp_clf.predict(x_va)
                 score_grid_SG[ss, gg] = calc_score_for_binary_predictions(y_va, yhat, scoring=args.threshold_scoring)
-        ## TODO read off best average score
+
         avg_score_G = np.mean(score_grid_SG, axis=0)
-        gg = np.argmax(avg_score_G)
+
+        # Do a 2nd order quadratic fit to the scores
+        # Focusing weight on points near the maximizer
+        # This gives us a "smoothed" function mapping thresholds to scores
+        # avoids issues if scores are "wiggly" we don't want to rely too much on max
+        # OR will do right thing when there are many thresholds that work
+        # Using smoothed scores guarantees we get maximizer in the middle of that range
+        weights_G = np.exp(-10.0 * np.abs(avg_score_G - np.max(avg_score_G)))
+        poly_coefs = np.polyfit(thr_grid, avg_score_G, 2, w=weights_G)
+        smoothed_score_G = np.polyval(poly_coefs, thr_grid)
+        gg = np.argmax(smoothed_score_G)
 
         # Keep best scoring estimator 
         best_thr = thr_grid[gg]
@@ -381,39 +417,56 @@ if __name__ == '__main__':
         balanced_accuracy = balanced_accuracy_score(y, y_pred)
         log2_loss = log_loss(y, y_pred_proba, normalize=True) / np.log(2)
         row_dict.update(dict(confusion_html=cm_df.to_html(), cross_entropy_base2=log2_loss, accuracy=accuracy, balanced_accuracy=balanced_accuracy))
-        if not is_multiclass:
-            f1 = f1_score(y, y_pred)
 
-            avg_precision = average_precision_score(y, y_pred_proba)
-            roc_auc = roc_auc_score(y, y_pred_proba)
-            row_dict.update(dict(f1_score=f1, average_precision=avg_precision, AUROC=roc_auc))
+        f1 = f1_score(y, y_pred)
+        avg_precision = average_precision_score(y, y_pred_proba)
+        roc_auc = roc_auc_score(y, y_pred_proba)
+        row_dict.update(dict(f1_score=f1, average_precision=avg_precision, AUROC=roc_auc))
+        npv, ppv = np.diag(cm_df.values) / cm_df.sum(axis=0)
+        tnr, tpr = np.diag(cm_df.values) / cm_df.sum(axis=1)
+        row_dict.update(dict(TPR=tpr, TNR=tnr, PPV=ppv, NPV=npv))
+        row_dict.update(dict(tn=cm_df.values[0,0], fp=cm_df.values[0,1], fn=cm_df.values[1,0], tp=cm_df.values[1,1]))
 
-            # Plots
-            roc_fpr, roc_tpr, _ = roc_curve(y, y_pred_proba)
-            ax = plt.gca()
-            ax.plot(roc_fpr, roc_tpr)
-            ax.set_xlabel('False Positive Rate')
-            ax.set_ylabel('True Positive Rate')
-            ax.set_xlim([0, 1])
-            ax.set_ylim([0, 1])
-            plt.savefig(os.path.join(fig_dir, '{split_name}_roc_curve.png'.format(split_name=split_name)))
-            plt.clf()
+        # Plots
+        B = 0.03
+        plot_binary_clf_calibration_curve_and_histograms(y, y_pred_proba, bins=11, B=B)
+        plt.savefig(os.path.join(fig_dir, '{split_name}_calibration_curve.png'.format(split_name=split_name)))
+        plt.close()
 
-            pr_precision, pr_recall, _ = precision_recall_curve(y, y_pred_proba)
-            ax = plt.gca()
-            ax.plot(pr_recall, pr_precision)
-            ax.set_xlabel('Recall')
-            ax.set_ylabel('Precision')
-            ax.set_xlim([0, 1])
-            ax.set_ylim([0, 1])
-            plt.savefig(os.path.join(fig_dir, '{split_name}_pr_curve.png'.format(split_name=split_name)))
-            plt.clf()
+        # ROC curve
+        roc_fpr, roc_tpr, _ = roc_curve(y, y_pred_proba)
+
+        fig_h = plt.figure(**FIG_KWARGS)
+        ax = plt.gca()
+        ax.plot(roc_fpr, roc_tpr, 'b.-')
+        ax.set_xlabel('False Positive Rate')
+        ax.set_ylabel('True Positive Rate')
+        ax.set_xlim([-B, 1.0 + B])
+        ax.set_ylim([-B, 1.0 + B])
+        plt.savefig(os.path.join(fig_dir, '{split_name}_roc_curve.png'.format(split_name=split_name)))
+        plt.close()
+
+        # PR curve
+        # ordered with *decreasing* recall
+        precision, recall, _ = precision_recall_curve(y, y_pred_proba)
+
+        # To compute area under curve, make sure we integrate with *increasing* recall
+        row_dict['AUPRC'] = np.trapz(precision[::-1], recall[::-1])
+
+        fig_h = plt.figure(**FIG_KWARGS)
+        ax = plt.gca()
+        ax.plot(recall, precision, 'b.-')
+        ax.set_xlabel('Recall')
+        ax.set_ylabel('Precision')
+        ax.set_xlim([-B, 1.0 + B])
+        ax.set_ylim([-B, 1.0 + B])
+        plt.savefig(os.path.join(fig_dir, '{split_name}_pr_curve.png'.format(split_name=split_name)))
+        plt.close()
 
         row_dict_list.append(row_dict)
 
     perf_df = pd.DataFrame(row_dict_list)
     perf_df = perf_df.set_index('split_name')
-
 
 
     # Set up HTML report
@@ -438,43 +491,6 @@ if __name__ == '__main__':
                     text("")
 
                 with tag('div', klass="col-sm-10 text-left"):
-                    with tag('h3'):
-                        with tag('a', name='settings-hyperparameter'):
-                            text('Settings: Hyperparameters to Tune')
-                    with tag('pre'):
-                        hyper_group = None
-                        for g in subparsers_by_name[args.clf_name]._action_groups:
-                            if g.title.count('hyper'):
-                                hyper_group = g
-                                break
-                        for x in get_sorted_list_of_kwargs_specific_to_group_parser(hyper_group):
-                            text(x, ': ', str(vars(args)[x]), '\n')
-
-                    with tag('h3'):
-                        with tag('a', name='settings-protocol'):
-                            text('Settings: Protocol')
-                    with tag('pre'):
-                        for x in get_sorted_list_of_kwargs_specific_to_group_parser(protocol_group):
-                            text(x, ': ', str(vars(args)[x]), '\n')
-
-                    with tag('h3'):
-                        with tag('a', name='settings-data'):
-                            text('Settings: Data')
-                    with tag('pre'):
-                        for x in get_sorted_list_of_kwargs_specific_to_group_parser(data_group):
-                            text(x, ': ', str(vars(args)[x]), '\n')
-
-                    with tag('h3'):
-                        with tag('a', name='results-hyper_searcher-search'):
-                            text('hyper_searcher Search results')
-                    with tag('h4'):
-                        text('Train Scores across splits')
-
-                    doc.asis(pd.DataFrame(cv_tr_perf_df).to_html())
-
-                    with tag('h4'):
-                        text('Heldout Scores across splits')
-                    doc.asis(pd.DataFrame(cv_te_perf_df).to_html())
 
                     with tag('h3'):
                         text('Hyperparameters of best model')
@@ -508,20 +524,62 @@ if __name__ == '__main__':
                                 doc.stag('img', src=os.path.join(fig_dir, 'test_pr_curve.png'), width=400)
                         with tag('tr'):
                             with tag('td', align='center'):
-                                doc.asis(str(perf_df.iloc[0][['confusion_html']].values[0]).replace('&lt;', '<').replace('&gt;', '>').replace('\\n', ''))
-
+                                doc.stag('img', src=os.path.join(fig_dir, 'train_calibration_curve.png'), width=400)
                             with tag('td', align='center'):
+                                doc.stag('img', src=os.path.join(fig_dir, 'test_calibration_curve.png'), width=400)
+                        with tag('tr'):
+                            with tag('td', align='center', **{'text-align':'center'}):
+                                doc.asis(str(perf_df.iloc[0][['confusion_html']].values[0]).replace('&lt;', '<').replace('&gt;', '>').replace('\\n', ''))
+                            with tag('td', align='center', **{'text-align':'center'}):
                                 doc.asis(str(perf_df.iloc[1][['confusion_html']].values[0]).replace('&lt;', '<').replace('&gt;', '>').replace('\\n', ''))
                    
                     with tag('h3'):
                         with tag('a', name='results-performance-metrics-proba'):
                             text('Performance Metrics using Probabilities')
-                    doc.asis(perf_df[['AUROC', 'average_precision', 'cross_entropy_base2']].to_html())
+                    doc.asis(perf_df[['AUROC', 'AUPRC', 'average_precision', 'cross_entropy_base2']].to_html())
 
                     with tag('h3'):
                         with tag('a', name='results-performance-metrics-thresh'):
                             text('Performance Metrics using Thresholded Decisions')
-                    doc.asis(perf_df[['balanced_accuracy', 'accuracy', 'f1_score']].to_html())
+                    doc.asis(perf_df[['balanced_accuracy', 'accuracy', 'f1_score', 'TPR', 'TNR', 'PPV', 'NPV']].to_html())
+
+                    with tag('h3'):
+                        with tag('a', name='settings-hyperparameter'):
+                            text('Settings: Hyperparameters to Tune')
+                    with tag('pre'):
+                        hyper_group = None
+                        for g in subparsers_by_name[args.clf_name]._action_groups:
+                            if g.title.count('hyperparameters'):
+                                hyper_group = g
+                                break
+                        for x in get_sorted_list_of_kwargs_specific_to_group_parser(hyper_group):
+                            text(x, ': ', str(vars(args)[x]), '\n')
+
+                    with tag('h3'):
+                        with tag('a', name='settings-protocol'):
+                            text('Settings: Protocol')
+                    with tag('pre'):
+                        for x in get_sorted_list_of_kwargs_specific_to_group_parser(protocol_group):
+                            text(x, ': ', str(vars(args)[x]), '\n')
+
+                    with tag('h3'):
+                        with tag('a', name='settings-data'):
+                            text('Settings: Data')
+                    with tag('pre'):
+                        for x in get_sorted_list_of_kwargs_specific_to_group_parser(data_group):
+                            text(x, ': ', str(vars(args)[x]), '\n')
+
+                    with tag('h3'):
+                        with tag('a', name='results-hyper-search'):
+                            text('Hyperparameter Search results')
+                    with tag('h4'):
+                        text('Train Scores across splits')
+
+                    doc.asis(pd.DataFrame(cv_tr_perf_df).to_html())
+
+                    with tag('h4'):
+                        text('Heldout Scores across splits')
+                    doc.asis(pd.DataFrame(cv_te_perf_df).to_html())
 
                 # Add dark region on right side
                 with tag('div', klass="col-sm-1 sidenav"):

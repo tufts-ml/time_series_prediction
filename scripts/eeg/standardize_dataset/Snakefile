@@ -1,0 +1,152 @@
+'''
+Reproducible workflow for building EEG dataset
+
+Usage
+-----
+$ snakemake --cores 1 all
+'''
+
+import json
+import glob
+
+# Default environment variables
+# Can override with local env variables
+PROJECT_REPO_DIR = os.environ.get("PROJECT_REPO_DIR", os.path.abspath("../../../"))
+
+PROJECT_SPEC_UTILS_DIR = os.path.join(PROJECT_REPO_DIR, 'scripts', 'utils_specs')
+PROJECT_CONDA_ENV_YAML = os.path.join(PROJECT_REPO_DIR, "ts_pred.yml")
+
+DATASET_SCRIPTS_ROOT = os.path.join(PROJECT_REPO_DIR, 'scripts', 'eeg')
+
+# Dataset config file
+# Input/output paths, etc.
+with open(os.path.join(DATASET_SCRIPTS_ROOT, 'config.json'), 'r') as f:
+    D_CONFIG = json.load(f)
+
+for key, val in list(globals().items()):
+    if key.startswith("PROJECT_") and isinstance(val, str):
+        os.environ[key] = val
+for key, val in D_CONFIG.items():
+    if isinstance(val, str):
+        os.environ[key] = val
+
+DATASET_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["DATASET_PATH_LIST"])))
+os.environ['DATASET_PATH'] = DATASET_PATH
+
+DATASET_STD_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["STD_PATH_LIST"])))
+os.environ['DATASET_STD_PATH'] = DATASET_STD_PATH
+
+print("Building standardized dataset")
+print("Output will go to folder:")
+print(DATASET_STD_PATH)
+
+# Spec config file
+with open('spec_config.json', 'r') as f:
+    SPEC_CONFIG = json.load(f)
+
+DATASET_RAW_PATH = os.path.join(DATASET_PATH, 'raw')
+
+rule all:
+    input:
+        raw_data_csv=os.path.join(DATASET_RAW_PATH, 'data.csv'),
+        x_std_data_csv=os.path.join(DATASET_STD_PATH, 'features_per_tstep.csv'),
+        y_std_data_csv=os.path.join(DATASET_STD_PATH, 'outcomes_per_seq.csv'),
+        spec_jsons=[os.path.join(
+                DATASET_STD_PATH,
+                SPEC_CONFIG['output_json_path_pattern'].replace(
+                    '{{sheet_name}}', sname))
+                for sname in SPEC_CONFIG['spec_sheet_name_list']]
+
+
+rule download_raw_dataset:
+    input:
+        PROJECT_CONDA_ENV_YAML
+
+    output:
+        raw_data_csv=os.path.join(DATASET_RAW_PATH, 'data.csv')
+
+    conda:
+        PROJECT_CONDA_ENV_YAML
+
+    shell:
+        '''
+        mkdir -p {DATASET_RAW_PATH} && \
+        wget {raw_data_url} --directory-prefix {DATASET_RAW_PATH};
+        '''.format(DATASET_RAW_PATH=DATASET_RAW_PATH, raw_data_url=SPEC_CONFIG['raw_data_url'])
+
+rule build_std_dataset_from_raw:
+    input:
+        raw_data_csv=os.path.join(DATASET_RAW_PATH, 'data.csv'),
+        script=os.path.join(DATASET_SCRIPTS_ROOT, 'standardize_dataset', 'build_std_eeg_dataset_from_raw.py')
+
+    output:
+        x_std_data_csv=os.path.join(DATASET_STD_PATH, 'features_per_tstep.csv'),
+        y_std_data_csv=os.path.join(DATASET_STD_PATH, 'outcomes_per_seq.csv')
+
+    conda:
+        PROJECT_CONDA_ENV_YAML
+
+    shell:
+        '''
+        mkdir -p {DATASET_STD_PATH} && \
+        python -u {{input.script}} \
+            --input_csv_path {{input.raw_data_csv}} \
+            --output_sensors_ts_csv_path {{output.x_std_data_csv}} \
+            --output_labels_static_csv_path {{output.y_std_data_csv}} \
+        '''.format(DATASET_STD_PATH=DATASET_STD_PATH)
+
+
+# Download google sheet as CSV
+rule download_spec_from_gsheet_as_csv:
+    input:
+        download_script=os.path.expandvars(os.path.join(PROJECT_REPO_DIR, 'scripts/utils_specs/download_spec_csv_from_gsheet.py')),
+        spec_config_path='spec_config.json'        
+
+    output:
+        spec_csvs=[os.path.join(
+                DATASET_STD_PATH,
+                SPEC_CONFIG['output_csv_path_pattern'].replace(
+                    '{{sheet_name}}', sname))
+                for sname in SPEC_CONFIG['spec_sheet_name_list']]
+
+    conda:
+        PROJECT_CONDA_ENV_YAML
+
+    shell:
+        '''
+        python {{input.download_script}} \
+            --config_json_path {{input.spec_config_path}} \
+            --output_dir {output_dir} \
+        '''.format(output_dir=DATASET_STD_PATH)
+
+
+rule build_spec_json_from_csv:
+    input:
+        convert_script=os.path.expandvars(os.path.join(PROJECT_SPEC_UTILS_DIR, 'convert_spec_csv_to_json.py')),
+        sheet_template_json_path=os.path.expandvars(os.path.join(PROJECT_SPEC_UTILS_DIR, 'sheet_template.json')),
+        row_template_json_path=os.path.expandvars(os.path.join(PROJECT_SPEC_UTILS_DIR, 'row_template.json')),
+        spec_config_path='spec_config.json',
+        spec_csvs=[os.path.join(
+                DATASET_STD_PATH,
+                SPEC_CONFIG['output_csv_path_pattern'].replace(
+                    '{{sheet_name}}', sname))
+                for sname in SPEC_CONFIG['spec_sheet_name_list']]
+
+    output:
+        spec_jsons=[os.path.join(
+                DATASET_STD_PATH,
+                SPEC_CONFIG['output_json_path_pattern'].replace(
+                    '{{sheet_name}}', sname))
+                for sname in SPEC_CONFIG['spec_sheet_name_list']]
+
+    conda:
+        PROJECT_CONDA_ENV_YAML
+
+    shell:
+        '''
+        python {{input.convert_script}} \
+            --config_json_path {{input.spec_config_path}} \
+            --sheet_template_json {{input.sheet_template_json_path}} \
+            --row_template_json {{input.row_template_json_path}} \
+            --output_dir {output_dir}
+        '''.format(output_dir=DATASET_STD_PATH)

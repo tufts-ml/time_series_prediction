@@ -21,4 +21,5 @@ dependencies:
   - dill>=0.2
   ## Machine Learning
   - scikit-learn>=0.21
-
+  - pytorch>=1.0
+  - skorch>=0.5
