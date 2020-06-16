@@ -49,11 +49,8 @@ class ThresholdClassifier(BaseEstimator, ClassifierMixin):
         U = np.random.RandomState(42).randn(X.shape[1])
         key = int(100000 * np.mean(np.dot(X, U))) + 1000 * X.shape[0] + X.shape[1]
         if key not in self._cached_clf:
-            print("miss: " + str(key))
             ans = self.clf.fit(X, y)
             self._cached_clf[key] = ans
-        else:
-            print("hit : " + str(key))
         self.clf = self._cached_clf[key]
         return self
 

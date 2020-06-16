@@ -61,8 +61,9 @@ if __name__ == '__main__':
     parser.add_argument('--output_dir', default=None)
     parser.add_argument('--train_csv_filename', default='train.csv')
     parser.add_argument('--test_csv_filename', default='test.csv')
+    parser.add_argument('--output_data_dict_filename', required=False, type=str, default=None)
     parser.add_argument('--group_cols', nargs='*', default=[None])
-    parser.add_argument('--seed', required=False, default=20190206)
+    parser.add_argument('--random_state', required=False, type=int, default=20190206)
     args = parser.parse_args()
 
     # Import data
@@ -80,7 +81,7 @@ if __name__ == '__main__':
         group_cols = [c['name'] for c in fields
                       if c['role'] in ('id', 'key') and c['name'] in df.columns]
     train_df, test_df = split_dataframe_by_keys(
-        df, cols_to_group=group_cols, size=args.test_size, random_state=args.seed)
+        df, cols_to_group=group_cols, size=args.test_size, random_state=args.random_state)
 
     # Write split data frames to CSV
     fdir_train_test = args.output_dir
@@ -89,6 +90,13 @@ if __name__ == '__main__':
             os.mkdir(fdir_train_test)
         args.train_csv_filename = os.path.join(fdir_train_test, args.train_csv_filename)
         args.test_csv_filename = os.path.join(fdir_train_test, args.test_csv_filename)
+        if args.output_data_dict_filename is not None:
+            args.output_data_dict_filename = os.path.join(fdir_train_test, args.output_data_dict_filename)
 
     train_df.to_csv(args.train_csv_filename, index=False)
     test_df.to_csv(args.test_csv_filename, index=False)
+
+    if args.output_data_dict_filename is not None:
+        with open(args.output_data_dict_filename, 'w') as f:
+            json.dump(data_dict, f, indent=4)
+

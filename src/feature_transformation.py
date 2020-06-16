@@ -378,7 +378,8 @@ def remove_col_names_from_list_if_not_in_df(col_list, df):
 def replace_all_nan_cols_with_zeros(data_np, lower_bound, upper_bound, **kwargs):
     percentile_data_np = data_np[lower_bound:upper_bound,:]
     all_nan_col_ind = np.isnan(percentile_data_np).all(axis = 0)
-    percentile_data_np[:,all_nan_col_ind] = 0 
+    if sum(all_nan_col_ind)>0:
+        percentile_data_np[:,all_nan_col_ind] = 0 
     return percentile_data_np
 
 def collapse_mean_np(data_np, lower_bound, upper_bound, **kwargs):
