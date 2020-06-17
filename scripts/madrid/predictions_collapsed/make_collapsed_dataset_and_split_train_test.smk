@@ -17,7 +17,6 @@ MADRID_DATASET_STD_PATH = os.path.join(MADRID_DATASET_TOP_PATH, MADRID_VERSION, 
 
 rule all:
     input:
-        os.path.join(MADRID_DATASET_STD_PATH, 'normfeatures_per_tstep.csv'),
         os.path.join(MADRID_DATASET_STD_PATH, 'CollapsedFeaturesPerSequence.csv'),
         os.path.join(MADRID_DATASET_STD_PATH, 'Spec_CollapsedFeaturesPerSequence.json'),	
         os.path.join(MADRID_DATASET_STD_PATH, 'x_train.csv'),
