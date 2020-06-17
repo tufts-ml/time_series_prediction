@@ -12,7 +12,7 @@ PROJECT_REPO_DIR = os.environ.get("PROJECT_REPO_DIR", os.path.abspath("../../../
 PROJECT_CONDA_ENV_YAML = os.path.join(PROJECT_REPO_DIR, "ts_pred.yml")
 
 MADRID_DATASET_TOP_PATH = os.path.expandvars(os.path.join("$HOME", "datasets/"))
-SITE_NAME = "HUF/"
+SITE_NAME = "HUF_maxN100/"
 MADRID_DATASET_STD_PATH = os.path.join(MADRID_DATASET_TOP_PATH, MADRID_VERSION, SITE_NAME)
 
 rule all:
@@ -25,33 +25,10 @@ rule all:
         os.path.join(MADRID_DATASET_STD_PATH, 'y_train.csv'),
         os.path.join(MADRID_DATASET_STD_PATH, 'y_test.csv')
 
-rule normalize_features:
-    input:
-        normalize_script=os.path.join(PROJECT_REPO_DIR, 'src', 'normalize_features.py'),
-        x_csv=os.path.join(MADRID_DATASET_STD_PATH, 'vitals.csv'),
-        x_spec_json=os.path.join(MADRID_DATASET_STD_PATH, 'Spec-Vitals.json')
-
-    output:
-        normx_csv=os.path.join(MADRID_DATASET_STD_PATH, 'normfeatures_per_tstep.csv')
-
-
-    conda:
-        PROJECT_CONDA_ENV_YAML
-
-    shell:
-        '''
-        python -u {input.normalize_script} \
-            --input {input.x_csv} \
-            --data_dict {input.x_spec_json} \
-            --output {output.normx_csv} \
-        '''
-
-
-
 rule collapse_features:
     input:
         script=os.path.join(PROJECT_REPO_DIR, 'src', 'feature_transformation.py'),
-        x_csv=os.path.join(MADRID_DATASET_STD_PATH, 'normfeatures_per_tstep.csv'),
+        x_csv=os.path.join(MADRID_DATASET_STD_PATH, 'vitals.csv'),
         x_spec_json=os.path.join(MADRID_DATASET_STD_PATH, 'Spec-Vitals.json')
 
     output:

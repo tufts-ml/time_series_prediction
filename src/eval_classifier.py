@@ -50,7 +50,8 @@ from sklearn.metrics import (accuracy_score, balanced_accuracy_score, f1_score,
                              average_precision_score, confusion_matrix, log_loss,
                              roc_auc_score, roc_curve, precision_recall_curve)
 from sklearn.model_selection import GridSearchCV, ShuffleSplit
-
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 from split_dataset import Splitter
 from utils_scoring import (THRESHOLD_SCORING_OPTIONS, calc_score_for_binary_predictions)
 
@@ -154,6 +155,7 @@ if __name__ == '__main__':
         protocol_group = p.add_argument_group('protocol')
         protocol_group.add_argument('--outcome_col_name', type=str, required=False)
         protocol_group.add_argument('--validation_size', type=float, default=0.1)
+        protocol_group.add_argument('--normalize_features', type=bool, default=True)
         protocol_group.add_argument('--key_cols_to_group_when_splitting', type=str,
             default=None, nargs='*')
         protocol_group.add_argument('--scoring', type=str, default='roc_auc_score')
@@ -167,7 +169,7 @@ if __name__ == '__main__':
 
     args, unknown_args = parser.parse_known_args()
     fig_dir = os.path.abspath(args.output_dir)
-
+    
     # key[5:] strips the 'grid_' prefix from the argument
     param_grid = {key[5:]: vars(args)[key] for key in vars(args)
                   if key.startswith('grid_')}
@@ -278,7 +280,18 @@ if __name__ == '__main__':
 
     # Perform hyper_searcher search
     splitter = Splitter(size=args.validation_size, random_state=args.random_seed, n_splits=args.n_splits, cols_to_group=args.key_cols_to_group_when_splitting)
-    hyper_searcher = GridSearchCV(clf, param_grid,
+    step_list = list()
+    if args.normalize_features:
+        scaler_x =  StandardScaler()
+        step_list.append(('standardize', scaler_x))
+    step_list.append(('classifier', clf))
+    prediction_pipeline = Pipeline(step_list)
+    param_grid_pipeline = dict()
+    for key, value in param_grid.items():
+        param_grid_pipeline['classifier__'+key] = value
+
+    from IPython import embed; embed()
+    hyper_searcher = GridSearchCV(prediction_pipeline, param_grid_pipeline,
         scoring=args.scoring, cv=splitter, refit=True, return_train_score=True, verbose=5)
     key_train = splitter.make_groups_from_df(df_by_split['train'][key_cols])
     hyper_searcher.fit(x_train, y_train, groups=key_train)
