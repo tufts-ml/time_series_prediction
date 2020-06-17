@@ -21,6 +21,7 @@ from scipy import stats
 import ast
 import time
 import copy
+from scipy.stats import skew
 
 def main():
     parser = argparse.ArgumentParser(description="Script for collapsing"
@@ -170,12 +171,11 @@ def collapse_np(ts_df, args):
             
             list_of_collapsed_feat_arr.append(collapsed_feat_arr)
             list_of_collapsed_feat_names.extend([x+'_'+op+'_'+str(low)+'_to_'+str(high) for x in feature_cols])
-
     print('-----------------------------------------')
     print('total time taken = %d seconds'%total_time)
     print('-----------------------------------------')
     collapsed_df = pd.DataFrame(np.hstack(list_of_collapsed_feat_arr), columns=list_of_collapsed_feat_names)
-
+    
     for col_name in id_cols[::-1]:
         collapsed_df.insert(0, col_name, ts_df[col_name].values[fp[:-1]].copy())
     return collapsed_df
@@ -215,8 +215,9 @@ def calc_start_and_stop_indices_from_percentiles(timestamp_arr, start_percentile
     # Treat the last data point as 100 percentile.
     if max_timestamp is None:
         max_timestamp = timestamp_arr[-1]
-    lower_bound = np.searchsorted(timestamp_arr, max_timestamp * start_percentile/100)
-    upper_bound = np.searchsorted(timestamp_arr, max_timestamp * (end_percentile + 0.001)/100)
+        min_timestamp = timestamp_arr[0]
+    lower_bound = np.searchsorted(timestamp_arr, (min_timestamp + (max_timestamp - min_timestamp)*start_percentile/100))
+    upper_bound = np.searchsorted(timestamp_arr, (min_timestamp + (max_timestamp - min_timestamp)*(end_percentile + 0.001)/100))
     # if lower bound and upper bound are the same, add 1 to the upper bound
     if lower_bound >= upper_bound:
         upper_bound = lower_bound + 1
@@ -351,10 +352,13 @@ def parse_feature_cols(data_dict):
     return non_time_cols
 
 def parse_time_col(data_dict):
+    time_cols = []
     for col in data_dict['fields']:
         # TODO avoid hardcoding a column name
-        if (col['role'].count('time') or col['name'] == 'hours'):
-            return col['name']
+        if (col['name'] == 'hours' or col['role'].count('time')):
+            time_cols.append(col['name'])
+    return time_cols[-1]
+            
     
 
 def remove_col_names_from_list_if_not_in_df(col_list, df):
@@ -406,6 +410,11 @@ def collapse_max_np(data_np, lower_bound, upper_bound, **kwargs):
     percentile_data_np = replace_all_nan_cols_with_zeros(data_np, lower_bound, upper_bound)   
     return np.nanmax(percentile_data_np, axis=0)
 
+def collapse_skew_np(data_np, lower_bound, upper_bound, **kwargs):
+    # replace columns containing all nans to 0 because nanfunc throws error on all nan columns
+    percentile_data_np = replace_all_nan_cols_with_zeros(data_np, lower_bound, upper_bound)
+    return skew(percentile_data_np, axis=0, nan_policy='omit')
+
 def collapse_count_np(data_np, lower_bound, upper_bound, **kwargs):
     return (~np.isnan(data_np[lower_bound:upper_bound,:])).sum(axis=0)
  
@@ -444,7 +453,8 @@ COLLAPSE_FUNCTIONS_np = {
     "max": collapse_max_np,
     "slope": collapse_slope_np, 
     "count": collapse_count_np,
-    "present": collapse_present_np
+    "present": collapse_present_np,
+    "skew":collapse_skew_np
 }
 
 

@@ -279,7 +279,7 @@ if __name__ == '__main__':
     # Perform hyper_searcher search
     splitter = Splitter(size=args.validation_size, random_state=args.random_seed, n_splits=args.n_splits, cols_to_group=args.key_cols_to_group_when_splitting)
     hyper_searcher = GridSearchCV(clf, param_grid,
-        scoring=args.scoring, cv=splitter, refit=True, return_train_score=True)
+        scoring=args.scoring, cv=splitter, refit=True, return_train_score=True, verbose=5)
     key_train = splitter.make_groups_from_df(df_by_split['train'][key_cols])
     hyper_searcher.fit(x_train, y_train, groups=key_train)
     

@@ -12,12 +12,11 @@ PROJECT_REPO_DIR = os.environ.get("PROJECT_REPO_DIR", os.path.abspath("../../../
 PROJECT_CONDA_ENV_YAML = os.path.join(PROJECT_REPO_DIR, "ts_pred.yml")
 
 MADRID_DATASET_TOP_PATH = os.path.expandvars(os.path.join("$HOME", "datasets/"))
-SITE_NAME = "HUF_maxN21000/"
+SITE_NAME = "HUF/"
 MADRID_DATASET_STD_PATH = os.path.join(MADRID_DATASET_TOP_PATH, MADRID_VERSION, SITE_NAME)
 
 rule all:
     input:
-        os.path.join(MADRID_DATASET_STD_PATH, 'alignedfeatures_per_tstep.csv'),
         os.path.join(MADRID_DATASET_STD_PATH, 'normfeatures_per_tstep.csv'),
         os.path.join(MADRID_DATASET_STD_PATH, 'CollapsedFeaturesPerSequence.csv'),
         os.path.join(MADRID_DATASET_STD_PATH, 'Spec_CollapsedFeaturesPerSequence.json'),	
@@ -26,33 +25,10 @@ rule all:
         os.path.join(MADRID_DATASET_STD_PATH, 'y_train.csv'),
         os.path.join(MADRID_DATASET_STD_PATH, 'y_test.csv')
 
-rule align_to_grid:
-    input:
-        align_script=os.path.join(PROJECT_REPO_DIR, 'src', 'align_to_grid.py'),
-        x_csv=os.path.join(MADRID_DATASET_STD_PATH, 'vitals.csv'),
-        x_spec_json=os.path.join(MADRID_DATASET_STD_PATH, 'Spec-Vitals.json')
-
-    output:
-        aligned_csv=os.path.join(MADRID_DATASET_STD_PATH, 'alignedfeatures_per_tstep.csv')
-
-
-    conda:
-        PROJECT_CONDA_ENV_YAML
-
-    shell:
-        '''
-        python -u {input.align_script} \
-            --input_ts_csv_path {input.x_csv} \
-            --data_dict {input.x_spec_json} \
-	    --step_size '1H' \
-            --output {output.aligned_csv} \
-        '''
-
-
 rule normalize_features:
     input:
         normalize_script=os.path.join(PROJECT_REPO_DIR, 'src', 'normalize_features.py'),
-        x_csv=os.path.join(MADRID_DATASET_STD_PATH, 'alignedfeatures_per_tstep.csv'),
+        x_csv=os.path.join(MADRID_DATASET_STD_PATH, 'vitals.csv'),
         x_spec_json=os.path.join(MADRID_DATASET_STD_PATH, 'Spec-Vitals.json')
 
     output:
@@ -92,7 +68,8 @@ rule collapse_features:
             --data_dict {input.x_spec_json} \
             --output {output.collapsedx_csv} \
             --data_dict_output {output.collapsedx_json} \
-            --range_pairs "[(0,100)]" \
+            --collapse_range_features "skew slope std median min max" \
+            --range_pairs "[(0,10), (0,25), (0,50), (50,100), (75,100), (90,100), (0,100)]" \
             --collapse
         '''
 
@@ -119,7 +96,7 @@ rule split_into_train_and_test:
         python -u {input.script} \
             --input {input.collapsedx_csv} \
             --data_dict {input.collapsedx_json} \
-            --test_size 0.2 \
+            --test_size 0.25 \
 	    --group_cols patient_id \
             --train_csv_filename {output.x_train_csv} \
             --test_csv_filename {output.x_test_csv}
@@ -127,7 +104,7 @@ rule split_into_train_and_test:
         python -u {input.script} \
             --input {input.collapsedy_csv} \
             --data_dict {input.collapsedy_json} \
-            --test_size 0.2 \
+            --test_size 0.25 \
             --group_cols patient_id \
             --train_csv_filename {output.y_train_csv} \
             --test_csv_filename {output.y_test_csv}
