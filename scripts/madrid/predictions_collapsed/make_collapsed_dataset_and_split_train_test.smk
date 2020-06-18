@@ -12,7 +12,7 @@ PROJECT_REPO_DIR = os.environ.get("PROJECT_REPO_DIR", os.path.abspath("../../../
 PROJECT_CONDA_ENV_YAML = os.path.join(PROJECT_REPO_DIR, "ts_pred.yml")
 
 MADRID_DATASET_TOP_PATH = os.path.expandvars(os.path.join("$HOME", "datasets/"))
-SITE_NAME = "HUF_maxN100/"
+SITE_NAME = "HUF_max/"
 MADRID_DATASET_STD_PATH = os.path.join(MADRID_DATASET_TOP_PATH, MADRID_VERSION, SITE_NAME)
 
 rule all:
@@ -44,7 +44,7 @@ rule collapse_features:
             --data_dict {input.x_spec_json} \
             --output {output.collapsedx_csv} \
             --data_dict_output {output.collapsedx_json} \
-            --collapse_range_features "skew slope std median min max" \
+            --collapse_range_features "hours_since_measured present slope std median min max" \
             --range_pairs "[(0,10), (0,25), (0,50), (50,100), (75,100), (90,100), (0,100)]" \
             --collapse
         '''

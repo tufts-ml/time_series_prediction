@@ -45,7 +45,7 @@ def main():
                         default='slope std', 
                         help="Enclose options with 's, choose "
                              "from mean, std, min, max, "
-                             "median, slope, count, present")
+                             "median, slope, count, present, skew, hours_since_measured")
     parser.add_argument('--range_pairs', type=str, required=False,
                         default='[(0, 10), (0, 25), (0, 50), (50, 100), (75, 100), (90, 100), (0, 100)]',
                         help="Enclose pairs list with 's and [], list all desired ranges in "
@@ -161,7 +161,7 @@ def collapse_np(ts_df, args):
 
                 cur_feat_arr = features_arr[fp_start:fp_end,:].copy()
                 cur_timestamp_arr = timestamp_arr[fp_start:fp_end]
-
+                
                 # compute summary function on that particular subject episode dataframe
                 collapsed_feat_arr[p,:] = COLLAPSE_FUNCTIONS_np[op](cur_feat_arr, lower_bound, upper_bound, cur_timestamp_arr=cur_timestamp_arr)
 
@@ -421,6 +421,30 @@ def collapse_count_np(data_np, lower_bound, upper_bound, **kwargs):
 def collapse_present_np(data_np, lower_bound, upper_bound, **kwargs):
     return (~np.isnan(data_np[lower_bound:upper_bound,:])).any(axis=0)
 
+def collapse_hours_since_measured_np(data_np, lower_bound, upper_bound, cur_timestamp_arr=None, **kwargs):
+    '''
+    Computes the time since last value was observed from the last stamps
+    Example : 
+    data = [0, 1 , nan, 4, 5, nan, nan]
+    tstamp = [30, 32, 36, 40, 45, 51, 60]
+    
+    output : 60-45=15
+    '''
+    percentile_t_np = cur_timestamp_arr[lower_bound:upper_bound]
+    percentile_data_np = data_np[lower_bound:upper_bound,:]
+    n_cols = percentile_data_np.shape[1]
+
+    collapsed_hours_since_missing = np.zeros(n_cols)
+    for col in range(n_cols):
+        mask = ~np.isnan(percentile_data_np[:,col])
+        if mask.sum():
+            xs = percentile_data_np[mask,col]
+            ts = percentile_t_np[mask]
+            collapsed_hours_since_missing[col] = percentile_t_np[-1] - ts[-1]
+        else: # set to large value if no measurement is observed in the sequence
+            collapsed_hours_since_missing[col] = 120
+    return collapsed_hours_since_missing
+
 def collapse_slope_np(data_np, lower_bound, upper_bound, cur_timestamp_arr=None, **kwargs): 
     percentile_t_np = cur_timestamp_arr[lower_bound:upper_bound]
     percentile_data_np = data_np[lower_bound:upper_bound,:]
@@ -454,7 +478,8 @@ COLLAPSE_FUNCTIONS_np = {
     "slope": collapse_slope_np, 
     "count": collapse_count_np,
     "present": collapse_present_np,
-    "skew":collapse_skew_np
+    "skew":collapse_skew_np,
+    "hours_since_measured":collapse_hours_since_measured_np
 }
 
 
