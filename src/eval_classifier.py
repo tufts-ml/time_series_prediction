@@ -171,10 +171,17 @@ if __name__ == '__main__':
     fig_dir = os.path.abspath(args.output_dir)
     
     # key[5:] strips the 'grid_' prefix from the argument
-    param_grid = {key[5:]: vars(args)[key] for key in vars(args)
-                  if key.startswith('grid_')}
-    # Parse unspecified arguments to be passed through to the classifier
+    argdict = vars(args)
+    #raw_param_grid = {
+    #    key[5:]: argdict[key] for key in argdict if key.startswith('grid_')}
+    raw_param_grid = dict()
+    for key, val  in argdict.items():
+        if key.startswith('grid_'):
+            raw_param_grid[key[5:]] = val
+        elif key.startswith('filter_'):
+            raw_param_grid[key] = val
 
+    # Parse unspecified arguments to be passed through to the classifier
     def auto_convert_str(x):
         try:
             x_float = float(x)
@@ -257,8 +264,6 @@ if __name__ == '__main__':
     y_test = np.ravel(df_by_split['test'][outcome_col_name])
     is_multiclass = len(np.unique(y_train)) > 2
 
-
-
     fixed_args = {}
     fixed_group = None
     for g in subparsers_by_name[args.clf_name]._action_groups:
@@ -266,7 +271,15 @@ if __name__ == '__main__':
             fixed_group = g
             break
     for key in get_sorted_list_of_kwargs_specific_to_group_parser(fixed_group):
-        fixed_args[key] = vars(args)[key]
+        val = vars(args)[key]
+        if isinstance(val, str):
+            if val.lower() == 'none':
+                val = None
+
+        if isinstance(val, str):
+            if 'lambda x' in val:
+                continue
+        fixed_args[key] = val
 
     passthrough_args = {}
     for i in range(len(unknown_args)):
@@ -275,8 +288,31 @@ if __name__ == '__main__':
             val = unknown_args[i+1]
             passthrough_args[arg[2:]] = auto_convert_str(val)
 
+    
+    # Perform hyper_searcher search
+    n_examples = int(np.ceil(x_train.shape[0] * (1 - args.validation_size)))
+    n_features = x_train.shape[1]
+
+    param_grid = dict()
+    for key, grid in raw_param_grid.items():
+        fkey = 'filter__' + key
+        if fkey in argdict:
+            filter_func = eval(argdict[fkey])
+            filtered_grid = np.unique([filter_func(g, n_examples, n_features) for g in grid]).tolist()
+        else:
+            filtered_grid = np.unique(grid).tolist()
+
+        if 'lambda x' not in str(filtered_grid[0]):
+            if len(filtered_grid) == 0:
+                raise Warning("Bad grid for parameter: %s")
+            elif (len(filtered_grid) == 1):
+                fixed_args[key] = filtered_grid[0]
+                raise Warning("Skipping parameter %s with only one grid value")
+            else:
+                param_grid[key] = filtered_grid
+        
     # Create classifier object
-    clf = args.clf_constructor(**fixed_args, **passthrough_args)
+    clf = args.clf_constructor(random_state=int(args.random_seed),**fixed_args, **passthrough_args)
 
     # Perform hyper_searcher search
     splitter = Splitter(size=args.validation_size, random_state=args.random_seed, n_splits=args.n_splits, cols_to_group=args.key_cols_to_group_when_splitting)
@@ -290,7 +326,6 @@ if __name__ == '__main__':
     for key, value in param_grid.items():
         param_grid_pipeline['classifier__'+key] = value
 
-    from IPython import embed; embed()
     hyper_searcher = GridSearchCV(prediction_pipeline, param_grid_pipeline,
         scoring=args.scoring, cv=splitter, refit=True, return_train_score=True, verbose=5)
     key_train = splitter.make_groups_from_df(df_by_split['train'][key_cols])
