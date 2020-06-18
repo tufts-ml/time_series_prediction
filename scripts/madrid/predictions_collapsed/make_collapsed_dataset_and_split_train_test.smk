@@ -12,7 +12,7 @@ PROJECT_REPO_DIR = os.environ.get("PROJECT_REPO_DIR", os.path.abspath("../../../
 PROJECT_CONDA_ENV_YAML = os.path.join(PROJECT_REPO_DIR, "ts_pred.yml")
 
 MADRID_DATASET_TOP_PATH = os.path.expandvars(os.path.join("$HOME", "datasets/"))
-SITE_NAME = "HUF_max/"
+SITE_NAME = "HUF/"
 MADRID_DATASET_STD_PATH = os.path.join(MADRID_DATASET_TOP_PATH, MADRID_VERSION, SITE_NAME)
 
 rule all:
