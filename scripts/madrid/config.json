@@ -1,0 +1,15 @@
+{
+    "DATASET_SHORTNAME": "madrid",
+    "DATASET_VERSION": "v20200424",
+    "SPLIT_KEY_COL_NAMES": "patient_id",
+    "OUTCOME_COL_NAME": "seizure_binary_label",
+    "SPLIT_SUBPATH": "split-by=patient_id",
+    "DATASET_PATH_LIST": ["$HOME", "datasets", "$DATASET_VERSION"],
+    "STD_PATH_LIST": ["$DATASET_PATH", "$DATASET_VERSION"],
+    "SPLIT_PATH_LIST_FEAT_PER_SEQUENCE": ["$DATASET_PATH", "$DATASET_VERSION", "$SPLIT_SUBPATH", "collapsed_features_per_sequence"],
+    "SPLIT_PATH_LIST_FEAT_PER_TIMESTEP": ["$DATASET_PATH", "$DATASET_VERSION", "$SPLIT_SUBPATH", "features_per_timestep"],
+    "SPLIT_RANDOM_STATE": 42,
+    "SPLIT_TEST_SIZE": 0.1,
+    "RESULTS_TOP_PATH_LIST": ["/tmp/", "results", "$DATASET_SHORTNAME"],
+    "RESULTS_PATH_LIST_FEAT_PER_SEQUENCE": ["$RESULTS_TOP_PATH", "$DATASET_VERSION", "$SPLIT_SUBPATH", "collapsed_features_per_sequence"]
+}
