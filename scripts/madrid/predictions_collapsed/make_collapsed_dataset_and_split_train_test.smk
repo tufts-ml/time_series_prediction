@@ -28,15 +28,15 @@ rule all:
     input:
         os.path.join(DATASET_STD_PATH, 'CollapsedFeaturesPerSequence.csv'),
         os.path.join(DATASET_STD_PATH, 'Spec_CollapsedFeaturesPerSequence.json'),	
-        os.path.join(DATASET_STD_PATH, 'x_train.csv'),
-        os.path.join(DATASET_STD_PATH, 'x_test.csv'),
-        os.path.join(DATASET_STD_PATH, 'y_train.csv'),
-        os.path.join(DATASET_STD_PATH, 'y_test.csv')
+        os.path.join(DATASET_SPLIT_PATH, 'x_train.csv'),
+        os.path.join(DATASET_SPLIT_PATH, 'x_test.csv'),
+        os.path.join(DATASET_SPLIT_PATH, 'y_train.csv'),
+        os.path.join(DATASET_SPLIT_PATH, 'y_test.csv')
 
 rule collapse_features:
     input:
         script=os.path.join(PROJECT_REPO_DIR, 'src', 'feature_transformation.py'),
-        x_csv=os.path.join(DATASET_STD_PATH, 'vitals.csv'),
+        x_csv=os.path.join(DATASET_STD_PATH, 'vitals_before_icu.csv'),
         x_spec_json=os.path.join(DATASET_STD_PATH, 'Spec-Vitals.json')
 
     output:
