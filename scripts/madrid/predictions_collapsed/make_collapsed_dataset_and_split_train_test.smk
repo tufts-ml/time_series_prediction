@@ -64,7 +64,7 @@ rule split_into_train_and_test:
         script=os.path.join(PROJECT_REPO_DIR, 'src', 'split_dataset.py'),
         collapsedx_csv=os.path.join(DATASET_STD_PATH, 'CollapsedFeaturesPerSequence.csv'),
         collapsedx_json=os.path.join(DATASET_STD_PATH, 'Spec_CollapsedFeaturesPerSequence.json'),
-        collapsedy_csv=os.path.join(DATASET_STD_PATH, 'transfer_to_icu_outcomes.csv'),
+        collapsedy_csv=os.path.join(DATASET_STD_PATH, 'icu_transfer_outcomes.csv'),
         collapsedy_json=os.path.join(DATASET_STD_PATH, 'Spec-Outcomes_TransferToICU.json')
 
     output:
