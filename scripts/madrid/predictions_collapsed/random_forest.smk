@@ -14,6 +14,8 @@ from config_loader import (
     PROJECT_REPO_DIR, PROJECT_CONDA_ENV_YAML,
     RESULTS_PATH)
 
+RESULTS_PATH = os.path.join(RESULTS_PATH, 'random_forest')
+
 rule train_and_evaluate_classifier:
     input:
         script=os.path.join(PROJECT_REPO_DIR, 'src', 'eval_classifier.py'),
