@@ -81,7 +81,11 @@ def main():
     data_dict = None
 
     # transform data
-    print('collapsing data..')
+    if args.max_time_step is None:
+        print('collapsing entire history of data..')
+    else:
+        print('collapsing first %s hours of data..'%(args.max_time_step))
+
     t1 = time.time()
     if args.collapse:
         ts_df = collapse_np(ts_df, args)
@@ -157,7 +161,7 @@ def collapse_np(ts_df, args):
                 fp_start = fp[p]
                 fp_end = fp[p+1]
                 lower_bound, upper_bound = calc_start_and_stop_indices_from_percentiles(
-                    timestamp_arr[fp_start:fp_end], start_percentile=low, end_percentile=high, max_timestamp=args.max_time_step)
+                    timestamp_arr[fp_start:fp_end], start_percentile=low, end_percentile=high, max_time_step=args.max_time_step)
 
                 cur_feat_arr = features_arr[fp_start:fp_end,:].copy()
                 cur_timestamp_arr = timestamp_arr[fp_start:fp_end]
@@ -181,7 +185,7 @@ def collapse_np(ts_df, args):
     return collapsed_df
 
 
-def calc_start_and_stop_indices_from_percentiles(timestamp_arr, start_percentile, end_percentile, max_timestamp=None):
+def calc_start_and_stop_indices_from_percentiles(timestamp_arr, start_percentile, end_percentile, max_time_step=None):
     ''' Find start and stop indices to select specific percentile range
     
     Args
@@ -212,10 +216,15 @@ def calc_start_and_stop_indices_from_percentiles(timestamp_arr, start_percentile
     (5, 7)
     '''
 
-    # Treat the last data point as 100 percentile.
-    if max_timestamp is None:
+    # Consider last data point as first timestamp + step size input by the user. For eg. If the step size is 1hr, then consider only 
+    # first hour of time series data
+    min_timestamp = timestamp_arr[0]
+    if (max_time_step is None) or (max_time_step==-1):
         max_timestamp = timestamp_arr[-1]
-        min_timestamp = timestamp_arr[0]
+    elif (min_timestamp + max_time_step > timestamp_arr[-1]):
+        max_timestamp = timestamp_arr[-1]
+    else :
+        max_timestamp = min_timestamp + max_time_step
     lower_bound = np.searchsorted(timestamp_arr, (min_timestamp + (max_timestamp - min_timestamp)*start_percentile/100))
     upper_bound = np.searchsorted(timestamp_arr, (min_timestamp + (max_timestamp - min_timestamp)*(end_percentile + 0.001)/100))
     # if lower bound and upper bound are the same, add 1 to the upper bound

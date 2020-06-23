@@ -53,8 +53,9 @@ rule collapse_features:
             --data_dict {input.x_spec_json} \
             --output {output.collapsedx_csv} \
             --data_dict_output {output.collapsedx_json} \
+            --max_time_step 1\
             --collapse_range_features "hours_since_measured present slope std median min max" \
-            --range_pairs "[(0,10), (0,25), (0,50), (50,100), (75,100), (90,100), (0,100)]" \
+            --range_pairs "[(0,100), (0,10), (0,25), (0,50), (50,100), (75,100), (90,100)]" \
             --collapse
         '''
 
