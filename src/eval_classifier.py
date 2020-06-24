@@ -461,8 +461,7 @@ if __name__ == '__main__':
 
     perf_df = pd.DataFrame(row_dict_list)
     perf_df = perf_df.set_index('split_name')
-
-
+    perf_df.to_csv(os.path.join(fig_dir, 'performance_df.csv'))
 
     # Set up HTML report
     try:
