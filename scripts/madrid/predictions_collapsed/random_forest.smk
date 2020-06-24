@@ -13,10 +13,11 @@ from config_loader import (
     DATASET_STD_PATH, DATASET_SPLIT_PATH,
     DATASET_PERTSTEP_SPLIT_PATH, PROJECT_REPO_DIR, PROJECT_CONDA_ENV_YAML,
     RESULTS_PATH, RESULTS_PERTSTEP_PATH)
-tstep_hours_list=[2,6,10,14,18,22,24,-1]
+tstep_hours_list=D_CONFIG['TIMESTEP_LIST']
+random_seed_list=D_CONFIG['CLF_RANDOM_SEED_LIST']
 RESULTS_PATH=os.path.join(RESULTS_PATH, 'random_forest')
 RESULTS_PERTSTEP_PATH=os.path.join(RESULTS_PERTSTEP_PATH, 'random_forest')
-output_html_files=[os.path.join(RESULTS_PERTSTEP_PATH, "TSTEP={tstep_hours}", 'report.html').format(tstep_hours=tstep_hours) for tstep_hours in tstep_hours_list]
+output_html_files=[os.path.join(RESULTS_PERTSTEP_PATH, "TSTEP={tstep_hours}", "report_random_seed={random_seed}.html").format(tstep_hours=tstep_hours, random_seed=random_seed) for tstep_hours in tstep_hours_list for random_seed in random_seed_list]
 
 
 rule train_and_evaluate_classifier_many_tsteps:
@@ -37,7 +38,7 @@ rule train_and_evaluate_classifier_single_tstep:
         output_dir=os.path.join(RESULTS_PERTSTEP_PATH, "TSTEP={tstep_hours}")
 
     output:
-        output_html=os.path.join(RESULTS_PERTSTEP_PATH, "TSTEP={tstep_hours}", 'report.html')
+        output_html=os.path.join(RESULTS_PERTSTEP_PATH, "TSTEP={tstep_hours}", "report_random_seed={random_seed}.html")
 
     conda:
         PROJECT_CONDA_ENV_YAML
@@ -54,6 +55,7 @@ rule train_and_evaluate_classifier_single_tstep:
             --data_dict_files {input.x_dict_json},{input.y_dict_json} \
             --validation_size 0.15 \
             --key_cols_to_group_when_splitting {{SPLIT_KEY_COL_NAMES}} \
+            --random_seed {wildcards.random_seed}\
             --n_splits 3 \
             --scoring roc_auc \
             --threshold_scoring balanced_accuracy \

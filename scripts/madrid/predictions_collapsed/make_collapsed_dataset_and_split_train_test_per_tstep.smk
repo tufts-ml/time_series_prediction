@@ -16,7 +16,7 @@ print("Train/test dataset will go to folder:")
 print(DATASET_PERTSTEP_SPLIT_PATH)
 
 # run collapse features on furst 2 hours, first 4 hours etc.
-tstep_hours_list=[2,6,10,14,18,22,24,-1]
+tstep_hours_list=D_CONFIG['TIMESTEP_LIST']
 
 collapsed_pertstep_csvs=[os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}","CollapsedFeaturesPerSequence.csv").replace("{tstep_hours}", str(tstep_hours)) for tstep_hours in tstep_hours_list]
 collapsed_pertstep_jsons=[os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}","Spec_CollapsedFeaturesPerSequence.json").replace("{tstep_hours}", str(tstep_hours)) for tstep_hours in tstep_hours_list]

@@ -444,7 +444,7 @@ if __name__ == '__main__':
             ax.set_ylabel('True Positive Rate')
             ax.set_xlim([0, 1])
             ax.set_ylim([0, 1])
-            plt.savefig(os.path.join(fig_dir, '{split_name}_roc_curve.png'.format(split_name=split_name)))
+            plt.savefig(os.path.join(fig_dir, '{split_name}_roc_curve_random_seed={random_seed}.png'.format(split_name=split_name, random_seed=str(args.random_seed))))
             plt.clf()
 
             pr_precision, pr_recall, _ = precision_recall_curve(y, y_pred_proba)
@@ -454,14 +454,14 @@ if __name__ == '__main__':
             ax.set_ylabel('Precision')
             ax.set_xlim([0, 1])
             ax.set_ylim([0, 1])
-            plt.savefig(os.path.join(fig_dir, '{split_name}_pr_curve.png'.format(split_name=split_name)))
+            plt.savefig(os.path.join(fig_dir, '{split_name}_pr_curve_random_seed={random_seed}.png'.format(split_name=split_name, random_seed=str(args.random_seed))))
             plt.clf()
 
         row_dict_list.append(row_dict)
 
     perf_df = pd.DataFrame(row_dict_list)
     perf_df = perf_df.set_index('split_name')
-    perf_df.to_csv(os.path.join(fig_dir, 'performance_df.csv'))
+    perf_df.to_csv(os.path.join(fig_dir, 'performance_df_random_seed={random_seed}.csv'.format(random_seed=str(args.random_seed))))
 
     # Set up HTML report
     try:
@@ -545,14 +545,14 @@ if __name__ == '__main__':
                                 text('Test')
                         with tag('tr'):
                             with tag('td', align='center'):
-                                doc.stag('img', src=os.path.join(fig_dir, 'train_roc_curve.png'), width=400)
+                                doc.stag('img', src=os.path.join(fig_dir, 'train_roc_curve_random_seed={random_seed}.png'.format(random_seed=str(args.random_seed))), width=400)
                             with tag('td', align='center'):
-                                doc.stag('img', src=os.path.join(fig_dir, 'test_roc_curve.png'), width=400)
+                                doc.stag('img', src=os.path.join(fig_dir, 'test_roc_curve_random_seed={random_seed}.png'.format(random_seed=str(args.random_seed))), width=400)
                         with tag('tr'):
                             with tag('td', align='center'):
-                                doc.stag('img', src=os.path.join(fig_dir, 'train_pr_curve.png'), width=400)
+                                doc.stag('img', src=os.path.join(fig_dir, 'train_pr_curve_random_seed={random_seed}.png'.format(random_seed=str(args.random_seed))), width=400)
                             with tag('td', align='center'):
-                                doc.stag('img', src=os.path.join(fig_dir, 'test_pr_curve.png'), width=400)
+                                doc.stag('img', src=os.path.join(fig_dir, 'test_pr_curve_random_seed={random_seed}.png'.format(random_seed=str(args.random_seed))), width=400)
                         with tag('tr'):
                             with tag('td', align='center'):
                                 doc.asis(str(perf_df.iloc[0][['confusion_html']].values[0]).replace('&lt;', '<').replace('&gt;', '>').replace('\\n', ''))
@@ -574,5 +574,5 @@ if __name__ == '__main__':
                 with tag('div', klass="col-sm-1 sidenav"):
                     text("")
 
-    with open('report.html', 'w') as f:
+    with open('report_random_seed={random_seed}.html'.format(random_seed=str(args.random_seed)), 'w') as f:
         f.write(doc.getvalue())
