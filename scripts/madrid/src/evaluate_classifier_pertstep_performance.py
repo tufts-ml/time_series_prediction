@@ -13,7 +13,7 @@ if __name__ == '__main__':
         help='Directory where classifeir performance csvs are saved')
 
     args = parser.parse_args()
-    models = ['random_forest', 'logistic_regression']
+    models = ['random_forest', 'logistic_regression', 'mews']
 
     # get performance vals for classifiers at tstep=2,4,6,10,14,-1 etc. -1 is full history     
     final_perf_df_list=list()
@@ -38,10 +38,10 @@ if __name__ == '__main__':
     # change tstep of full history from -1 to some temp value
     full_history_temp_tstep = np.asarray(final_perf_df['tstep'].max())+5
     final_perf_df.loc[final_perf_df['tstep']==-1, 'tstep']=full_history_temp_tstep
-
+    
     # plot selected metrics
-    plot_metrics = ['cross_entropy_base2', 'accuracy', 'balanced_accuracy', 'f1_score', 'average_precision', 'AUROC']
-    f, axs = plt.subplots(3,2, figsize=(18,15))
+    plot_metrics = [ 'balanced_accuracy', 'f1_score', 'average_precision', 'AUROC']
+    f, axs = plt.subplots(2,2, figsize=(18,15))
     axs_list = [ax for sublist in axs for ax in sublist]
     for ax_idx, plot_metric in enumerate(plot_metrics):
         sns.pointplot(x='tstep', y=plot_metric, hue = 'model', data=final_perf_df[final_perf_df.split_name=='test'],ax=axs_list[ax_idx])
