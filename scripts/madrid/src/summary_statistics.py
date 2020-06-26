@@ -68,7 +68,6 @@ def parse_time_col(data_dict):
             time_cols.append(col['name'])
     return time_cols[-1]
 
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--preproc_data_dir')
@@ -109,6 +108,29 @@ if __name__ == '__main__':
         print('%s has a missing rate of %.4f percent over all stays'%(vital, ((vital_counts_per_stay_df[vital]==0).sum())/vital_counts_per_stay_df.shape[0]))
         print('----------------------------------------------------')
     
+    '''
+    TODO : Check again
+    print('reporting missingness in 6 hour bins..')
+    time_col = parse_time_col(vitals_data_dict)
+    timestamp_arr = np.asarray(df_vitals[time_col].values.copy(), dtype=np.float64)
+    features_arr = df_vitals[vitals].values
+    # get per 6 hour missing rates
+    bin_length = 6
+    tstarts = np.arange(0,max(timestamp_arr), bin_length)
+    n_bins = len(tstarts)
+    missing_np = np.zeros([n_bins, len(vitals)])
+    for p in range(n_bins):
+         t_start = tstarts[p]
+         t_end = tstarts[p]+bin_length
+         t_idx = (timestamp_arr>=t_start)&(timestamp_arr<t_end)
+         cur_feat_arr = features_arr[t_idx,:]
+         missing_np[p,:] = np.isnan(cur_feat_arr).sum(axis=0)/cur_feat_arr.shape[0]
+     per_bin_missing_rates = np.nanmean(missing_np, axis=0)
+    '''
+
+
+
+
     print('#######################################')
     print('Printing summary statistics for vitals')
     vitals_summary_df = pd.DataFrame()
@@ -123,36 +145,30 @@ if __name__ == '__main__':
     print(vitals_summary_df)
 
     print('#######################################')
-    print('Getting train test split statistics')
-
+    print('Getting train, val, test split statistics')
+    
+    validation_size=0.15
     train_df, test_df = split_dataframe_by_keys(
         df_vitals, cols_to_group=args.group_cols, size=args.test_size, random_state=args.random_seed) 
+    train_df, validation_df = split_dataframe_by_keys(
+        train_df, cols_to_group=args.group_cols, size=validation_size, random_state=args.random_seed)
+
     outcomes_train_df, outcomes_test_df = split_dataframe_by_keys(
         df_transfer_to_icu_outcomes, cols_to_group=args.group_cols, size=args.test_size, random_state=args.random_seed)
-    print('----------------------------------------------------')
-    print('training set has %s stays for %s patients and %s ICU transfers'%(len(train_df.hospital_admission_id.unique()), len(train_df.patient_id.unique()),
-        outcomes_train_df.transfer_to_ICU_outcome.sum()))
-    print('----------------------------------------------------')
-    print('test set has %s stays for %s patients and %s ICU transfers'%(len(test_df.hospital_admission_id.unique()), len(test_df.patient_id.unique()),
-        outcomes_test_df.transfer_to_ICU_outcome.sum()))
-    print('----------------------------------------------------')
+    outcomes_train_df, outcomes_validation_df = split_dataframe_by_keys(
+        outcomes_train_df, cols_to_group=args.group_cols, size=validation_size, random_state=args.random_seed)
 
-    print('Lengths of stay statistics :')
-    training_set_stay_lengths = train_df.groupby(id_cols)['hours_since_admission'].apply(lambda x : max(x)-min(x)).values
-    test_set_stay_lengths = test_df.groupby(id_cols)['hours_since_admission'].apply(lambda x : max(x)-min(x)).values
-    training_set_stay_lengths_outcome_0 = training_set_stay_lengths[outcomes_train_df.transfer_to_ICU_outcome==0]
-    test_set_stay_lengths_outcome_0 = test_set_stay_lengths[outcomes_test_df.transfer_to_ICU_outcome==0]
-    training_set_stay_lengths_outcome_1 = training_set_stay_lengths[outcomes_train_df.transfer_to_ICU_outcome==1]
-    test_set_stay_lengths_outcome_1 = test_set_stay_lengths[outcomes_test_df.transfer_to_ICU_outcome==1]
-    print('----------------------------------------------------')
-    print('training set lengths of stay outcome 0:  %.2f(%.2f - %.2f)'%(np.median(training_set_stay_lengths_outcome_0), np.percentile(training_set_stay_lengths_outcome_0, 5), np.percentile(training_set_stay_lengths_outcome_0, 95)))
-    print('----------------------------------------------------')
-    print('training set lengths of stay outcome 1:  %.2f(%.2f - %.2f)'%(np.median(training_set_stay_lengths_outcome_1), np.percentile(training_set_stay_lengths_outcome_1, 5), np.percentile(training_set_stay_lengths_outcome_1, 95)))
-    print('----------------------------------------------------')
-    print('test set lengths of stay outcome 0:  %.2f(%.2f - %.2f)'%(np.median(test_set_stay_lengths_outcome_0), np.percentile(test_set_stay_lengths_outcome_0, 5), np.percentile(test_set_stay_lengths_outcome_0, 95)))
-    print('----------------------------------------------------')
-    print('test set lengths of stay outcome 1:  %.2f(%.2f - %.2f)'%(np.median(test_set_stay_lengths_outcome_1), np.percentile(test_set_stay_lengths_outcome_1, 5), np.percentile(test_set_stay_lengths_outcome_1, 95)))
-    
+    for split_name, df, outcome_df in [('train', train_df, outcomes_train_df), ('validation', validation_df, outcomes_validation_df), ('test', test_df, outcomes_test_df)]:
+
+        print('----------------------------------------------------')
+        print('%s set has %s stays for %s patients and %s ICU transfers'%(split_name, len(df.hospital_admission_id.unique()), len(df.patient_id.unique()),
+        outcome_df.transfer_to_ICU_outcome.sum()))
+        stay_lengths = df.groupby(id_cols)['hours_since_admission'].apply(lambda x : max(x)-min(x)).values
+        stay_lengths_outcome_0 = stay_lengths[outcome_df.transfer_to_ICU_outcome==0]
+        stay_lengths_outcome_1 = stay_lengths[outcome_df.transfer_to_ICU_outcome==1]
+        print('----------------------------------------------------')
+        print('%s set lengths of stay outcome 0:  %.2f(%.2f - %.2f)'%(split_name, np.median(stay_lengths_outcome_0), np.percentile(stay_lengths_outcome_0, 5), np.percentile(stay_lengths_outcome_0, 95)))
+        print('%s set lengths of stay outcome 1:  %.2f(%.2f - %.2f)'%(split_name, np.median(stay_lengths_outcome_1), np.percentile(stay_lengths_outcome_1, 5), np.percentile(stay_lengths_outcome_1, 95)))
 
 
-    from IPython import embed; embed()
+
