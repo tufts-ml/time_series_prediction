@@ -56,5 +56,7 @@ rule evaluate_mews_score_single_tstep:
             --random_seed {wildcards.random_seed}\
             --scoring roc_auc \
             --threshold_scoring balanced_accuracy \
+            --validation_size 0.15\
+            --n_splits 3\
         '''.replace("{{OUTCOME_COL_NAME}}", D_CONFIG["OUTCOME_COL_NAME"])\
            .replace("{{SPLIT_KEY_COL_NAMES}}", D_CONFIG["SPLIT_KEY_COL_NAMES"])
