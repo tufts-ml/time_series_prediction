@@ -30,7 +30,6 @@ if __name__ == '__main__':
     final_perf_df = pd.DataFrame(np.vstack(final_perf_df_list), columns = final_perf_df_cols)
     final_perf_df['tstep'] = final_perf_df['tstep'].astype(float) 
     
-    from IPython import embed; embed()
     # change tstep of full history from -1 to some temp value
     full_history_temp_tstep = np.asarray(final_perf_df['tstep'].max())+5
     final_perf_df.loc[final_perf_df['tstep']==-1, 'tstep']=full_history_temp_tstep

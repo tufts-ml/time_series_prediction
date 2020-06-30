@@ -3,6 +3,9 @@ Get summary statistics on madrid data and plot them
 '''
 
 import glob
+import os
+
+config_loader=os.path.join(os.path.abspath('../'), 'predictions_collapsed', 'config_loader.py')
 
 from config_loader import (
     D_CONFIG,

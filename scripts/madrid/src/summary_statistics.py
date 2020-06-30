@@ -6,36 +6,18 @@ import os
 import json
 from sklearn.model_selection import GroupShuffleSplit
 import copy
+from progressbar import ProgressBar
+import warnings
+import sys
 
-class Splitter:
-    def __init__(self, n_splits=1, size=0, random_state=0, cols_to_group=None):
-        self.n_splits = n_splits
-        self.size = size
-        self.cols_to_group = cols_to_group
-        if hasattr(random_state, 'rand'):
-            self.random_state = random_state
-        else:
-            self.random_state = np.random.RandomState(int(random_state))
+warnings.filterwarnings("error")
 
-    def make_groups_from_df(self, data_df):
-        grp = data_df[self.cols_to_group]
-        grp = [' '.join(row) for row in grp.astype(str).values]
-        return grp
+DEFAULT_PROJECT_REPO = os.path.sep.join(__file__.split(os.path.sep)[:-2])
+PROJECT_REPO_DIR = os.path.abspath(
+    os.environ.get('PROJECT_REPO_DIR', DEFAULT_PROJECT_REPO))
 
-    def split(self, X, y=None, groups=None):
-        gss1 = GroupShuffleSplit(random_state=copy.deepcopy(self.random_state), test_size=self.size, n_splits=self.n_splits)
-        for tr_inds, te_inds in gss1.split(X, y=y, groups=groups):
-            yield tr_inds, te_inds
-
-    def get_n_splits(self, X, y=None, groups=None):
-        return self.n_splits
-
-def split_dataframe_by_keys(data_df=None, size=0, random_state=0, cols_to_group=None):
-    gss1 = Splitter(n_splits=1, size=size, random_state=random_state, cols_to_group=cols_to_group)
-    for a, b in gss1.split(data_df, groups=gss1.make_groups_from_df(data_df)):
-        train_df = data_df.iloc[a].copy()
-        test_df = data_df.iloc[b].copy()
-    return train_df, test_df
+sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src'))
+from split_dataset import (Splitter, split_dataframe_by_keys)
 
 def parse_id_cols(data_dict):
     cols = []
@@ -68,6 +50,24 @@ def parse_time_col(data_dict):
             time_cols.append(col['name'])
     return time_cols[-1]
 
+def compute_missingness_rate_per_stay(t, x, tstep):
+    tstarts = np.arange(0,max(t)+0.00001, tstep)
+    n_bins = len(tstarts)
+    missing_np = np.zeros([n_bins, x.shape[1]])
+    for p in range(n_bins):
+        t_start = tstarts[p]
+        t_end = tstarts[p]+tstep
+        t_idx = (t>=t_start)&(t<t_end)
+        curr_x = x[t_idx,:]
+        if t_idx.sum() >0:
+            # if data is not missing for this patient-stay-tstep, mark as 0, else 1
+            missing_np[p,:] = np.isnan(curr_x).all(axis=0)*1.0
+        else:
+            missing_np[p,:] = np.NaN
+    # return average missingness across all tsteps for this  patient-stay
+    return np.nanmean(missing_np, axis=0)
+         
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--preproc_data_dir')
@@ -86,7 +86,7 @@ if __name__ == '__main__':
 
     df_transfer_to_icu_outcomes = pd.read_csv(os.path.join(args.preproc_data_dir,'icu_transfer_outcomes.csv'))
    
-
+    from IPython import embed; embed()
     vitals_data_dict_json = os.path.join(args.preproc_data_dir, 'Spec-Vitals.json')
 
     with open(vitals_data_dict_json, 'r') as f:
@@ -108,29 +108,32 @@ if __name__ == '__main__':
         print('%s has a missing rate of %.4f percent over all stays'%(vital, ((vital_counts_per_stay_df[vital]==0).sum())/vital_counts_per_stay_df.shape[0]))
         print('----------------------------------------------------')
     
-    '''
-    TODO : Check again
-    print('reporting missingness in 6 hour bins..')
     time_col = parse_time_col(vitals_data_dict)
     timestamp_arr = np.asarray(df_vitals[time_col].values.copy(), dtype=np.float64)
     features_arr = df_vitals[vitals].values
-    # get per 6 hour missing rates
-    bin_length = 6
-    tstarts = np.arange(0,max(timestamp_arr), bin_length)
-    n_bins = len(tstarts)
-    missing_np = np.zeros([n_bins, len(vitals)])
-    for p in range(n_bins):
-         t_start = tstarts[p]
-         t_end = tstarts[p]+bin_length
-         t_idx = (timestamp_arr>=t_start)&(timestamp_arr<t_end)
-         cur_feat_arr = features_arr[t_idx,:]
-         missing_np[p,:] = np.isnan(cur_feat_arr).sum(axis=0)/cur_feat_arr.shape[0]
-     per_bin_missing_rates = np.nanmean(missing_np, axis=0)
-    '''
+    # get per tstep hour missing rates
+    tstep = 12
+    print('reporting missingness in %s  hour bins'%tstep)
+    keys_df = df_vitals[id_cols].copy()
+    for col in id_cols:
+        if not pd.api.types.is_numeric_dtype(keys_df[col].dtype):
+            keys_df[col] = keys_df[col].astype('category')
+            keys_df[col] = keys_df[col].cat.codes
+    fp = np.hstack([0, 1 + np.flatnonzero(np.diff(keys_df.values, axis=0).any(axis=1)), keys_df.shape[0]]) 
+    n_stays = len(fp)-1
+    missing_rates_all_stays =  np.zeros([n_stays, len(vitals)])
+    pbar = ProgressBar()
+    
 
+    for stay in pbar(range(n_stays)):
+        # get the data for the current fencepost
+        fp_start = fp[stay]
+        fp_end = fp[stay+1]
+        cur_feat_arr = features_arr[fp_start:fp_end,:].copy()
+        cur_timestamp_arr = timestamp_arr[fp_start:fp_end]
 
-
-
+        missing_rates_all_stays[stay, :] = compute_missingness_rate_per_stay(cur_timestamp_arr, cur_feat_arr, tstep)
+    from IPython import embed; embed() 
     print('#######################################')
     print('Printing summary statistics for vitals')
     vitals_summary_df = pd.DataFrame()

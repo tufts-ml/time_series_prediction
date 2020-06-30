@@ -131,7 +131,7 @@ def report_missingness(ts_df, args):
     return is_available_per_patient_stay_df
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Script for computing mews score for a subject-episode")
+    parser = argparse.ArgumentParser(description="Script for availability of vitals across stays")
     parser.add_argument('--input', type=str, required=True,
                         help='Path to csv dataframe of readings')
     parser.add_argument('--data_dict', type=str, required=True,

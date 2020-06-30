@@ -6,21 +6,27 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 import glob
+import sys
 
 from sklearn.metrics import (accuracy_score, balanced_accuracy_score, f1_score,
                              average_precision_score, confusion_matrix, log_loss,
                              roc_auc_score, roc_curve, precision_recall_curve)
 
 from sklearn.svm import SVC
+
+
+DEFAULT_PROJECT_REPO = os.path.sep.join(__file__.split(os.path.sep)[:-2])
+PROJECT_REPO_DIR = os.path.abspath(
+    os.environ.get('PROJECT_REPO_DIR', DEFAULT_PROJECT_REPO))
+
+sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src'))
+
 from utils_scoring import (THRESHOLD_SCORING_OPTIONS, calc_score_for_binary_predictions)
 from custom_classifiers import ThresholdClassifier
 from split_dataset import Splitter
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-DEFAULT_PROJECT_REPO = os.path.sep.join(__file__.split(os.path.sep)[:-2])
-PROJECT_REPO_DIR = os.path.abspath(
-    os.environ.get('PROJECT_REPO_DIR', DEFAULT_PROJECT_REPO))
 
 try:
     TEMPLATE_HTML_PATH = os.path.join(PROJECT_REPO_DIR, 'src', 'template.html')
