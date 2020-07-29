@@ -51,8 +51,12 @@ from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer, make_column_selector
 from sklearn.preprocessing import StandardScaler
 from split_dataset import Splitter
-from utils_scoring import (THRESHOLD_SCORING_OPTIONS, calc_score_for_binary_predictions)
+from utils_scoring import (
+    HYPERSEARCH_SCORING_OPTIONS, THRESHOLD_SCORING_OPTIONS,
+    calc_cross_entropy_base2_score,
+    calc_score_for_binary_predictions)
 from utils_calibration import plot_binary_clf_calibration_curve_and_histograms
+
 
 def get_sorted_list_of_kwargs_specific_to_group_parser(group_parser):
     keys = [a.option_strings[0].replace('--', '') for a in group_parser._group_actions]
@@ -129,7 +133,7 @@ if __name__ == '__main__':
                 assert has_simple_type
                 if key.startswith('grid__'):
                     hyperparam_group.add_argument("--%s" % key, default=val, type=type(val))
-                elif key.startswith('filter__'):
+                elif key.startswith('filter__') or key == 'simplicity_score_func':
                     filter_func_group.add_argument("--%s" % key, default=val, type=type(val))
                 else:
                     default_group.add_argument("--%s" % key, default=val, type=type(val))
@@ -150,7 +154,7 @@ if __name__ == '__main__':
         protocol_group.add_argument('--standardize_numeric_features', type=bool, default=True)
         protocol_group.add_argument('--key_cols_to_group_when_splitting', type=str,
             default=None, nargs='*')
-        protocol_group.add_argument('--scoring', type=str, default='roc_auc_score')
+        protocol_group.add_argument('--scoring', type=str, default='roc_auc_score+0.001*cross_entropy_base2_score')
         protocol_group.add_argument('--random_seed', type=int, default=8675309)
         protocol_group.add_argument('--n_splits', type=int, default=1)
         protocol_group.add_argument('--threshold_scoring', type=str,
@@ -328,20 +332,64 @@ if __name__ == '__main__':
     # Assign training instances to splits by provided keys
     key_train = splitter.make_groups_from_df(df_by_split['train'][key_cols])
 
+    scoring_dict = dict()
+    scoring_weights_dict = dict()
+    for score_expr in args.scoring.split("+"):
+        if score_expr.count("*"):
+            score_wt, score_func_name = score_expr.split("*")
+            score_wt = float(score_wt)
+        else:
+            score_wt = 1.0
+            score_func_name = score_expr
+        scoring_dict[score_func_name] = HYPERSEARCH_SCORING_OPTIONS[score_func_name]
+        scoring_weights_dict[score_func_name] = score_wt
 
     # Run expensive training + selection
     # ----------------------------------
     hyper_searcher = GridSearchCV(
         prediction_pipeline, pipeline_param_grid_dict,
-        scoring=args.scoring, cv=splitter, refit=True, return_train_score=True, verbose=5)
+        scoring=scoring_dict, cv=splitter, refit=False, return_train_score=True, verbose=5)
     hyper_searcher.fit(x_train, y_train, groups=key_train)
-    
+
     # Pretty tables for results of hyper_searcher search
-    cv_perf_df = pd.DataFrame(hyper_searcher.cv_results_)
+    cv_perf_df = pd.DataFrame(hyper_searcher.cv_results_)    
+    for split in ['train', 'test']:
+        for prefix in ['mean'] + ['split%d' % a for a in range(args.n_splits)]:
+            src_colname_pattern = '%s_%s_{sname}' % (prefix, split)
+            target_colname = '%s_%s_score' % (prefix, split)
+            target_arr = np.zeros(cv_perf_df.shape[0])
+            for sname, wt in scoring_weights_dict.items():
+                src_colname = src_colname_pattern.replace("{sname}", sname)
+                target_arr += wt * cv_perf_df[src_colname]
+            cv_perf_df[target_colname] = target_arr
+
     tr_split_keys = ['mean_train_score'] + ['split%d_train_score' % a for a in range(args.n_splits)]
     te_split_keys = ['mean_test_score'] + ['split%d_test_score' % a for a in range(args.n_splits)]
     cv_tr_perf_df = cv_perf_df[['params'] + tr_split_keys].copy()
     cv_te_perf_df = cv_perf_df[['params'] + te_split_keys].copy()
+
+    score_on_worst_split_S = np.min(cv_te_perf_df[te_split_keys], axis=1)
+
+    # Select hyperparameter config scores best on test set
+    best_row_id = cv_te_perf_df['mean_test_score'].argmax()
+
+    # If any simpler model achieved a score within the picked model's range, use that instead
+    S = cv_te_perf_df.shape[0]
+    calc_simplicity_score = eval(args.simplicity_score_func.replace("d['", "d['classifier__"))
+    simplicity_S = np.zeros(S)
+    for ss in range(S):
+        param_dict = cv_te_perf_df.loc[ss, 'params']
+        simplicity_S[ss] = calc_simplicity_score(param_dict, n_examples, n_features)
+    bmask_S = cv_te_perf_df['mean_test_score'].values >= score_on_worst_split_S[best_row_id]
+    score_S = cv_te_perf_df['mean_test_score'].values * bmask_S + simplicity_S * bmask_S
+
+    cv_te_perf_df['score_with_simplicity'] = score_S
+    best_row_id = score_S.argmax()
+    best_param_dict = cv_te_perf_df.loc[best_row_id, 'params']
+    hyper_searcher.best_estimator_ = hyper_searcher.estimator
+    hyper_searcher.best_estimator_.set_params(**best_param_dict)
+    # Refit!
+    hyper_searcher.best_estimator_.fit(x_train, y_train)
 
     # Threshold search
     # TODO make cast wider net at nearby settings to the best estimator??
@@ -384,9 +432,6 @@ if __name__ == '__main__':
         if thr_grid.shape[0] > 3:
             print("thr_grid = %.4f, %.4f, %.4f ... %.4f, %.4f" % (
                 thr_grid[0], thr_grid[1], thr_grid[2], thr_grid[-2], thr_grid[-1]))
-
-        ## TODO find better way to do this fast
-        # So we dont need to call fit at each thr value
         score_grid_SG = np.zeros((splitter.n_splits, thr_grid.size))
         for ss, (tr_inds, va_inds) in enumerate(
                 splitter.split(x_train, y_train, groups=key_train)):
@@ -397,7 +442,6 @@ if __name__ == '__main__':
 
             tmp_clf = ThresholdClassifier(hyper_searcher.best_estimator_)
             tmp_clf.fit(x_tr, y_tr)
-
             for gg, thr in enumerate(thr_grid):
                 tmp_clf = tmp_clf.set_params(threshold=thr)
                 yhat = tmp_clf.predict(x_va)
@@ -426,6 +470,9 @@ if __name__ == '__main__':
 
     # Evaluation of selected model
     # ----------------------------
+    # Loop thru each split, and produce:
+    # * performance metrics for this split
+    # * diagnostic plots for this split
     row_dict_list = list()
     extra_list = list()
     for split_name, x, y in [
@@ -439,7 +486,7 @@ if __name__ == '__main__':
 
         # Metrics that consume probabilities
         # ----------------------------------
-        log2_loss = log_loss(y, y_pred_proba, normalize=True) / np.log(2)
+        log2_loss = calc_cross_entropy_base2_score(y, y_pred_proba)
         avg_precision = average_precision_score(y, y_pred_proba)
         roc_auc = roc_auc_score(y, y_pred_proba)
         row_dict.update(dict(
@@ -462,20 +509,59 @@ if __name__ == '__main__':
         accuracy = accuracy_score(y, y_pred)
         balanced_accuracy = balanced_accuracy_score(y, y_pred)
 
-        f1_score = f1_score(y, y_pred)
+        f1_score_val = f1_score(y, y_pred)
         row_dict.update(dict(
             confusion_html=cm_df.to_html(),
             accuracy=accuracy,
             balanced_accuracy=balanced_accuracy,
-            f1_score=f1_score))
+            f1_score=f1_score_val))
 
         npv, ppv = np.diag(cm_df.values) / cm_df.sum(axis=0)
         tnr, tpr = np.diag(cm_df.values) / cm_df.sum(axis=1)
         row_dict.update(dict(TPR=tpr, TNR=tnr, PPV=ppv, NPV=npv))
         row_dict.update(dict(tn=cm_df.values[0,0], fp=cm_df.values[0,1], fn=cm_df.values[1,0], tp=cm_df.values[1,1]))
 
-        # Append to list of perf metrics for all splits
+        # Append current split's metrics to list for all splits
         row_dict_list.append(row_dict)
+
+
+        # Make plots and save to disk
+        # ---------------------------
+        # PLOT #1: Calibration
+        B = 0.03
+        fig_h = plt.figure(**FIG_KWARGS)
+        plot_binary_clf_calibration_curve_and_histograms(y, y_pred_proba, bins=11, B=B)
+        plt.savefig(os.path.join(fig_dir, '{split_name}_calibration_curve.png'.format(split_name=split_name)))
+        plt.close()
+
+        # PLOT #2: ROC curve
+        roc_fpr, roc_tpr, _ = roc_curve(y, y_pred_proba)
+        fig_h = plt.figure(**FIG_KWARGS)
+        ax = plt.gca()
+        ax.plot(roc_fpr, roc_tpr, 'b.-')
+        ax.set_xlabel('False Positive Rate')
+        ax.set_ylabel('True Positive Rate')
+        ax.set_xlim([-B, 1.0 + B])
+        ax.set_ylim([-B, 1.0 + B])
+        plt.savefig(os.path.join(
+            fig_dir,
+            '{split_name}_roc_curve.png'.format(
+                split_name=split_name)))
+        plt.close()
+
+        # Plot #3: PR curve
+        fig_h = plt.figure(**FIG_KWARGS)
+        ax = plt.gca()
+        ax.plot(recall, precision, 'b.-') # computed above to get AUPRC
+        ax.set_xlabel('Recall')
+        ax.set_ylabel('Precision')
+        ax.set_xlim([-B, 1.0 + B])
+        ax.set_ylim([-B, 1.0 + B])
+        plt.savefig(os.path.join(
+            fig_dir,
+            '{split_name}_pr_curve.png'.format(
+                split_name=split_name)))
+        plt.close()
 
     # Write performance metrics to CSV
     # --------------------------------
@@ -486,44 +572,6 @@ if __name__ == '__main__':
     perf_df.to_csv(csv_path)
     print("Wrote to: %s" % csv_path)
 
-
-    # Make plots and save to disk
-    # ---------------------------
-    # PLOT #1: Calibration
-    B = 0.03
-    fig_h = plt.figure(**FIG_KWARGS)
-    plot_binary_clf_calibration_curve_and_histograms(y, y_pred_proba, bins=11, B=B)
-    plt.savefig(os.path.join(fig_dir, '{split_name}_calibration_curve.png'.format(split_name=split_name)))
-    plt.close()
-
-    # PLOT #2: ROC curve
-    roc_fpr, roc_tpr, _ = roc_curve(y, y_pred_proba)
-    fig_h = plt.figure(**FIG_KWARGS)
-    ax = plt.gca()
-    ax.plot(roc_fpr, roc_tpr, 'b.-')
-    ax.set_xlabel('False Positive Rate')
-    ax.set_ylabel('True Positive Rate')
-    ax.set_xlim([-B, 1.0 + B])
-    ax.set_ylim([-B, 1.0 + B])
-    plt.savefig(os.path.join(
-        fig_dir,
-        '{split_name}_roc_curve.png'.format(
-            split_name=split_name)))
-    plt.close()
-
-    # Plot #3: PR curve
-    fig_h = plt.figure(**FIG_KWARGS)
-    ax = plt.gca()
-    ax.plot(recall, precision, 'b.-') # computed above to get AUPRC
-    ax.set_xlabel('Recall')
-    ax.set_ylabel('Precision')
-    ax.set_xlim([-B, 1.0 + B])
-    ax.set_ylim([-B, 1.0 + B])
-    plt.savefig(os.path.join(
-        fig_dir,
-        '{split_name}_pr_curve.png'.format(
-            split_name=split_name)))
-    plt.close()
 
 
     # Write HTML report
