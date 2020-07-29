@@ -51,7 +51,7 @@ if 'fields' not in data_dict.keys():
 
 id_cols = [c['name'] for c in data_dict['fields']
            if c['role'] == 'id' and c['name'] in df.columns]
-time_cols = [c['name'] for c in data_dict['fields'] if c['role'] in ('time', 'timestamp')]
+time_cols = [c['name'] for c in data_dict['fields'] if c['role'] in ('time', 'timestamp','timestamp_relative')]
 seq_cols = [c['name'] for c in data_dict['fields'] if c['role'] == 'sequence' ]
 relative_time_cols = [c['name'] for c in data_dict['fields'] if c['role'] == 'timestamp_relative']
 
@@ -72,6 +72,10 @@ if len(time_cols) == 1:
     aligned.loc[:,time_col] = aligned.reset_index()[id_cols + time_cols].groupby(id_cols)[time_cols].apply(diff_from_start)['hours']
     aligned = aligned.set_index(id_cols+time_cols)
 
+elif len(time_cols)>1:
+    time_col = time_cols[-1]
+    aligned = df.drop(columns = time_cols[:-1])
+
     #TODO handle timestamps in datetime format throughout the pipeline
 elif len(seq_cols) == 1:
     seq_col = seq_cols[0]
@@ -80,4 +84,5 @@ elif len(seq_cols) == 1:
     aligned = df.groupby(id_cols + [seq_col]).mean()
 
 # Export data
+print('saving aligned data')
 aligned.to_csv(args.output)

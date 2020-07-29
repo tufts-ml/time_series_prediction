@@ -6,15 +6,17 @@ Produce a human-readable HTML report with performance plots and metrics
 Usage
 -----
 ```
-python eval_classifier.py {classifier_name} --output_dir /path/ \
-    {clf_specific_kwargs} {data_kwargs} {protocol_kwargs}
+python eval_classifier.py {classifier_name} \
+    --output_dir /path/ \
+    {clf_specific_kwargs} \
+    {data_kwargs} \
+    {protocol_kwargs}
 ```
 
 For detailed help message:
 ```
 python eval_classifier.py {classifier_name} --help
 ```
-
 
 Examples
 --------
@@ -45,7 +47,9 @@ from sklearn.metrics import (accuracy_score, balanced_accuracy_score, f1_score,
                              average_precision_score, confusion_matrix, log_loss,
                              roc_auc_score, roc_curve, precision_recall_curve)
 from sklearn.model_selection import GridSearchCV, ShuffleSplit
-
+from sklearn.pipeline import Pipeline
+from sklearn.compose import ColumnTransformer, make_column_selector
+from sklearn.preprocessing import StandardScaler
 from split_dataset import Splitter
 from utils_scoring import (THRESHOLD_SCORING_OPTIONS, calc_score_for_binary_predictions)
 from utils_calibration import plot_binary_clf_calibration_curve_and_histograms
@@ -117,34 +121,6 @@ if __name__ == '__main__':
                     default_group.add_argument("--%s" % key, default=val, type=type(val))
         subparsers_by_name[clf_name] = clf_parser
 
-    '''
-    logistic_parser = subparsers.add_parser('logistic')
-    logistic_parser.set_defaults(clf=LogisticRegression,
-                                 default_clf_args={'solver': 'lbfgs',
-                                                   'multi_class': 'auto'})
-    logistic_parser.add_argument('--grid_C', type=float, nargs='*', default=[1])
-
-    dtree_parser = subparsers.add_parser('dtree')
-    dtree_parser.set_defaults(clf=DecisionTreeClassifier, default_clf_args={})
-    dtree_parser.add_argument('--grid_max_depth', type=int, nargs='*', 
-                              default=[None])
-
-    rforest_parser = subparsers.add_parser('rforest')
-    rforest_parser.set_defaults(clf=RandomForestClassifier, default_clf_args={})
-    rforest_parser.add_argument('--grid_n_estimators', type=int, nargs='*',
-                                default=[10])
-    rforest_parser.add_argument('--grid_max_depth', type=int, nargs='*',
-                                default=[None])
-
-    mlp_parser = subparsers.add_parser('mlp')
-    mlp_parser.set_defaults(clf=MLPClassifier, default_clf_args={})
-    # ast.literal_eval evaluates strings, converting to a tuple in this case
-    # (may need to put tuples in quotes for command line)
-    mlp_parser.add_argument('--grid_hidden_layer_sizes', type=ast.literal_eval,
-                            nargs='*', default=[(100,)])
-    mlp_parser.add_argument('--grid_alpha', type=float, nargs='*', default=[0.0001])
-    '''
-
     for p in subparsers_by_name.values():
 
         data_group = p.add_argument_group('data')
@@ -156,6 +132,7 @@ if __name__ == '__main__':
         protocol_group = p.add_argument_group('protocol')
         protocol_group.add_argument('--outcome_col_name', type=str, required=False)
         protocol_group.add_argument('--validation_size', type=float, default=0.1)
+        protocol_group.add_argument('--standardize_numeric_features', type=bool, default=True)
         protocol_group.add_argument('--key_cols_to_group_when_splitting', type=str,
             default=None, nargs='*')
         protocol_group.add_argument('--scoring', type=str, default='roc_auc_score')
@@ -163,17 +140,24 @@ if __name__ == '__main__':
         protocol_group.add_argument('--n_splits', type=int, default=1)
         protocol_group.add_argument('--threshold_scoring', type=str,
             default=None, choices=[None, 'None'] + THRESHOLD_SCORING_OPTIONS)
-        #p.add_argument('-a-ts_dir', required=True)
-        #p.add_argument('--data_dict', required=True)
-        #p.add_argument('--static_files', nargs='*')
 
     args, unknown_args = parser.parse_known_args()
     fig_dir = os.path.abspath(args.output_dir)
+    try:
+        os.mkdir(fig_dir)
+    except OSError:
+        pass
 
     # key[5:] strips the 'grid_' prefix from the argument
     argdict = vars(args)
-    raw_param_grid = {
-        key[5:]: argdict[key] for key in argdict if key.startswith('grid_')}
+    #raw_param_grid = {
+    #    key[5:]: argdict[key] for key in argdict if key.startswith('grid_')}
+    raw_param_grid = dict()
+    for key, val  in argdict.items():
+        if key.startswith('grid_'):
+            raw_param_grid[key[5:]] = val
+        elif key.startswith('filter_'):
+            raw_param_grid[key] = val
 
     # Parse unspecified arguments to be passed through to the classifier
     def auto_convert_str(x):
@@ -188,27 +172,34 @@ if __name__ == '__main__':
             return x
 
     # Import data
-
     feature_cols = []
     outcome_cols = []
-
+    info_per_feature_col = dict()
     df_by_split = dict()
-    for split_name, csv_files in [('train', args.train_csv_files.split(',')), ('test', args.test_csv_files.split(','))]:
+    for split_name, csv_files in [
+            ('train', args.train_csv_files.split(',')),
+            ('test', args.test_csv_files.split(','))]:
         cur_df = None
         for csv_file, data_dict_file in zip(csv_files, args.data_dict_files.split(',')):
             with open(data_dict_file, 'r') as f:
                 data_fields = json.load(f)['schema']['fields']
                 key_cols = [c['name'] for c in data_fields if c['role'] in ('key', 'id')]
-
                 feature_cols.extend([
                     c['name'] for c in data_fields if (
                         c['role'].lower() in ('feature', 'covariate', 'measurement')
                         and c['name'] not in feature_cols)])
-
                 outcome_cols.extend([
                     c['name'] for c in data_fields if (
                         c['role'].lower() in ('output', 'outcome')
                         and c['name'] not in feature_cols)])
+
+                for info_d in data_fields:
+                    try:
+                        i = feature_cols.index(info_d['name'])
+                        info_per_feature_col[info_d['name']] = info_d
+                    except ValueError:
+                        # skip fields not found
+                        pass
 
             # TODO use json data dict to load specific columns as desired types
             more_df =  pd.read_csv(csv_file)
@@ -218,25 +209,6 @@ if __name__ == '__main__':
                 cur_df = cur_df.merge(more_df, on=key_cols)
         df_by_split[split_name] = cur_df
 
-    '''
-    data_dict = json.load(open(args.data_dict))
-    train = pd.read_csv(args.ts_dir + '/train.csv')
-    test = pd.read_csv(args.ts_dir + '/test.csv')
-    if args.static_files:
-        for f in args.static_files:
-            static = pd.read_csv(f)
-            join_cols = [c['name'] for c in data_dict['fields']
-                         if c['role'] == 'id' and c['name'] in static.columns
-                            and c['name'] in train.columns]
-            train = train.merge(static, on=join_cols)
-            test = test.merge(static, on=join_cols)
-
-
-    feature_cols = [c['name'] for c in data_dict['fields']
-                    if c['role'] == 'feature' and c['name'] in train]
-    outcome_col = [c['name'] for c in data_dict['fields']
-                   if c['role'] == 'outcome' and c['name'] in train]
-    '''
 
     outcome_col_name = args.outcome_col_name
     if outcome_col_name is None:
@@ -256,6 +228,7 @@ if __name__ == '__main__':
 
     x_test = df_by_split['test'][feature_cols].values
     y_test = np.ravel(df_by_split['test'][outcome_col_name])
+    is_multiclass = len(np.unique(y_train)) > 2
 
     fixed_args = {}
     fixed_group = None
@@ -268,6 +241,10 @@ if __name__ == '__main__':
         if isinstance(val, str):
             if val.lower() == 'none':
                 val = None
+
+        if isinstance(val, str):
+            if 'lambda x' in val:
+                continue
         fixed_args[key] = val
 
     passthrough_args = {}
@@ -289,24 +266,47 @@ if __name__ == '__main__':
             filtered_grid = np.unique([filter_func(g, n_examples, n_features) for g in grid]).tolist()
         else:
             filtered_grid = np.unique(grid).tolist()
-        if len(filtered_grid) == 0:
-            raise Warning("Bad grid for parameter: %s")
-        elif len(filtered_grid) == 1:
-            fixed_args[key] = filtered_grid[0]
-            raise Warning("Skipping parameter %s with only one grid value")
-        else:
-            param_grid[key] = filtered_grid
 
-    # Create classifier object
+        if 'lambda x' not in str(filtered_grid[0]):
+            if len(filtered_grid) == 0:
+                raise Warning("Bad grid for parameter: %s")
+            elif (len(filtered_grid) == 1):
+                fixed_args[key] = filtered_grid[0]
+                raise Warning("Skipping parameter %s with only one grid value")
+            else:
+                param_grid[key] = filtered_grid
+
+    # Create classifier pipeline
     clf = args.clf_constructor(
         random_state=int(args.random_seed), **fixed_args, **passthrough_args)
+    step_list = list()
+    if args.standardize_numeric_features:
+        numeric_feature_ids = [
+            i for i, col_name in enumerate(feature_cols)
+                if info_per_feature_col[col_name]['type'] == 'numeric']
+        std_scaler_preprocessor = ColumnTransformer(
+            [("std_scaler", StandardScaler(), numeric_feature_ids)],
+            remainder='passthrough')
+        step_list.append(('standardize_numeric_features', std_scaler_preprocessor))
+    step_list.append(('classifier', clf))
+    prediction_pipeline = Pipeline(step_list)
+
+    param_grid_pipeline = dict()
+    for key, value in param_grid.items():
+        param_grid_pipeline['classifier__'+key] = value
+    
+    # Create object that knows how to divide data into train/test/valid
     splitter = Splitter(
         size=args.validation_size, random_state=args.random_seed,
         n_splits=args.n_splits, cols_to_group=args.key_cols_to_group_when_splitting)
-    hyper_searcher = GridSearchCV(
-        clf, param_grid,
-        scoring=args.scoring, cv=splitter, refit=True, return_train_score=True)
+
+    # Assign training instances to splits by provided keys
     key_train = splitter.make_groups_from_df(df_by_split['train'][key_cols])
+
+    # Run the expensive grid search!
+    hyper_searcher = GridSearchCV(
+        prediction_pipeline, param_grid_pipeline,
+        scoring=args.scoring, cv=splitter, refit=True, return_train_score=True, verbose=5)
     hyper_searcher.fit(x_train, y_train, groups=key_train)
     
     # Pretty tables for results of hyper_searcher search
@@ -418,62 +418,71 @@ if __name__ == '__main__':
         log2_loss = log_loss(y, y_pred_proba, normalize=True) / np.log(2)
         row_dict.update(dict(confusion_html=cm_df.to_html(), cross_entropy_base2=log2_loss, accuracy=accuracy, balanced_accuracy=balanced_accuracy))
 
-        f1 = f1_score(y, y_pred)
         avg_precision = average_precision_score(y, y_pred_proba)
         roc_auc = roc_auc_score(y, y_pred_proba)
-        row_dict.update(dict(f1_score=f1, average_precision=avg_precision, AUROC=roc_auc))
+        row_dict.update(dict(average_precision=avg_precision, AUROC=roc_auc))
+        
+        # Scores that require a threshold
+        f1 = f1_score(y, y_pred)
+        row_dict.update(dict(f1_score=f1))
         npv, ppv = np.diag(cm_df.values) / cm_df.sum(axis=0)
         tnr, tpr = np.diag(cm_df.values) / cm_df.sum(axis=1)
         row_dict.update(dict(TPR=tpr, TNR=tnr, PPV=ppv, NPV=npv))
         row_dict.update(dict(tn=cm_df.values[0,0], fp=cm_df.values[0,1], fn=cm_df.values[1,0], tp=cm_df.values[1,1]))
 
-        # Plots
-        B = 0.03
-        plot_binary_clf_calibration_curve_and_histograms(y, y_pred_proba, bins=11, B=B)
-        plt.savefig(os.path.join(fig_dir, '{split_name}_calibration_curve.png'.format(split_name=split_name)))
-        plt.close()
-
-        # ROC curve
-        roc_fpr, roc_tpr, _ = roc_curve(y, y_pred_proba)
-
-        fig_h = plt.figure(**FIG_KWARGS)
-        ax = plt.gca()
-        ax.plot(roc_fpr, roc_tpr, 'b.-')
-        ax.set_xlabel('False Positive Rate')
-        ax.set_ylabel('True Positive Rate')
-        ax.set_xlim([-B, 1.0 + B])
-        ax.set_ylim([-B, 1.0 + B])
-        plt.savefig(os.path.join(fig_dir, '{split_name}_roc_curve.png'.format(split_name=split_name)))
-        plt.close()
-
-        # PR curve
-        # ordered with *decreasing* recall
+        # This computation is ordered with *decreasing* recall
         precision, recall, _ = precision_recall_curve(y, y_pred_proba)
-
         # To compute area under curve, make sure we integrate with *increasing* recall
         row_dict['AUPRC'] = np.trapz(precision[::-1], recall[::-1])
 
-        fig_h = plt.figure(**FIG_KWARGS)
-        ax = plt.gca()
-        ax.plot(recall, precision, 'b.-')
-        ax.set_xlabel('Recall')
-        ax.set_ylabel('Precision')
-        ax.set_xlim([-B, 1.0 + B])
-        ax.set_ylim([-B, 1.0 + B])
-        plt.savefig(os.path.join(fig_dir, '{split_name}_pr_curve.png'.format(split_name=split_name)))
-        plt.close()
-
         row_dict_list.append(row_dict)
 
+
+    # Package up all per-split metrics into one dataframe and save to CSV
     perf_df = pd.DataFrame(row_dict_list)
     perf_df = perf_df.set_index('split_name')
+    csv_path = os.path.join(fig_dir, 'performance_df.csv')
+    perf_df.to_csv(csv_path)
+    print("Wrote to: %s" % csv_path)
+
+    # PLOT #1: Calibration
+    B = 0.03
+    fig_h = plt.figure(**FIG_KWARGS)
+    plot_binary_clf_calibration_curve_and_histograms(y, y_pred_proba, bins=11, B=B)
+    plt.savefig(os.path.join(fig_dir, '{split_name}_calibration_curve.png'.format(split_name=split_name)))
+    plt.close()
+
+    # PLOT #2: ROC curve
+    roc_fpr, roc_tpr, _ = roc_curve(y, y_pred_proba)
+    fig_h = plt.figure(**FIG_KWARGS)
+    ax = plt.gca()
+    ax.plot(roc_fpr, roc_tpr, 'b.-')
+    ax.set_xlabel('False Positive Rate')
+    ax.set_ylabel('True Positive Rate')
+    ax.set_xlim([-B, 1.0 + B])
+    ax.set_ylim([-B, 1.0 + B])
+    plt.savefig(os.path.join(
+        fig_dir,
+        '{split_name}_roc_curve.png'.format(
+            split_name=split_name)))
+    plt.close()
+
+    # Plot #3: PR curve
+    fig_h = plt.figure(**FIG_KWARGS)
+    ax = plt.gca()
+    ax.plot(recall, precision, 'b.-')
+    ax.set_xlabel('Recall')
+    ax.set_ylabel('Precision')
+    ax.set_xlim([-B, 1.0 + B])
+    ax.set_ylim([-B, 1.0 + B])
+    plt.savefig(os.path.join(
+        fig_dir,
+        '{split_name}_pr_curve.png'.format(
+            split_name=split_name)))
+    plt.close()
 
 
     # Set up HTML report
-    try:
-        os.mkdir(fig_dir)
-    except OSError:
-        pass
     os.chdir(fig_dir)
 
     doc, tag, text = Doc().tagtext()

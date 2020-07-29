@@ -21,6 +21,7 @@ from scipy import stats
 import ast
 import time
 import copy
+from scipy.stats import skew
 
 def main():
     parser = argparse.ArgumentParser(description="Script for collapsing"
@@ -44,7 +45,7 @@ def main():
                         default='slope std', 
                         help="Enclose options with 's, choose "
                              "from mean, std, min, max, "
-                             "median, slope, count, present")
+                             "median, slope, count, present, skew, hours_since_measured")
     parser.add_argument('--range_pairs', type=str, required=False,
                         default='[(0, 10), (0, 25), (0, 50), (50, 100), (75, 100), (90, 100), (0, 100)]',
                         help="Enclose pairs list with 's and [], list all desired ranges in "
@@ -80,7 +81,11 @@ def main():
     data_dict = None
 
     # transform data
-    print('collapsing data..')
+    if args.max_time_step is None:
+        print('collapsing entire history of data..')
+    else:
+        print('collapsing first %s hours of data..'%(args.max_time_step))
+
     t1 = time.time()
     if args.collapse:
         ts_df = collapse_np(ts_df, args)
@@ -156,11 +161,11 @@ def collapse_np(ts_df, args):
                 fp_start = fp[p]
                 fp_end = fp[p+1]
                 lower_bound, upper_bound = calc_start_and_stop_indices_from_percentiles(
-                    timestamp_arr[fp_start:fp_end], start_percentile=low, end_percentile=high, max_timestamp=args.max_time_step)
+                    timestamp_arr[fp_start:fp_end], start_percentile=low, end_percentile=high, max_time_step=args.max_time_step)
 
                 cur_feat_arr = features_arr[fp_start:fp_end,:].copy()
                 cur_timestamp_arr = timestamp_arr[fp_start:fp_end]
-
+                
                 # compute summary function on that particular subject episode dataframe
                 collapsed_feat_arr[p,:] = COLLAPSE_FUNCTIONS_np[op](cur_feat_arr, lower_bound, upper_bound, cur_timestamp_arr=cur_timestamp_arr)
 
@@ -170,18 +175,17 @@ def collapse_np(ts_df, args):
             
             list_of_collapsed_feat_arr.append(collapsed_feat_arr)
             list_of_collapsed_feat_names.extend([x+'_'+op+'_'+str(low)+'_to_'+str(high) for x in feature_cols])
-
     print('-----------------------------------------')
     print('total time taken = %d seconds'%total_time)
     print('-----------------------------------------')
     collapsed_df = pd.DataFrame(np.hstack(list_of_collapsed_feat_arr), columns=list_of_collapsed_feat_names)
-
+    
     for col_name in id_cols[::-1]:
         collapsed_df.insert(0, col_name, ts_df[col_name].values[fp[:-1]].copy())
     return collapsed_df
 
 
-def calc_start_and_stop_indices_from_percentiles(timestamp_arr, start_percentile, end_percentile, max_timestamp=None):
+def calc_start_and_stop_indices_from_percentiles(timestamp_arr, start_percentile, end_percentile, max_time_step=None):
     ''' Find start and stop indices to select specific percentile range
     
     Args
@@ -212,11 +216,17 @@ def calc_start_and_stop_indices_from_percentiles(timestamp_arr, start_percentile
     (5, 7)
     '''
 
-    # Treat the last data point as 100 percentile.
-    if max_timestamp is None:
+    # Consider last data point as first timestamp + step size input by the user. For eg. If the step size is 1hr, then consider only 
+    # first hour of time series data
+    min_timestamp = timestamp_arr[0]
+    if (max_time_step is None) or (max_time_step==-1):
         max_timestamp = timestamp_arr[-1]
-    lower_bound = np.searchsorted(timestamp_arr, max_timestamp * start_percentile/100)
-    upper_bound = np.searchsorted(timestamp_arr, max_timestamp * (end_percentile + 0.001)/100)
+    elif (min_timestamp + max_time_step > timestamp_arr[-1]):
+        max_timestamp = timestamp_arr[-1]
+    else :
+        max_timestamp = min_timestamp + max_time_step
+    lower_bound = np.searchsorted(timestamp_arr, (min_timestamp + (max_timestamp - min_timestamp)*start_percentile/100))
+    upper_bound = np.searchsorted(timestamp_arr, (min_timestamp + (max_timestamp - min_timestamp)*(end_percentile + 0.001)/100))
     # if lower bound and upper bound are the same, add 1 to the upper bound
     if lower_bound >= upper_bound:
         upper_bound = lower_bound + 1
@@ -351,10 +361,13 @@ def parse_feature_cols(data_dict):
     return non_time_cols
 
 def parse_time_col(data_dict):
+    time_cols = []
     for col in data_dict['fields']:
         # TODO avoid hardcoding a column name
-        if (col['role'].count('time') or col['name'] == 'hours'):
-            return col['name']
+        if (col['name'] == 'hours' or col['role'].count('time')):
+            time_cols.append(col['name'])
+    return time_cols[-1]
+            
     
 
 def remove_col_names_from_list_if_not_in_df(col_list, df):
@@ -407,11 +420,40 @@ def collapse_max_np(data_np, lower_bound, upper_bound, **kwargs):
     percentile_data_np = replace_all_nan_cols_with_zeros(data_np, lower_bound, upper_bound)   
     return np.nanmax(percentile_data_np, axis=0)
 
+def collapse_skew_np(data_np, lower_bound, upper_bound, **kwargs):
+    # replace columns containing all nans to 0 because nanfunc throws error on all nan columns
+    percentile_data_np = replace_all_nan_cols_with_zeros(data_np, lower_bound, upper_bound)
+    return skew(percentile_data_np, axis=0, nan_policy='omit')
+
 def collapse_count_np(data_np, lower_bound, upper_bound, **kwargs):
     return (~np.isnan(data_np[lower_bound:upper_bound,:])).sum(axis=0)
  
 def collapse_present_np(data_np, lower_bound, upper_bound, **kwargs):
     return (~np.isnan(data_np[lower_bound:upper_bound,:])).any(axis=0)
+
+def collapse_hours_since_measured_np(data_np, lower_bound, upper_bound, cur_timestamp_arr=None, **kwargs):
+    '''
+    Computes the time since last value was observed from the last stamps
+    Example : 
+    data = [0, 1 , nan, 4, 5, nan, nan]
+    tstamp = [30, 32, 36, 40, 45, 51, 60]
+    
+    output : 60-45=15
+    '''
+    percentile_t_np = cur_timestamp_arr[lower_bound:upper_bound]
+    percentile_data_np = data_np[lower_bound:upper_bound,:]
+    n_cols = percentile_data_np.shape[1]
+
+    collapsed_hours_since_missing = np.zeros(n_cols)
+    for col in range(n_cols):
+        mask = ~np.isnan(percentile_data_np[:,col])
+        if mask.sum():
+            xs = percentile_data_np[mask,col]
+            ts = percentile_t_np[mask]
+            collapsed_hours_since_missing[col] = percentile_t_np[-1] - ts[-1]
+        else: # set to large value if no measurement is observed in the sequence
+            collapsed_hours_since_missing[col] = 120
+    return collapsed_hours_since_missing
 
 def collapse_slope_np(data_np, lower_bound, upper_bound, cur_timestamp_arr=None, **kwargs): 
     percentile_t_np = cur_timestamp_arr[lower_bound:upper_bound]
@@ -445,7 +487,9 @@ COLLAPSE_FUNCTIONS_np = {
     "max": collapse_max_np,
     "slope": collapse_slope_np, 
     "count": collapse_count_np,
-    "present": collapse_present_np
+    "present": collapse_present_np,
+    "skew":collapse_skew_np,
+    "hours_since_measured":collapse_hours_since_measured_np
 }
 
 
