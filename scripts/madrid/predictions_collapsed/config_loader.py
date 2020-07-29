@@ -22,6 +22,9 @@ with open(os.path.join(DATASET_SCRIPTS_ROOT, 'config.json'), 'r') as f:
     D_CONFIG = json.load(f)
 update_os_environ_vars()
 
+DATASET_TOP_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["DATASET_TOP_PATH_LIST"])))
+update_os_environ_vars()
+
 DATASET_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["DATASET_PATH_LIST"])))
 update_os_environ_vars()
 

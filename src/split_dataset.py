@@ -83,7 +83,7 @@ if __name__ == '__main__':
         
     train_df, test_df = split_dataframe_by_keys(
         df, cols_to_group=group_cols, size=args.test_size, random_state=args.random_state)
-
+    
     # Write split data frames to CSV
     fdir_train_test = args.output_dir
     if fdir_train_test is not None:
@@ -96,7 +96,7 @@ if __name__ == '__main__':
 
     train_df.to_csv(args.train_csv_filename, index=False)
     test_df.to_csv(args.test_csv_filename, index=False)
-
+    
     if args.output_data_dict_filename is not None:
         with open(args.output_data_dict_filename, 'w') as f:
             json.dump(data_dict, f, indent=4)

@@ -71,6 +71,7 @@ def compute_missingness_rate_per_stay(t, x, tstep):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--preproc_data_dir')
+    parser.add_argument('--data_dicts_dir')
     parser.add_argument('--random_seed', type=int)
     parser.add_argument('--test_size', type=float)
     parser.add_argument('--group_cols')
@@ -84,11 +85,10 @@ if __name__ == '__main__':
 
     df_demographics = pd.read_csv(os.path.join(args.preproc_data_dir, 'demographics_before_icu.csv'))
 
-    df_transfer_to_icu_outcomes = pd.read_csv(os.path.join(args.preproc_data_dir,'icu_transfer_outcomes.csv'))
+    df_transfer_to_icu_outcomes = pd.read_csv(os.path.join(args.preproc_data_dir,'clinical_deterioration_outcomes.csv'))
    
-    from IPython import embed; embed()
-    vitals_data_dict_json = os.path.join(args.preproc_data_dir, 'Spec-Vitals.json')
-
+    vitals_data_dict_json = os.path.join(args.data_dicts_dir, 'Spec-Vitals.json')
+    
     with open(vitals_data_dict_json, 'r') as f:
         vitals_data_dict = json.load(f)
         try:
@@ -102,12 +102,13 @@ if __name__ == '__main__':
     # compute missingness per stay
     vital_counts_per_stay_df = df_vitals.groupby(id_cols).count()
     print('#######################################')
-    print('reporting missingness over full stays..')
+    print('MISSINGNESS OVER FULL STAYS : ')
+    missing_rate_entire_stay_dict = dict()
     for vital in vitals:
-        print('----------------------------------------------------')
-        print('%s has a missing rate of %.4f percent over all stays'%(vital, ((vital_counts_per_stay_df[vital]==0).sum())/vital_counts_per_stay_df.shape[0]))
-        print('----------------------------------------------------')
-    
+        missing_rate_entire_stay_dict[vital] = ((vital_counts_per_stay_df[vital]==0).sum())/vital_counts_per_stay_df.shape[0]
+    missing_rate_entire_stay_series = pd.Series(missing_rate_entire_stay_dict)
+    print(missing_rate_entire_stay_series)
+    '''
     time_col = parse_time_col(vitals_data_dict)
     timestamp_arr = np.asarray(df_vitals[time_col].values.copy(), dtype=np.float64)
     features_arr = df_vitals[vitals].values
@@ -133,7 +134,9 @@ if __name__ == '__main__':
         cur_timestamp_arr = timestamp_arr[fp_start:fp_end]
 
         missing_rates_all_stays[stay, :] = compute_missingness_rate_per_stay(cur_timestamp_arr, cur_feat_arr, tstep)
-    from IPython import embed; embed() 
+    '''
+    
+    #from IPython import embed; embed() 
     print('#######################################')
     print('Printing summary statistics for vitals')
     vitals_summary_df = pd.DataFrame()
@@ -145,7 +148,8 @@ if __name__ == '__main__':
         vitals_summary_df.loc[vital, '95%'] = np.percentile(curr_vital_series[curr_vital_series.notnull()], 95)
         vitals_summary_df.loc[vital, 'median'] = curr_vital_series.median()
     
-    print(vitals_summary_df)
+    vitals_summary_df.loc[:,'missing_rate'] = missing_rate_entire_stay_series
+    print(vitals_summary_df[['min', '5%', 'median', '95%', 'max', 'missing_rate']])
 
     print('#######################################')
     print('Getting train, val, test split statistics')
@@ -160,18 +164,18 @@ if __name__ == '__main__':
         df_transfer_to_icu_outcomes, cols_to_group=args.group_cols, size=args.test_size, random_state=args.random_seed)
     outcomes_train_df, outcomes_validation_df = split_dataframe_by_keys(
         outcomes_train_df, cols_to_group=args.group_cols, size=validation_size, random_state=args.random_seed)
-
-    for split_name, df, outcome_df in [('train', train_df, outcomes_train_df), ('validation', validation_df, outcomes_validation_df), ('test', test_df, outcomes_test_df)]:
+    
+    for split_name, df, outcome_df in [('TRAIN', train_df, outcomes_train_df), ('VALIDATION', validation_df, outcomes_validation_df), ('TEST', test_df, outcomes_test_df)]:
 
         print('----------------------------------------------------')
-        print('%s set has %s stays for %s patients and %s ICU transfers'%(split_name, len(df.hospital_admission_id.unique()), len(df.patient_id.unique()),
-        outcome_df.transfer_to_ICU_outcome.sum()))
-        stay_lengths = df.groupby(id_cols)['hours_since_admission'].apply(lambda x : max(x)-min(x)).values
+        print('%s :'%(split_name))
+        print('TOTAL PATIENTS : %s, TOTAL STAYS : %s, TOTAL CLINICAL DETERIORATIONS : %s, OUTCOME FREQUENCY : %s'%(len(df.patient_id.unique()), len(df.hospital_admission_id.unique()), 
+            outcome_df.clinical_deterioration_outcome.sum(), outcome_df.clinical_deterioration_outcome.sum()/len(df.hospital_admission_id.unique())))
+        stay_lengths = outcome_df.stay_length
         stay_lengths_outcome_0 = stay_lengths[outcome_df.transfer_to_ICU_outcome==0]
         stay_lengths_outcome_1 = stay_lengths[outcome_df.transfer_to_ICU_outcome==1]
+        print('lengths of stay outcome 0:  %.2f(%.5f - %.5f)'%( np.median(stay_lengths_outcome_0), np.percentile(stay_lengths_outcome_0, 5), np.percentile(stay_lengths_outcome_0, 95)))
+        print('lengths of stay outcome 1:  %.2f(%.5f - %.5f)'%( np.median(stay_lengths_outcome_1), np.percentile(stay_lengths_outcome_1, 5), np.percentile(stay_lengths_outcome_1, 95)))
         print('----------------------------------------------------')
-        print('%s set lengths of stay outcome 0:  %.2f(%.2f - %.2f)'%(split_name, np.median(stay_lengths_outcome_0), np.percentile(stay_lengths_outcome_0, 5), np.percentile(stay_lengths_outcome_0, 95)))
-        print('%s set lengths of stay outcome 1:  %.2f(%.2f - %.2f)'%(split_name, np.median(stay_lengths_outcome_1), np.percentile(stay_lengths_outcome_1, 5), np.percentile(stay_lengths_outcome_1, 95)))
-
 
 

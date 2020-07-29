@@ -214,9 +214,9 @@ if __name__ == '__main__':
             ['systolic_blood_pressure', 100, 199, 0],['systolic_blood_pressure', 199, max_val, 2],
             ['heart_rate', 0, 40, 2],['heart_rate', 40, 50, 1],['heart_rate', 50, 100, 0],['heart_rate', 100, 110, 1],
             ['heart_rate', 110, 129, 2], ['heart_rate', 129, max_val, 3],
-            ['respiratory_rate', 0, 28, 2], ['respiratory_rate', 28, 44, 0], ['respiratory_rate', 44, 64, 1], 
-            ['respiratory_rate', 64, 92, 2], ['respiratory_rate', 92, max_val, 3],
-            ['body_temperature', 0, 35, 2], ['body_temperature', 35, 38.4, 0], ['body_temperature', 38.4, max_val, 2]]
+            ['respiratory_rate', 0, 9, 2], ['respiratory_rate', 9, 15, 0], ['respiratory_rate', 15, 20, 1], 
+            ['respiratory_rate', 20, 30, 2], ['respiratory_rate', 30, max_val, 3],
+            ['body_temperature', 0, 35, 2], ['body_temperature', 35, 38.5, 0], ['body_temperature', 38.5, max_val, 2]]
     mews_df = pd.DataFrame(columns=['vital', 'range_min', 'range_max', 'score'], data=np.vstack(mews_list))
     
     mews_scores_df = compute_mews(ts_df, args, mews_df)

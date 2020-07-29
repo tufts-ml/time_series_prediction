@@ -116,34 +116,7 @@ if __name__ == '__main__':
                     default_group.add_argument("--%s" % key, default=val, type=type(val))
         subparsers_by_name[clf_name] = clf_parser
 
-    '''
-    logistic_parser = subparsers.add_parser('logistic')
-    logistic_parser.set_defaults(clf=LogisticRegression,
-                                 default_clf_args={'solver': 'lbfgs',
-                                                   'multi_class': 'auto'})
-    logistic_parser.add_argument('--grid_C', type=float, nargs='*', default=[1])
-
-    dtree_parser = subparsers.add_parser('dtree')
-    dtree_parser.set_defaults(clf=DecisionTreeClassifier, default_clf_args={})
-    dtree_parser.add_argument('--grid_max_depth', type=int, nargs='*', 
-                              default=[None])
-
-    rforest_parser = subparsers.add_parser('rforest')
-    rforest_parser.set_defaults(clf=RandomForestClassifier, default_clf_args={})
-    rforest_parser.add_argument('--grid_n_estimators', type=int, nargs='*',
-                                default=[10])
-    rforest_parser.add_argument('--grid_max_depth', type=int, nargs='*',
-                                default=[None])
-
-    mlp_parser = subparsers.add_parser('mlp')
-    mlp_parser.set_defaults(clf=MLPClassifier, default_clf_args={})
-    # ast.literal_eval evaluates strings, converting to a tuple in this case
-    # (may need to put tuples in quotes for command line)
-    mlp_parser.add_argument('--grid_hidden_layer_sizes', type=ast.literal_eval,
-                            nargs='*', default=[(100,)])
-    mlp_parser.add_argument('--grid_alpha', type=float, nargs='*', default=[0.0001])
-    '''
-
+    # parse inputs
     for p in subparsers_by_name.values():
 
         data_group = p.add_argument_group('data')
@@ -197,6 +170,7 @@ if __name__ == '__main__':
 
     feature_cols = []
     outcome_cols = []
+    feature_ranges = []
 
     df_by_split = dict()
     for split_name, csv_files in [('train', args.train_csv_files.split(',')), ('test', args.test_csv_files.split(','))]:
@@ -215,6 +189,11 @@ if __name__ == '__main__':
                     c['name'] for c in data_fields if (
                         c['role'].lower() in ('output', 'outcome')
                         and c['name'] not in feature_cols)])
+                
+                feature_ranges.extend([
+                        [c['constraints']['minimum'], c['constraints']['maximum']] for c in data_fields if (
+                        c['role'].lower() in ('feature', 'covariate', 'measurement')
+                        and c['name'] in feature_cols)])
 
             # TODO use json data dict to load specific columns as desired types
             more_df =  pd.read_csv(csv_file)
@@ -223,26 +202,7 @@ if __name__ == '__main__':
             else:
                 cur_df = cur_df.merge(more_df, on=key_cols)
         df_by_split[split_name] = cur_df
-
-    '''
-    data_dict = json.load(open(args.data_dict))
-    train = pd.read_csv(args.ts_dir + '/train.csv')
-    test = pd.read_csv(args.ts_dir + '/test.csv')
-    if args.static_files:
-        for f in args.static_files:
-            static = pd.read_csv(f)
-            join_cols = [c['name'] for c in data_dict['fields']
-                         if c['role'] == 'id' and c['name'] in static.columns
-                            and c['name'] in train.columns]
-            train = train.merge(static, on=join_cols)
-            test = test.merge(static, on=join_cols)
-
-
-    feature_cols = [c['name'] for c in data_dict['fields']
-                    if c['role'] == 'feature' and c['name'] in train]
-    outcome_col = [c['name'] for c in data_dict['fields']
-                   if c['role'] == 'outcome' and c['name'] in train]
-    '''
+    
 
     outcome_col_name = args.outcome_col_name
     if outcome_col_name is None:
@@ -263,7 +223,7 @@ if __name__ == '__main__':
     x_test = df_by_split['test'][feature_cols].values
     y_test = np.ravel(df_by_split['test'][outcome_col_name])
     is_multiclass = len(np.unique(y_train)) > 2
-
+    
     fixed_args = {}
     fixed_group = None
     for g in subparsers_by_name[args.clf_name]._action_groups:

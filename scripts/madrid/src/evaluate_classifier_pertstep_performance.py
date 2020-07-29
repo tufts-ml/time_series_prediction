@@ -50,5 +50,5 @@ if __name__ == '__main__':
         ticklabels_new = [ticklabel.replace(str(full_history_temp_tstep), 'full_history') for ticklabel in ticklabels]
         axs.set_xticklabels(ticklabels_new)
         axs.set_xlabel('Hours from admission')
-        plt.suptitle('Transfer to ICU Prediction From Collapsed Features')
+        plt.suptitle('Prediction of Clinical Deterioration From Collapsed Features')
         f.savefig(os.path.join(args.clf_performance_dir, 'tstep_performance_{plot_metric}.pdf'.format(plot_metric=plot_metric)))

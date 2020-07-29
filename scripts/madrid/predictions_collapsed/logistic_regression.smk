@@ -12,7 +12,9 @@ from config_loader import (
     DATASET_PERTSTEP_SPLIT_PATH, PROJECT_REPO_DIR, PROJECT_CONDA_ENV_YAML,
     RESULTS_PATH, RESULTS_PERTSTEP_PATH)
 tstep_hours_list=D_CONFIG['TIMESTEP_LIST']
-random_seed_list=D_CONFIG['CLF_RANDOM_SEED_LIST']
+#tstep_hours_list=[6]
+#random_seed_list=D_CONFIG['CLF_RANDOM_SEED_LIST']
+random_seed_list=[42]
 RESULTS_PATH=os.path.join(RESULTS_PATH, 'logistic_regression')
 RESULTS_PERTSTEP_PATH=os.path.join(RESULTS_PERTSTEP_PATH, 'logistic_regression')
 output_html_files=[os.path.join(RESULTS_PERTSTEP_PATH, "TSTEP={tstep_hours}", "report_random_seed={random_seed}.html").format(tstep_hours=tstep_hours, random_seed=random_seed) for tstep_hours in tstep_hours_list for random_seed in random_seed_list]
@@ -58,8 +60,8 @@ rule train_and_evaluate_classifier_single_tstep:
             --scoring roc_auc \
             --threshold_scoring balanced_accuracy \
             --class_weight balanced \
-            --tol 0.01\
-            --max_iter 5000\
+            --tol 0.001\
+            --max_iter 10000
         '''.replace("{{OUTCOME_COL_NAME}}", D_CONFIG["OUTCOME_COL_NAME"])\
            .replace("{{SPLIT_KEY_COL_NAMES}}", D_CONFIG["SPLIT_KEY_COL_NAMES"])
 
