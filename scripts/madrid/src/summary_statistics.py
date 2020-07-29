@@ -172,10 +172,12 @@ if __name__ == '__main__':
         print('TOTAL PATIENTS : %s, TOTAL STAYS : %s, TOTAL CLINICAL DETERIORATIONS : %s, OUTCOME FREQUENCY : %s'%(len(df.patient_id.unique()), len(df.hospital_admission_id.unique()), 
             outcome_df.clinical_deterioration_outcome.sum(), outcome_df.clinical_deterioration_outcome.sum()/len(df.hospital_admission_id.unique())))
         stay_lengths = outcome_df.stay_length
-        stay_lengths_outcome_0 = stay_lengths[outcome_df.transfer_to_ICU_outcome==0]
-        stay_lengths_outcome_1 = stay_lengths[outcome_df.transfer_to_ICU_outcome==1]
+        stay_lengths_outcome_0 = stay_lengths[outcome_df.clinical_deterioration_outcome==0]
+        stay_lengths_outcome_1 = stay_lengths[outcome_df.clinical_deterioration_outcome==1]
         print('lengths of stay outcome 0:  %.2f(%.5f - %.5f)'%( np.median(stay_lengths_outcome_0), np.percentile(stay_lengths_outcome_0, 5), np.percentile(stay_lengths_outcome_0, 95)))
         print('lengths of stay outcome 1:  %.2f(%.5f - %.5f)'%( np.median(stay_lengths_outcome_1), np.percentile(stay_lengths_outcome_1, 5), np.percentile(stay_lengths_outcome_1, 95)))
+        print('number of outcome 1 ICU transfers : %.1f'%((outcome_df.transfer_to_ICU_outcome==1).sum()))
+        print('number of outcome 1 non-ICU transfer deaths : %.1f'%((outcome_df.clinical_deterioration_outcome - outcome_df.transfer_to_ICU_outcome).sum()))
         print('----------------------------------------------------')
 
 

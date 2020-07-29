@@ -33,8 +33,19 @@ if __name__ == '__main__':
                     final_perf_df_list.append(perf_df.to_numpy())
 
     final_perf_df = pd.DataFrame(np.vstack(final_perf_df_list), columns = final_perf_df_cols)
-    final_perf_df['tstep'] = final_perf_df['tstep'].astype(float) 
+    final_perf_df['tstep'] = final_perf_df['tstep'].astype(float)
     
+    # create perf metrics for random guessing
+    final_perf_df_random_model = final_perf_df[final_perf_df.model=='logistic_regression'].copy()
+    final_perf_df_random_model.loc[:, 'model'] = 'chance'
+    final_perf_df_random_model.loc[:, 'average_precision'] = final_perf_df_random_model.loc[:,'frac_labels_positive']
+    final_perf_df_random_model.loc[:, 'AUROC'] = 0.5
+    final_perf_df_random_model.loc[:, 'f1_score'] = 0.5
+    final_perf_df_random_model.loc[:, 'balanced_accuracy'] = 0.5
+    final_perf_df_random_model.loc[:, 'accuracy'] = 0.5
+    final_perf_df_random_model.loc[:, 'cross_entropy_base2'] = np.nan
+    final_perf_df = final_perf_df.append(final_perf_df_random_model)
+
     # change tstep of full history from -1 to some temp value
     full_history_temp_tstep = np.asarray(final_perf_df['tstep'].max())+5
     final_perf_df.loc[final_perf_df['tstep']==-1, 'tstep']=full_history_temp_tstep
@@ -52,3 +63,14 @@ if __name__ == '__main__':
         axs.set_xlabel('Hours from admission')
         plt.suptitle('Prediction of Clinical Deterioration From Collapsed Features')
         f.savefig(os.path.join(args.clf_performance_dir, 'tstep_performance_{plot_metric}.pdf'.format(plot_metric=plot_metric)))
+
+    from IPython import embed; embed()
+    # get the train test count plits for each tstep
+    fig, axs = plt.subplots()
+    sns.barplot(x='tstep', y='n_examples', hue='split_name', data=final_perf_df[final_perf_df.model=='random_forest'], ax=axs)
+    plt.suptitle('Train-Test Splits Per Slice')
+    ticklabels = [item.get_text() for item in axs.get_xticklabels()]
+    ticklabels_new = [ticklabel.replace(str(full_history_temp_tstep), 'full_history') for ticklabel in ticklabels]
+    axs.set_xticklabels(ticklabels_new)
+    fig.savefig(os.path.join(args.clf_performance_dir, 'tstep_examples_count_distribution.pdf'))
+
