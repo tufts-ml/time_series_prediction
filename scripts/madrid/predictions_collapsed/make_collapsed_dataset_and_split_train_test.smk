@@ -1,7 +1,5 @@
 '''
 Produce a collapsed feature representation on Madrid Transfer to ICU Prediction
-
-
 '''
 
 # Default environment variables

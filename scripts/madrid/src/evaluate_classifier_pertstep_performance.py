@@ -41,45 +41,14 @@ if __name__ == '__main__':
     
     # plot selected metrics
     plot_metrics = [ 'balanced_accuracy', 'f1_score', 'average_precision', 'AUROC']
-    f, axs = plt.subplots(2,2, figsize=(18,15))
-    axs_list = [ax for sublist in axs for ax in sublist]
-    for ax_idx, plot_metric in enumerate(plot_metrics):
-        sns.pointplot(x='tstep', y=plot_metric, hue = 'model', data=final_perf_df[final_perf_df.split_name=='test'],ax=axs_list[ax_idx])
-        ticklabels = [item.get_text() for item in axs_list[ax_idx].get_xticklabels()]
+    for f_idx, plot_metric in enumerate(plot_metrics):
+        f, axs = plt.subplots()
+    #axs_list = [ax for sublist in axs for ax in sublist]
+    #for ax_idx, plot_metric in enumerate(plot_metrics):
+        sns.pointplot(x='tstep', y=plot_metric, hue = 'model', data=final_perf_df[final_perf_df.split_name=='test'],ax=axs)
+        ticklabels = [item.get_text() for item in axs.get_xticklabels()]
         ticklabels_new = [ticklabel.replace(str(full_history_temp_tstep), 'full_history') for ticklabel in ticklabels]
-        axs_list[ax_idx].set_xticklabels(ticklabels_new)
-        axs_list[ax_idx].set_xlabel('Hours from admission')
-    
-
-    '''
-    split_marker_dict = {'train':'x', 'test':'.'}
-    split_linestyle_dict = {'train':'--', 'test':'-'}
-    model_color_dict={'logistic_regression': 'b', 'random_forest':'r'}
-    for ax_idx, plot_metric in enumerate(plot_metrics):
-        for model in final_perf_df.model.unique():
-            for split in ['test']:
-                metric_model_split_idx = (final_perf_df['split_name']==split) & (final_perf_df['model']==model)
-                metric_model_split_df = final_perf_df.loc[metric_model_split_idx,['tstep',plot_metric]]
-                metric_model_split_df[plot_metric] = metric_model_split_df[plot_metric].astype(float)
-                metric_vals_median = np.asarray(metric_model_split_df.groupby('tstep').median().reset_index()[plot_metric])
-                metric_vals_min = np.asarray(metric_model_split_df.groupby('tstep').median().reset_index()[plot_metric])
-                metric_vals_max = np.asarray(metric_model_split_df.groupby('tstep').median().reset_index()[plot_metric])
-                tsteps = np.asarray(metric_model_split_df.groupby('tstep').median().reset_index()['tstep'])
-                
-                # move the results for full history later to right of the axis
-                tsteps[tsteps==-1]=tsteps.max()+5
-                sorted_idx = np.argsort(tsteps)
-                plotstyle =  model_color_dict[model] + split_linestyle_dict[split]
-                plotlabel = '%s-%s'%(model, split)
-                axs_list[ax_idx].plot(tsteps[sorted_idx], metric_vals_median[sorted_idx], plotstyle, label=plotlabel)
-                axs_list[ax_idx].fill_between(tsteps[sorted_idx], metric_vals_min[sorted_idx], metric_vals_max[sorted_idx], color=model_color_dict[model])
-                axs_list[ax_idx].set_title(plot_metric)
-                axs_list[ax_idx].set_xlabel('hours_from_admission')
-                axs_list[ax_idx].legend() 
-                # change the xlabel for last timepoint accurately
-                axs_list[ax_idx].set_xticks(tsteps[sorted_idx])
-                axs_list[ax_idx].set_xticklabels([str(tstep) for tstep in tsteps[sorted_idx][:-1]]+['full_history'])
-    '''
-    plt.suptitle('Transfer to ICU Prediction From Collapsed Features')
-    plt.subplots_adjust(hspace=0.3)
-    f.savefig(os.path.join(args.clf_performance_dir, 'tstep_performance.png'))
+        axs.set_xticklabels(ticklabels_new)
+        axs.set_xlabel('Hours from admission')
+        plt.suptitle('Prediction of Clinical Deterioration From Collapsed Features')
+        f.savefig(os.path.join(args.clf_performance_dir, 'tstep_performance_{plot_metric}.pdf'.format(plot_metric=plot_metric)))

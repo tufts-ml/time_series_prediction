@@ -79,22 +79,36 @@ FIG_KWARGS = dict(
     figsize=(4, 4),
     tight_layout=True)
 
+
 if __name__ == '__main__':
 
     # Parse pre-specified command line arguments
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(title="clf_name", dest="clf_name")
-
     subparsers_by_name = dict()
+
+    # Create classifier-specific options for the parser
+    # Read in 'defaults' from json files, allow overriding with kwarg args
     for json_file in DEFAULT_SETTINGS_JSON_FILES:
-        with open(json_file, 'r') as f:
-            defaults = json.load(f)
         clf_name = os.path.basename(json_file).split('.')[0]
         clf_parser = subparsers.add_parser(clf_name)
 
-        default_group = clf_parser.add_argument_group('fixed_clf_settings')
-        filter_group = clf_parser.add_argument_group('filter_hypers')
+        # Hyperparameters are tuned on validation sets or via CV
         hyperparam_group = clf_parser.add_argument_group('hyperparameters')
+
+        # Specialized functions that filter out irrelevant hyperparameter candidates for this dataset
+        # These functions take the form:
+        # filter(val, n_examples, n_features) -> acceptable_value
+        filter_func_group = clf_parser.add_argument_group('filter_funcs_that_produce_acceptable_hypers')
+
+        # Fixed settings are recommended defaults that do not need tuning
+        default_group = clf_parser.add_argument_group('fixed_clf_settings')
+
+        # Read in defaults from JSON file
+        with open(json_file, 'r') as f:
+            defaults = json.load(f)
+
+        # Setup parser options using the contents of JSON file
         for key, val in defaults.items():
             if key.count('constructor'):
                 assert val.count(' ') == 0
@@ -106,23 +120,24 @@ if __name__ == '__main__':
                         mod = getattr(mod, name)
                 clf_parser.add_argument('--clf_constructor', default=mod)
             elif isinstance(val, list):
-                if key.startswith('grid_'):
+                if key.startswith('grid__'):
                     hyperparam_group.add_argument("--%s" % key, default=val, type=type(val[0]), nargs='*')
                 else:
                     default_group.add_argument("--%s" % key, default=val, type=type(val[0]), nargs='*')
             else:
                 has_simple_type = isinstance(val, str) or isinstance(val, int) or isinstance(val, float)
                 assert has_simple_type
-                if key.startswith('grid_'):
+                if key.startswith('grid__'):
                     hyperparam_group.add_argument("--%s" % key, default=val, type=type(val))
                 elif key.startswith('filter__'):
-                    filter_group.add_argument("--%s" % key, default=val, type=type(val))
+                    filter_func_group.add_argument("--%s" % key, default=val, type=type(val))
                 else:
                     default_group.add_argument("--%s" % key, default=val, type=type(val))
         subparsers_by_name[clf_name] = clf_parser
 
-    for p in subparsers_by_name.values():
 
+    # Create dataset-specific and experimental design options for the parser
+    for p in subparsers_by_name.values():
         data_group = p.add_argument_group('data')
         data_group.add_argument('--train_csv_files', type=str, required=True)
         data_group.add_argument('--test_csv_files', type=str, required=True)
@@ -141,23 +156,17 @@ if __name__ == '__main__':
         protocol_group.add_argument('--threshold_scoring', type=str,
             default=None, choices=[None, 'None'] + THRESHOLD_SCORING_OPTIONS)
 
+    # Parse known arguments from stdin
     args, unknown_args = parser.parse_known_args()
+    argdict = vars(args)
+
+
+    # Prepare output directory
     fig_dir = os.path.abspath(args.output_dir)
     try:
         os.mkdir(fig_dir)
     except OSError:
         pass
-
-    # key[5:] strips the 'grid_' prefix from the argument
-    argdict = vars(args)
-    #raw_param_grid = {
-    #    key[5:]: argdict[key] for key in argdict if key.startswith('grid_')}
-    raw_param_grid = dict()
-    for key, val  in argdict.items():
-        if key.startswith('grid_'):
-            raw_param_grid[key[5:]] = val
-        elif key.startswith('filter_'):
-            raw_param_grid[key] = val
 
     # Parse unspecified arguments to be passed through to the classifier
     def auto_convert_str(x):
@@ -175,6 +184,7 @@ if __name__ == '__main__':
     feature_cols = []
     outcome_cols = []
     info_per_feature_col = dict()
+    feature_ranges = []
     df_by_split = dict()
     for split_name, csv_files in [
             ('train', args.train_csv_files.split(',')),
@@ -192,6 +202,11 @@ if __name__ == '__main__':
                     c['name'] for c in data_fields if (
                         c['role'].lower() in ('output', 'outcome')
                         and c['name'] not in feature_cols)])
+                
+                feature_ranges.extend([
+                        [c['constraints']['minimum'], c['constraints']['maximum']] for c in data_fields if (
+                        c['role'].lower() in ('feature', 'covariate', 'measurement')
+                        and c['name'] in feature_cols)])
 
                 for info_d in data_fields:
                     try:
@@ -208,7 +223,6 @@ if __name__ == '__main__':
             else:
                 cur_df = cur_df.merge(more_df, on=key_cols)
         df_by_split[split_name] = cur_df
-
 
     outcome_col_name = args.outcome_col_name
     if outcome_col_name is None:
@@ -229,7 +243,7 @@ if __name__ == '__main__':
     x_test = df_by_split['test'][feature_cols].values
     y_test = np.ravel(df_by_split['test'][outcome_col_name])
     is_multiclass = len(np.unique(y_train)) > 2
-
+    
     fixed_args = {}
     fixed_group = None
     for g in subparsers_by_name[args.clf_name]._action_groups:
@@ -254,29 +268,42 @@ if __name__ == '__main__':
             val = unknown_args[i+1]
             passthrough_args[arg[2:]] = auto_convert_str(val)
 
-    # Perform hyper_searcher search
+
+    # Prepare hyperparameter search
+    # -----------------------------
+    # Read in the hyperparameter candiate values grid from stdin
+    # Then apply relevant filters to create acceptable candidate values for this dataset
+    raw_param_grid = dict()
+    for key, val  in argdict.items():
+        if key.startswith('grid__'):
+            # key[5:] strips the 'grid__' prefix from the argument
+            raw_param_grid[key[6:]] = val
+        elif key.startswith('filter__'):
+            raw_param_grid[key] = val
     n_examples = int(np.ceil(x_train.shape[0] * (1 - args.validation_size)))
     n_features = x_train.shape[1]
-
-    param_grid = dict()
+    pipeline_param_grid_dict = dict()
     for key, grid in raw_param_grid.items():
-        fkey = 'filter__' + key
-        if fkey in argdict:
-            filter_func = eval(argdict[fkey])
+        filter_key = 'filter__' + key
+        if filter_key in argdict:
+            filter_func = eval(argdict[filter_key])
             filtered_grid = np.unique([filter_func(g, n_examples, n_features) for g in grid]).tolist()
         else:
             filtered_grid = np.unique(grid).tolist()
 
-        if 'lambda x' not in str(filtered_grid[0]):
+        filtering_successful = 'lambda x' not in str(filtered_grid[0])
+        if filtering_successful:
             if len(filtered_grid) == 0:
-                raise Warning("Bad grid for parameter: %s")
-            elif (len(filtered_grid) == 1):
+                raise Warning("Candidate grid has zero values for parameter: %s")
+            elif len(filtered_grid) == 1:
                 fixed_args[key] = filtered_grid[0]
                 raise Warning("Skipping parameter %s with only one grid value")
             else:
-                param_grid[key] = filtered_grid
+                # Safe to use filtered grid for this parameter
+                pipeline_param_grid_dict['classifier__' + key] = filtered_grid
 
     # Create classifier pipeline
+    # --------------------------
     clf = args.clf_constructor(
         random_state=int(args.random_seed), **fixed_args, **passthrough_args)
     step_list = list()
@@ -290,22 +317,22 @@ if __name__ == '__main__':
         step_list.append(('standardize_numeric_features', std_scaler_preprocessor))
     step_list.append(('classifier', clf))
     prediction_pipeline = Pipeline(step_list)
-
-    param_grid_pipeline = dict()
-    for key, value in param_grid.items():
-        param_grid_pipeline['classifier__'+key] = value
     
+
+    # Establish train/test splits
+    # ---------------------------
     # Create object that knows how to divide data into train/test/valid
     splitter = Splitter(
         size=args.validation_size, random_state=args.random_seed,
         n_splits=args.n_splits, cols_to_group=args.key_cols_to_group_when_splitting)
-
     # Assign training instances to splits by provided keys
     key_train = splitter.make_groups_from_df(df_by_split['train'][key_cols])
 
-    # Run the expensive grid search!
+
+    # Run expensive training + selection
+    # ----------------------------------
     hyper_searcher = GridSearchCV(
-        prediction_pipeline, param_grid_pipeline,
+        prediction_pipeline, pipeline_param_grid_dict,
         scoring=args.scoring, cv=splitter, refit=True, return_train_score=True, verbose=5)
     hyper_searcher.fit(x_train, y_train, groups=key_train)
     
@@ -396,7 +423,9 @@ if __name__ == '__main__':
     else:
         best_clf = hyper_searcher.best_estimator_
 
-    # Evaluation
+
+    # Evaluation of selected model
+    # ----------------------------
     row_dict_list = list()
     extra_list = list()
     for split_name, x, y in [
@@ -408,6 +437,23 @@ if __name__ == '__main__':
         y_pred = best_clf.predict(x)
         y_pred_proba = best_clf.predict_proba(x)[:, 1]
 
+        # Metrics that consume probabilities
+        # ----------------------------------
+        log2_loss = log_loss(y, y_pred_proba, normalize=True) / np.log(2)
+        avg_precision = average_precision_score(y, y_pred_proba)
+        roc_auc = roc_auc_score(y, y_pred_proba)
+        row_dict.update(dict(
+            cross_entropy_base2=log2_loss,
+            average_precision=avg_precision,
+            AUROC=roc_auc))
+        # This computation is ordered with *decreasing* recall
+        precision, recall, _ = precision_recall_curve(y, y_pred_proba)
+        # To compute area under curve, make sure we integrate with *increasing* recall
+        row_dict['AUPRC'] = np.trapz(precision[::-1], recall[::-1])
+        
+        # Metrics that require a threshold
+        # --------------------------------
+        # (e.g. use y_pred not y_pred_proba)
         confusion_arr = confusion_matrix(y, y_pred)
         cm_df = pd.DataFrame(confusion_arr, columns=[0,1], index=[0,1])
         cm_df.columns.name = 'Predicted label'
@@ -415,29 +461,24 @@ if __name__ == '__main__':
         
         accuracy = accuracy_score(y, y_pred)
         balanced_accuracy = balanced_accuracy_score(y, y_pred)
-        log2_loss = log_loss(y, y_pred_proba, normalize=True) / np.log(2)
-        row_dict.update(dict(confusion_html=cm_df.to_html(), cross_entropy_base2=log2_loss, accuracy=accuracy, balanced_accuracy=balanced_accuracy))
 
-        avg_precision = average_precision_score(y, y_pred_proba)
-        roc_auc = roc_auc_score(y, y_pred_proba)
-        row_dict.update(dict(average_precision=avg_precision, AUROC=roc_auc))
-        
-        # Scores that require a threshold
-        f1 = f1_score(y, y_pred)
-        row_dict.update(dict(f1_score=f1))
+        f1_score = f1_score(y, y_pred)
+        row_dict.update(dict(
+            confusion_html=cm_df.to_html(),
+            accuracy=accuracy,
+            balanced_accuracy=balanced_accuracy,
+            f1_score=f1_score))
+
         npv, ppv = np.diag(cm_df.values) / cm_df.sum(axis=0)
         tnr, tpr = np.diag(cm_df.values) / cm_df.sum(axis=1)
         row_dict.update(dict(TPR=tpr, TNR=tnr, PPV=ppv, NPV=npv))
         row_dict.update(dict(tn=cm_df.values[0,0], fp=cm_df.values[0,1], fn=cm_df.values[1,0], tp=cm_df.values[1,1]))
 
-        # This computation is ordered with *decreasing* recall
-        precision, recall, _ = precision_recall_curve(y, y_pred_proba)
-        # To compute area under curve, make sure we integrate with *increasing* recall
-        row_dict['AUPRC'] = np.trapz(precision[::-1], recall[::-1])
-
+        # Append to list of perf metrics for all splits
         row_dict_list.append(row_dict)
 
-
+    # Write performance metrics to CSV
+    # --------------------------------
     # Package up all per-split metrics into one dataframe and save to CSV
     perf_df = pd.DataFrame(row_dict_list)
     perf_df = perf_df.set_index('split_name')
@@ -445,6 +486,9 @@ if __name__ == '__main__':
     perf_df.to_csv(csv_path)
     print("Wrote to: %s" % csv_path)
 
+
+    # Make plots and save to disk
+    # ---------------------------
     # PLOT #1: Calibration
     B = 0.03
     fig_h = plt.figure(**FIG_KWARGS)
@@ -470,7 +514,7 @@ if __name__ == '__main__':
     # Plot #3: PR curve
     fig_h = plt.figure(**FIG_KWARGS)
     ax = plt.gca()
-    ax.plot(recall, precision, 'b.-')
+    ax.plot(recall, precision, 'b.-') # computed above to get AUPRC
     ax.set_xlabel('Recall')
     ax.set_ylabel('Precision')
     ax.set_xlim([-B, 1.0 + B])
@@ -482,12 +526,11 @@ if __name__ == '__main__':
     plt.close()
 
 
-    # Set up HTML report
+    # Write HTML report
+    # ------------------
     os.chdir(fig_dir)
-
     doc, tag, text = Doc().tagtext()
     pd.set_option('precision', 4)
-
     with tag('html'):
         if os.path.exists(TEMPLATE_HTML_PATH):
             with open(TEMPLATE_HTML_PATH, 'r') as f:
@@ -505,7 +548,6 @@ if __name__ == '__main__':
                         text('Hyperparameters of best model')
                     with tag('pre'):
                         text(str(best_clf))
-
                     with tag('h3'):
                         with tag('a', name='results-data-summary'):
                             text('Input Data Summary')

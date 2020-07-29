@@ -46,9 +46,9 @@ class Splitter:
 
 def split_dataframe_by_keys(data_df=None, size=0, random_state=0, cols_to_group=None):
     gss1 = Splitter(n_splits=1, size=size, random_state=random_state, cols_to_group=cols_to_group)
-    for a, b in gss1.split(df, groups=gss1.make_groups_from_df(data_df)):
-        train_df = df.iloc[a].copy()
-        test_df = df.iloc[b].copy()
+    for a, b in gss1.split(data_df, groups=gss1.make_groups_from_df(data_df)):
+        train_df = data_df.iloc[a].copy()
+        test_df = data_df.iloc[b].copy()
     return train_df, test_df
 
 
@@ -83,7 +83,7 @@ if __name__ == '__main__':
         
     train_df, test_df = split_dataframe_by_keys(
         df, cols_to_group=group_cols, size=args.test_size, random_state=args.random_state)
-
+    
     # Write split data frames to CSV
     fdir_train_test = args.output_dir
     if fdir_train_test is not None:
@@ -96,7 +96,7 @@ if __name__ == '__main__':
 
     train_df.to_csv(args.train_csv_filename, index=False)
     test_df.to_csv(args.test_csv_filename, index=False)
-
+    
     if args.output_data_dict_filename is not None:
         with open(args.output_data_dict_filename, 'w') as f:
             json.dump(data_dict, f, indent=4)
