@@ -7,25 +7,24 @@ COLLAPSING FEATURES AND SPLITTING INTO TRAIN AND TEST
 
 Usage : Maintaining minimum required stay length for evey patient stay slice
 ---------------------------------------------------------------------------
-For eg. If we predict using first 4 hours of data, we ensure that evvery patient in the cohort has atleast 4 hours of data.
-snakemake --cores all --snakefile make_collapsed_dataset_and_split_train_test_per_tstep.smk filter_admissions_by_stay_length_many_tsteps
+For eg. If we predict using first 4 hours of data, we ensure that every patient in the cohort has atleast 4 hours of data.
+>> snakemake --cores all --snakefile make_collapsed_dataset_and_split_train_test_per_tstep.smk filter_admissions_by_stay_length_many_tsteps
 
 Usage : Collapsing features and saving to slice specific folders
 ----------------------------------------------------------------
-snakemake --cores all --snakefile make_collapsed_dataset_and_split_train_test_per_tstep.smk collapse_features_many_tsteps
+>> snakemake --cores all --snakefile make_collapsed_dataset_and_split_train_test_per_tstep.smk collapse_features_many_tsteps
 
 Usage : Computing slice specific MEWS scores
 --------------------------------------------
-snakemake --cores all --snakefile make_collapsed_dataset_and_split_train_test_per_tstep.smk collapse_features_many_tsteps
+>> snakemake --cores all --snakefile make_collapsed_dataset_and_split_train_test_per_tstep.smk compute_mews_score_many_tsteps
 
 Usage : Dividng the slice specific collapsed features and MEWS score into train and test
 ----------------------------------------------------------------------------------------
-snakemake --cores all --snakefile make_collapsed_dataset_and_split_train_test_per_tstep.smk split_into_train_test_many_tsteps
+>> snakemake --cores all --snakefile make_collapsed_dataset_and_split_train_test_per_tstep.smk split_into_train_test_many_tsteps
 
 Usage : Do every step above in squence
 -------------------------------------
-snakemake --cores all --snakefile make_collapsed_dataset_and_split_train_test_per_tstep.smk all
-
+>> snakemake --cores all --snakefile make_collapsed_dataset_and_split_train_test_per_tstep.smk all
 
 --------------------------------------------------------------------------------------------------------------------------------------
 GETTING MISSINGNESS STATISTICS
@@ -33,8 +32,8 @@ GETTING MISSINGNESS STATISTICS
 
 Usage : Get slice specific missingness statistics
 -------------------------------------------------
-snakemake --force --cores all --snakefile make_collapsed_dataset_and_split_train_test_per_tstep.smk compute_missingness_many_tsteps
-snakemake --force --cores all --snakefile make_collapsed_dataset_and_split_train_test_per_tstep.smk evaluate_missingness_many_tsteps
+>> snakemake --force --cores all --snakefile make_collapsed_dataset_and_split_train_test_per_tstep.smk compute_missingness_many_tsteps
+>> snakemake --force --cores all --snakefile make_collapsed_dataset_and_split_train_test_per_tstep.smk evaluate_missingness_many_tsteps
 
 '''
 
@@ -51,12 +50,12 @@ print("--------------------------")
 print("Train/test dataset will go to folder:")
 print(DATASET_PERTSTEP_SPLIT_PATH)
 
-# run collapse features on furst 2 hours, first 4 hours etc.
-tstep_hours_list=D_CONFIG['TIMESTEP_LIST']
-#tstep_hours_list=[10]
+# run collapse features on first/last 2 hours, first 4 hours etc.
+#tstep_hours_list=D_CONFIG['TIMESTEP_LIST']
+tstep_hours_list=['%20', '40%', '60%', '80%', -12, '-6']
 filtered_pertstep_csvs=[os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}","vitals_before_icu_filtered_{tstep_hours}_hours.csv").replace("{tstep_hours}", str(tstep_hours)) for tstep_hours in tstep_hours_list]
-collapsed_pertstep_csvs=[os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}","CollapsedFeaturesPerSequence.csv").replace("{tstep_hours}", str(tstep_hours)) for tstep_hours in tstep_hours_list]
-collapsed_pertstep_jsons=[os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}","Spec_CollapsedFeaturesPerSequence.json").replace("{tstep_hours}", str(tstep_hours)) for tstep_hours in tstep_hours_list]
+collapsed_pertstep_csvs=[os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}","CollapsedVitalsPerSequence.csv").replace("{tstep_hours}", str(tstep_hours)) for tstep_hours in tstep_hours_list]
+collapsed_pertstep_jsons=[os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}","Spec_CollapsedVitalsPerSequence.json").replace("{tstep_hours}", str(tstep_hours)) for tstep_hours in tstep_hours_list]
 mews_pertstep_csvs=[os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}","MewsScoresPerSequence.csv").replace("{tstep_hours}", str(tstep_hours)) for tstep_hours in tstep_hours_list]
 mews_pertstep_jsons=[os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}","Spec_MewsScoresPerSequence.json").replace("{tstep_hours}", str(tstep_hours)) for tstep_hours in tstep_hours_list]
 train_test_split_jsons=[os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}","{data_dict}").format(tstep_hours=str(tstep_hours), data_dict=data_dict) for tstep_hours in tstep_hours_list for data_dict in ['x_dict.json', 'y_dict.json', 'mews_dict.json']]
@@ -67,11 +66,11 @@ rule compute_missingness_many_tsteps:
     input:
         missingness_pertstep_csvs
 
-rule filter_admissions_by_stay_length_many_tsteps:
+rule filter_admissions_by_tslice_many_tslices:
     input:
         filtered_pertstep_csvs
 
-rule collapse_features_many_tsteps:
+rule collapse_features_many_tslices:
     input:
         collapsed_pertstep_csvs,
         collapsed_pertstep_jsons
@@ -96,38 +95,49 @@ rule all:
         train_test_split_jsons,
         train_test_split_csvs,
 
-rule filter_admissions_by_stay_length:
+rule filter_admissions_by_tslice:
     input:
-        script=os.path.join(os.path.abspath('../'), 'src', 'filter_admissions_by_stay_length.py'),
-        x_csv=os.path.join(DATASET_STD_PATH, 'vitals_before_icu.csv'),
+        script=os.path.join(os.path.abspath('../'), 'src', 'filter_admissions_by_tslice.py'),
+        demographics_csv=os.path.join(DATASET_STD_PATH, 'demographics_before_icu.csv'),
+        labs_csv=os.path.join(DATASET_STD_PATH, 'labs_before_icu.csv'),
+        vitals_csv=os.path.join(DATASET_STD_PATH, 'vitals_before_icu.csv'),
         y_csv=os.path.join(DATASET_STD_PATH, 'clinical_deterioration_outcomes.csv'),
-        x_spec_json=os.path.join(DATASET_TOP_PATH, 'Spec-Vitals.json')
+        demographics_spec_json=os.path.join(DATASET_TOP_PATH, 'Spec-Demographics.json'),
+        labs_spec_json=os.path.join(DATASET_TOP_PATH, 'Spec-Labs.json'),
+        vitals_spec_json=os.path.join(DATASET_TOP_PATH, 'Spec-Vitals.json')
     
     params:
+        preproc_data_dir = DATASET_STD_PATH,
         output_dir=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}")
     
     output:
-        filtered_x_csv=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", "vitals_before_icu_filtered_{tstep_hours}_hours.csv"),
+        filtered_demographics_csv=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", "demographics_before_icu_filtered_{tstep_hours}_hours.csv"),
+        filtered_vitals_csv=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", "vitals_before_icu_filtered_{tstep_hours}_hours.csv"),
+        filtered_labs_csv=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", "labs_before_icu_filtered_{tstep_hours}_hours.csv"),
         filtered_y_csv=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", "clinical_deterioration_outcomes_filtered_{tstep_hours}_hours.csv")
+    
     shell:
         '''
-        python -u {input.script} \
-            --input {input.x_csv} \
-            --outcomes {input.y_csv} \
-            --data_dict {input.x_spec_json} \
-            --stay_length "{wildcards.tstep_hours}" \
-            --output_dir {params.output_dir}
+            python -u {input.script} \
+                --preproc_data_dir {params.preproc_data_dir} \
+                --tslice "{wildcards.tstep_hours}" \
+                --output_dir {params.output_dir} \
         '''
 
 rule collapse_features:
     input:
         script=os.path.join(PROJECT_REPO_DIR, 'src', 'feature_transformation.py'),
-        x_csv=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", "vitals_before_icu_filtered_{tstep_hours}_hours.csv"),
-        x_spec_json=os.path.join(DATASET_TOP_PATH, 'Spec-Vitals.json')
+        vitals_csv=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", "vitals_before_icu_filtered_{tstep_hours}_hours.csv"),
+        vitals_spec_json=os.path.join(DATASET_TOP_PATH, 'Spec-Vitals.json'),
+        labs_csv=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", "labs_before_icu_filtered_{tstep_hours}_hours.csv"),
+        labs_spec_json=os.path.join(DATASET_TOP_PATH, 'Spec-Labs.json'),
+        tstop_csv=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", "tstops_filtered_{tstep_hours}_hours.csv")
 
     output:
-        collapsedx_pertstep_csv=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", "CollapsedFeaturesPerSequence.csv"),
-        collapsedx_pertstep_json=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", "Spec_CollapsedFeaturesPerSequence.json")
+        collapsed_vitals_pertstep_csv=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", "CollapsedVitalsPerSequence.csv"),
+        collapsed_vitals_pertstep_json=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", "Spec_CollapsedVitalsPerSequence.json"),
+        collapsed_labs_pertstep_csv=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", "CollapsedLabsPerSequence.csv"),
+        collapsed_labs_pertstep_json=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", "Spec_CollapsedLabsPerSequence.json")
 
     conda:
         PROJECT_CONDA_ENV_YAML
@@ -135,15 +145,24 @@ rule collapse_features:
     shell:
         '''
         python -u {input.script} \
-            --input {input.x_csv} \
-            --data_dict {input.x_spec_json} \
-            --output "{output.collapsedx_pertstep_csv}" \
-Finished job 0.
-            --data_dict_output "{output.collapsedx_pertstep_json}" \
-            --max_time_step "{wildcards.tstep_hours}"\
-            --collapse_range_features "hours_since_measured present slope std median min max" \
-            --range_pairs "[(0,10), (0,25), (0,50), (50,100), (75,100), (90,100), (0,100)]" \
-            --collapse
+            --input {input.vitals_csv} \
+            --data_dict {input.vitals_spec_json} \
+            --output "{output.collapsed_vitals_pertstep_csv}" \
+            --data_dict_output "{output.collapsed_vitals_pertstep_json}" \
+            --tstops {input.tstop_csv} \
+            --collapse_range_features "std hours_since_measured present slope median min max" \
+            --range_pairs "[('50%','100%'), ('75%','100%'), ('0%','100%'), ('T-6h','T'), ('T-12h','T'), ('T-24h','T')]" \
+            --collapse \
+
+        python -u {input.script} \
+            --input {input.labs_csv} \
+            --data_dict {input.labs_spec_json} \
+            --output "{output.collapsed_labs_pertstep_csv}" \
+            --data_dict_output "{output.collapsed_labs_pertstep_json}" \
+            --tstops {input.tstop_csv}\
+            --collapse_range_features "std hours_since_measured present slope median min max" \
+            --range_pairs "[('50%','100%'), ('75%','100%'), ('0%','100%'), ('T-6h','T'), ('T-12h','T'), ('T-24h','T')]" \
+            --collapse \
         '''
 
 rule compute_mews_score:
@@ -215,17 +234,34 @@ rule evaluate_missingness_many_tsteps:
 rule split_into_train_and_test:
     input:
         script=os.path.join(PROJECT_REPO_DIR, 'src', 'split_dataset.py'),
-        collapsedx_pertstep_csv=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", "CollapsedFeaturesPerSequence.csv"),
-        collapsedx_pertstep_json=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", "Spec_CollapsedFeaturesPerSequence.json"),
+        merge_script=os.path.join(os.path.abspath('../'), 'src', 'merge_train_test_splits.py'),
+        collapsed_vitals_pertstep_csv=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", "CollapsedVitalsPerSequence.csv"),
+        collapsed_vitals_pertstep_json=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", "Spec_CollapsedVitalsPerSequence.json"),
+        collapsed_labs_pertstep_csv=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", "CollapsedLabsPerSequence.csv"),
+        collapsed_labs_pertstep_json=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", "Spec_CollapsedLabsPerSequence.json"),
+        demographics_pertstep_csv=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", "demographics_before_icu_filtered_{tstep_hours}_hours.csv"),
+        demographics_pertstep_json=os.path.join(DATASET_TOP_PATH, 'Spec-Demographics.json'),
         mews_pertstep_csv=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", "MewsScoresPerSequence.csv"),
         mews_pertstep_json=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", "Spec_MewsScoresPerSequence.json"),
         collapsedy_csv=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", "clinical_deterioration_outcomes_filtered_{tstep_hours}_hours.csv"),
         collapsedy_json=os.path.join(DATASET_TOP_PATH, 'Spec-Outcomes_TransferToICU.json')
-
+    
+    params:
+        train_test_split_dir=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}")
+ 
     output:
+        demographics_dict=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", 'demographics_dict.json'),
+        vitals_dict=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", 'vitals_dict.json'),
+        labs_dict=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", 'labs_dict.json'),
         x_dict=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", 'x_dict.json'),
         y_dict=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", 'y_dict.json'),
         mews_dict=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", 'mews_dict.json'),
+        demographics_train_csv=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", 'demographics_train.csv'),
+        demographics_test_csv=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", 'demographics_test.csv'),
+        vitals_train_csv=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", 'vitals_train.csv'),
+        vitals_test_csv=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", 'vitals_test.csv'),
+        labs_train_csv=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", 'labs_train.csv'),
+        labs_test_csv=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", 'labs_test.csv'),        
         x_train_csv=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", 'x_train.csv'),
         x_test_csv=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", 'x_test.csv'),
         y_train_csv=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tstep_hours}", 'y_train.csv'),
@@ -239,15 +275,41 @@ rule split_into_train_and_test:
     shell:
         '''
             python -u {{input.script}} \
-                --input {{input.collapsedx_pertstep_csv}} \
-                --data_dict {{input.collapsedx_pertstep_json}} \
+                --input {{input.collapsed_vitals_pertstep_csv}} \
+                --data_dict {{input.collapsed_vitals_pertstep_json}} \
                 --random_state {split_random_state} \
                 --test_size {split_test_size} \
                 --group_cols {split_key_col_names} \
+                --train_csv_filename {{output.vitals_train_csv}} \
+                --test_csv_filename {{output.vitals_test_csv}} \
+                --output_data_dict_filename {{output.vitals_dict}} \
+
+            python -u {{input.script}} \
+                --input {{input.collapsed_labs_pertstep_csv}} \
+                --data_dict {{input.collapsed_labs_pertstep_json}} \
+                --random_state {split_random_state} \
+                --test_size {split_test_size} \
+                --group_cols {split_key_col_names} \
+                --train_csv_filename {{output.labs_train_csv}} \
+                --test_csv_filename {{output.labs_test_csv}} \
+                --output_data_dict_filename {{output.labs_dict}} \
+
+            python -u {{input.script}} \
+                --input {{input.demographics_pertstep_csv}} \
+                --data_dict {{input.demographics_pertstep_json}} \
+                --random_state {split_random_state} \
+                --test_size {split_test_size} \
+                --group_cols {split_key_col_names} \
+                --train_csv_filename {{output.demographics_train_csv}} \
+                --test_csv_filename {{output.demographics_test_csv}} \
+                --output_data_dict_filename {{output.demographics_dict}} \
+
+            python -u {{input.merge_script}} \
+                --train_test_split_dir {{params.train_test_split_dir}} \
                 --train_csv_filename {{output.x_train_csv}} \
                 --test_csv_filename {{output.x_test_csv}} \
                 --output_data_dict_filename {{output.x_dict}} \
-            
+
             python -u {{input.script}} \
                 --input {{input.collapsedy_csv}} \
                 --data_dict {{input.collapsedy_json}} \

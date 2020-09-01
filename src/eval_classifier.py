@@ -248,7 +248,6 @@ if __name__ == '__main__':
             val = unknown_args[i+1]
             passthrough_args[arg[2:]] = auto_convert_str(val)
 
-    
     # Perform hyper_searcher search
     n_examples = int(np.ceil(x_train.shape[0] * (1 - args.validation_size)))
     n_features = x_train.shape[1]

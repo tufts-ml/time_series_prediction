@@ -5,89 +5,14 @@ import json
 import numpy as np
 from progressbar import ProgressBar
 import copy
+import os
 
-def parse_id_cols(data_dict):
-    cols = []
-    for col in data_dict['fields']:
-        if 'role' in col and (col['role'] == 'id' or 
-                              col['role'] == 'key'):
-            cols.append(col['name'])
-    return cols
+DEFAULT_PROJECT_REPO = os.path.sep.join(__file__.split(os.path.sep)[:-2])
+PROJECT_REPO_DIR = os.path.abspath(
+    os.environ.get('PROJECT_REPO_DIR', DEFAULT_PROJECT_REPO))
 
-def remove_col_names_from_list_if_not_in_df(col_list, df):
-    ''' Remove column names from provided list if not in dataframe
-    Examples
-    --------
-    >>> df = pd.DataFrame(np.eye(3), columns=['a', 'b', 'c'])
-    >>> remove_col_names_from_list_if_not_in_df(['q', 'c', 'a', 'e', 'f'], df)
-    ['c', 'a']
-    '''
-    assert isinstance(col_list, list)
-    for cc in range(len(col_list))[::-1]:
-        col = col_list[cc]
-        if col not in df.columns:
-            col_list.remove(col)
-    return col_list
-
-def parse_time_col(data_dict):
-    time_cols = []
-    for col in data_dict['fields']:
-        # TODO avoid hardcoding a column name
-        if (col['name'] == 'hours' or col['role'].count('time')):
-            time_cols.append(col['name'])
-    return time_cols[-1]
-
-def parse_feature_cols(data_dict):
-    non_time_cols = []
-    for col in data_dict['fields']:
-        if 'role' in col and col['role'] in ('feature', 'measurement', 'covariate'):
-            non_time_cols.append(col['name'])
-    return non_time_cols
-
-def calc_start_and_stop_indices_from_percentiles(timestamp_arr, start_percentile, end_percentile, max_time_step=None):
-    ''' Find start and stop indices to select specific percentile range
-    
-    Args
-    ----
-    timestamp_df : pd.DataFrame
-    Returns
-    -------
-    lower_bound : int
-        First index to consider in current sequence 
-    upper_bound : int
-        Last index to consider in current sequence
-    Examples
-    --------
-    >>> timestamp_arr = np.arange(100)
-    >>> calc_start_and_stop_indices_from_percentiles(timestamp_arr, 0, 10, None)
-    (0, 10)
-    >>> calc_start_and_stop_indices_from_percentiles(timestamp_arr, 25, 33, None)
-    (25, 33)
-    >>> calc_start_and_stop_indices_from_percentiles(timestamp_arr, 0, 0, 100)
-    (0, 1)
-    >>> timestamp_arr = np.asarray([0.7, 0.8, 0.9, 0.95, 0.99, 50.0, 98.1])
-    >>> calc_start_and_stop_indices_from_percentiles(timestamp_arr, 0, 1, 100)
-    (0, 5)
-    >>> calc_start_and_stop_indices_from_percentiles(timestamp_arr, 1, 100, 100)
-    (5, 7)
-    '''
-
-    # Consider last data point as first timestamp + step size input by the user. For eg. If the step size is 1hr, then consider only 
-    # first hour of time series data
-    min_timestamp = timestamp_arr[0]
-    if (max_time_step is None) or (max_time_step==-1):
-        max_timestamp = timestamp_arr[-1]
-    elif (min_timestamp + max_time_step > timestamp_arr[-1]):
-        max_timestamp = timestamp_arr[-1]
-    else :
-        max_timestamp = min_timestamp + max_time_step
-    lower_bound = np.searchsorted(timestamp_arr, (min_timestamp + (max_timestamp - min_timestamp)*start_percentile/100))
-    upper_bound = np.searchsorted(timestamp_arr, (min_timestamp + (max_timestamp - min_timestamp)*(end_percentile + 0.001)/100))
-    # if lower bound and upper bound are the same, add 1 to the upper bound
-    if lower_bound >= upper_bound:
-        upper_bound = lower_bound + 1
-    assert upper_bound <= timestamp_arr.size + 1
-    return int(lower_bound), int(upper_bound)
+sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src'))
+from feature_transformation import (parse_id_cols, remove_col_names_from_list_if_not_in_df, parse_time_col, parse_feature_cols, calc_start_and_stop_indices_from_percentiles)
 
 
 def compute_mews(ts_df, args, mews_df):
@@ -112,13 +37,19 @@ def compute_mews(ts_df, args, mews_df):
     mews_scores = np.zeros(nrows)
     
     # impute missing values per feature to population median for that feature
-    print('Imputing missing data in first %s hours of data for each patient stay by carry forward'%(args.max_time_step))
+    if args.max_time_step=='full':
+        print('Evaluating MEWS on full history...')
+    elif int(args.max_time_step)>0:
+        print('Evaluating MEWS on first %s hours of data'%args.max_time_step)
+    else:
+        print('Evaluating MEWS until last %s hours of data'%abs(int(args.max_time_step)))
+   # print('Imputing missing data for MEWS calculation in first %s hours of data for each patient stay by carry forward'%(args.max_time_step))
     ts_df_imputed = ts_df.groupby(id_cols).apply(lambda x: x.fillna(method='pad'))
     ts_df_imputed.fillna(ts_df_imputed.median(), inplace=True)
     mews_features_df = ts_df_imputed[feature_cols].copy()
     
     #mews_features_df.fillna(mews_features_df.median(), inplace=True)
-    print('Computing mews score in first %s hours of data'%(args.max_time_step))
+    #print('Computing mews score in first %s hours of data'%(args.max_time_step))
     pbar=ProgressBar()
     for p in pbar(range(nrows)):
     #for p in range(100):
@@ -182,7 +113,7 @@ if __name__ == '__main__':
                         help='Path to csv dataframe of readings')
     parser.add_argument('--data_dict', type=str, required=True,
                         help='Path to json data dictionary file')
-    parser.add_argument('--max_time_step', type=int, required=False,
+    parser.add_argument('--max_time_step', type=str, required=False,
                         default=None, help="Specify the maximum number of time "
                                          "steps to compute mews, for example, "
                                          "input 48 for 48 hours at 1 hour time steps. "

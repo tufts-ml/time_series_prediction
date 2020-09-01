@@ -11,8 +11,8 @@ from config_loader import (
     DATASET_STD_PATH, DATASET_SPLIT_PATH,
     DATASET_PERTSTEP_SPLIT_PATH, PROJECT_REPO_DIR, PROJECT_CONDA_ENV_YAML,
     RESULTS_PATH, RESULTS_PERTSTEP_PATH)
-tstep_hours_list=D_CONFIG['TIMESTEP_LIST']
-#tstep_hours_list=[6]
+#tstep_hours_list=D_CONFIG['TIMESTEP_LIST']
+tstep_hours_list=[-48, 48]
 #random_seed_list=D_CONFIG['CLF_RANDOM_SEED_LIST']
 random_seed_list=[42]
 RESULTS_PATH=os.path.join(RESULTS_PATH, 'logistic_regression')
