@@ -37,6 +37,12 @@ update_os_environ_vars()
 DATASET_PERTSTEP_SPLIT_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["SPLIT_PATH_LIST_FEAT_PER_TIMESTEP"])))
 update_os_environ_vars()
 
+DATASET_FEATURES_OUTCOMES_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["SPLIT_PATH_LIST_FEATURES_OUTCOMES"])))
+update_os_environ_vars()
+
+CLF_TRAIN_TEST_SPLIT_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["CLF_TRAIN_TEST_SPLIT_PATH"])))
+update_os_environ_vars()
+
 RESULTS_TOP_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["RESULTS_TOP_PATH_LIST"])))
 update_os_environ_vars()
 

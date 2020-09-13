@@ -36,6 +36,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import glob
 from yattag import Doc
+from joblib import dump
 
 import sklearn.linear_model
 import sklearn.tree
@@ -54,6 +55,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from split_dataset import Splitter
 from utils_scoring import (THRESHOLD_SCORING_OPTIONS, calc_score_for_binary_predictions)
+from feature_transformation import (parse_id_cols, parse_time_col, parse_feature_cols, parse_output_cols)
 
 def get_sorted_list_of_kwargs_specific_to_group_parser(group_parser):
     keys = [a.option_strings[0].replace('--', '') for a in group_parser._group_actions]
@@ -76,6 +78,14 @@ try:
 except KeyError:
     TEMPLATE_HTML_PATH = None
 
+def load_data_dict_json(data_dict_file):
+    with open(data_dict_file, 'r') as f:
+        data_dict = json.load(f)
+        try:
+            data_dict['fields'] = data_dict['schema']['fields']
+        except KeyError:
+            pass
+    return data_dict
 
 if __name__ == '__main__':
 
@@ -124,7 +134,9 @@ if __name__ == '__main__':
         data_group.add_argument('--test_csv_files', type=str, required=True)
         data_group.add_argument('--data_dict_files', type=str, required=True)
         data_group.add_argument('--output_dir', default='./html/', type=str, required=False)
-
+        data_group.add_argument('--merge_x_y', default=True,
+                                type=lambda x: (str(x).lower() == 'true'), required=False,
+                                help='If True, features and outcomes are merged on id columns, if false, they get concatenated.')
         protocol_group = p.add_argument_group('protocol')
         protocol_group.add_argument('--outcome_col_name', type=str, required=False)
         protocol_group.add_argument('--validation_size', type=float, default=0.1)
@@ -167,15 +179,16 @@ if __name__ == '__main__':
             return x
 
     # Import data
-
+    
     feature_cols = []
     outcome_cols = []
     feature_ranges = []
-
+    
     df_by_split = dict()
     for split_name, csv_files in [('train', args.train_csv_files.split(',')), ('test', args.test_csv_files.split(','))]:
         cur_df = None
         for csv_file, data_dict_file in zip(csv_files, args.data_dict_files.split(',')):
+            
             with open(data_dict_file, 'r') as f:
                 data_fields = json.load(f)['schema']['fields']
                 key_cols = [c['name'] for c in data_fields if c['role'] in ('key', 'id')]
@@ -200,10 +213,17 @@ if __name__ == '__main__':
             if cur_df is None:
                 cur_df = more_df
             else:
-                cur_df = cur_df.merge(more_df, on=key_cols)
+                if args.merge_x_y:
+                    cur_df = cur_df.merge(more_df, on=key_cols)
+                else:
+                    cur_df = pd.concat([cur_df, more_df], axis=1)
+                    cur_df = cur_df.loc[:,~cur_df.columns.duplicated()]
+        
         df_by_split[split_name] = cur_df
     
-
+    # for consistency
+    feature_cols.sort()
+    
     outcome_col_name = args.outcome_col_name
     if outcome_col_name is None:
         if len(outcome_cols) > 1:
@@ -217,10 +237,10 @@ if __name__ == '__main__':
             outcome_col_name))
 
     # Prepare data for classification
-    x_train = df_by_split['train'][feature_cols].values
+    x_train = df_by_split['train'][feature_cols].values.astype(np.float32)
     y_train = np.ravel(df_by_split['train'][outcome_col_name])
-
-    x_test = df_by_split['test'][feature_cols].values
+    
+    x_test = df_by_split['test'][feature_cols].values.astype(np.float32)
     y_test = np.ravel(df_by_split['test'][outcome_col_name])
     is_multiclass = len(np.unique(y_train)) > 2
     
@@ -251,7 +271,8 @@ if __name__ == '__main__':
     # Perform hyper_searcher search
     n_examples = int(np.ceil(x_train.shape[0] * (1 - args.validation_size)))
     n_features = x_train.shape[1]
-
+    
+    print('training on %s examples and %s features...'%(x_train.shape[0], x_train.shape[1]))
     param_grid = dict()
     for key, grid in raw_param_grid.items():
         fkey = 'filter__' + key
@@ -272,7 +293,7 @@ if __name__ == '__main__':
         
     # Create classifier object
     clf = args.clf_constructor(random_state=int(args.random_seed),**fixed_args, **passthrough_args)
-
+    
     # Perform hyper_searcher search
     splitter = Splitter(size=args.validation_size, random_state=args.random_seed, n_splits=args.n_splits, cols_to_group=args.key_cols_to_group_when_splitting)
     step_list = list()
@@ -286,7 +307,8 @@ if __name__ == '__main__':
         param_grid_pipeline['classifier__'+key] = value
     
     hyper_searcher = GridSearchCV(prediction_pipeline, param_grid_pipeline,
-        scoring=args.scoring, cv=splitter, refit=True, return_train_score=True, verbose=5)
+        scoring=args.scoring, cv=splitter, refit=True, return_train_score=True, 
+        verbose=5)
     key_train = splitter.make_groups_from_df(df_by_split['train'][key_cols])
     hyper_searcher.fit(x_train, y_train, groups=key_train)
     
@@ -366,6 +388,11 @@ if __name__ == '__main__':
         best_clf = ThresholdClassifier(hyper_searcher.best_estimator_, threshold=best_thr)
     else:
         best_clf = hyper_searcher.best_estimator_
+    
+    # save model to disk
+    print('saving %s model to disk'%args.clf_name)
+    model_file = os.path.join(args.output_dir, args.clf_name+'_trained_model.joblib')
+    dump(best_clf, model_file)
 
     # Evaluation
     row_dict_list = list()
@@ -403,7 +430,7 @@ if __name__ == '__main__':
             ax.set_ylabel('True Positive Rate')
             ax.set_xlim([0, 1])
             ax.set_ylim([0, 1])
-            plt.savefig(os.path.join(fig_dir, '{split_name}_roc_curve_random_seed={random_seed}.png'.format(split_name=split_name, random_seed=str(args.random_seed))))
+            plt.savefig(os.path.join(fig_dir, '{split_name}_roc_curve.png'.format(split_name=split_name)))
             plt.clf()
 
             pr_precision, pr_recall, _ = precision_recall_curve(y, y_pred_proba)
@@ -413,14 +440,14 @@ if __name__ == '__main__':
             ax.set_ylabel('Precision')
             ax.set_xlim([0, 1])
             ax.set_ylim([0, 1])
-            plt.savefig(os.path.join(fig_dir, '{split_name}_pr_curve_random_seed={random_seed}.png'.format(split_name=split_name, random_seed=str(args.random_seed))))
+            plt.savefig(os.path.join(fig_dir, '{split_name}_pr_curve.png'.format(split_name=split_name)))
             plt.clf()
 
         row_dict_list.append(row_dict)
 
     perf_df = pd.DataFrame(row_dict_list)
     perf_df = perf_df.set_index('split_name')
-    perf_df.to_csv(os.path.join(fig_dir, 'performance_df_random_seed={random_seed}.csv'.format(random_seed=str(args.random_seed))))
+    perf_df.to_csv(os.path.join(fig_dir, 'performance_df.csv'))
 
     # Set up HTML report
     try:
@@ -533,5 +560,5 @@ if __name__ == '__main__':
                 with tag('div', klass="col-sm-1 sidenav"):
                     text("")
 
-    with open('report_random_seed={random_seed}.html'.format(random_seed=str(args.random_seed)), 'w') as f:
+    with open('report.html', 'w') as f:
         f.write(doc.getvalue())

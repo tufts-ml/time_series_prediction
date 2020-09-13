@@ -1,3 +1,6 @@
+'''
+Old Script of assessing classifier models that were trained and evaluated individually on multiple patient-stay-slices. (Deprecated)
+'''
 import os
 import argparse
 import pandas as pd

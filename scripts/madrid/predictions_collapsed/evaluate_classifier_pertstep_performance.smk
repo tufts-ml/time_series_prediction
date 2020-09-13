@@ -1,8 +1,7 @@
 '''
-Get the performance plots for the different classifiers on ICU intervention task
+Get the performance plots for the different classifiers on ICU intervention task (Deprecated)
 
 '''
-
 
 import glob
 

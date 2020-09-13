@@ -5,7 +5,7 @@
     "criterion": "gini",
     "bootstrap": "True",
     "n_estimators": 25,
-    "grid_max_features": [0.166, 0.333, 0.667, 1.0],
+    "grid_max_features": [0.5, 1.0],
     "grid_min_samples_leaf": [64, 256],
     "filter__min_samples_leaf": "lambda x, n_examples, n_features: np.minimum(int(x), n_examples)",
     "filter__max_features": "lambda x, n_examples, n_features: np.maximum(1, int(np.round(x * n_features)))"

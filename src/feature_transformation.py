@@ -81,13 +81,15 @@ def main():
     # transform data
     if args.tstops is None:
         print('collapsing entire history of data..')
+        tstops_df = None
     else :
         print('collapsing features in patient-stay-slices with end times stored in %s'%(args.tstops))
-
+        tstops_df = pd.read_csv(args.tstops)
+    
     t1 = time.time()
     if args.collapse:
-        ts_df = collapse_np(ts_df, args)
-        data_dict = update_data_dict_collapse(args)
+        ts_df = collapse_np(ts_df, args.data_dict, args.collapse_range_features, args.range_pairs, tstops_df)
+        data_dict = update_data_dict_collapse(args.data_dict, args.collapse_range_features, args.range_pairs)
     elif args.add_feature:
         ts_df = add_new_feature(ts_df, args)
         data_dict = update_data_dict_add_feature(args)
@@ -107,7 +109,6 @@ def main():
     ts_df.to_csv(data_output, index=False)
     print("Wrote to output CSV:\n%s" % (data_output))
     
-    from IPython import embed; embed()
     # save data dictionary to file
     if args.data_dict_output is None:
         file_name = args.data_dict_path.split('/')[-1].split('.')[0]
@@ -120,12 +121,12 @@ def main():
         json.dump(data_dict, f, indent=4)
     
 
-def collapse_np(ts_df, args):
-    id_cols = parse_id_cols(args.data_dict)
+def collapse_np(ts_df, data_dict, collapse_range_features, range_pairs, tstops_df):
+    id_cols = parse_id_cols(data_dict)
     id_cols = remove_col_names_from_list_if_not_in_df(id_cols, ts_df)
-    feature_cols = parse_feature_cols(args.data_dict)
+    feature_cols = parse_feature_cols(data_dict)
     feature_cols = remove_col_names_from_list_if_not_in_df(feature_cols, ts_df)
-    time_col = parse_time_col(args.data_dict)
+    time_col = parse_time_col(data_dict)
     
     # Obtain fenceposts based on where any key differs
     # Be sure keys are converted to a numerical datatype (so fencepost detection is possible)
@@ -145,17 +146,16 @@ def collapse_np(ts_df, args):
     timestamp_arr = np.asarray(ts_df[time_col].values.copy(), dtype=np.float64)
     features_arr = ts_df[feature_cols].values
     
-    if args.tstops is None:
+    if tstops_df is None:
         ts_with_max_tstop_df = ts_df[id_cols + [time_col]].groupby(id_cols, as_index=False).max().rename(columns={time_col:'max_tstop'})
         tstops_arr = np.asarray(pd.merge(ts_df, ts_with_max_tstop_df, on=id_cols, how='left')['max_tstop'], dtype=np.float64)
     else:
-        tstops_df = pd.read_csv(args.tstops)
         tstops_arr = np.asarray(pd.merge(ts_df, tstops_df, on=id_cols, how='left')['tstop'], dtype=np.float64)
     
-    for op_ind, op in enumerate(args.collapse_range_features.split(' ')):
+    for op_ind, op in enumerate(collapse_range_features.split(' ')):
         print('Collapsing with func %s'%op)
         t1=time.time()
-        for low, high in ast.literal_eval(args.range_pairs):           
+        for low, high in ast.literal_eval(range_pairs):           
             #print('Collapsing with func %s in %d to %d percentile range'%(op, low, high))
             #t1 = time.time()
             # initialize collapsed dataframe for the current summary function
@@ -174,8 +174,6 @@ def collapse_np(ts_df, args):
                     lower_bound, upper_bound = calc_start_and_stop_indices_from_percentages(
                             timestamp_arr[fp_start:fp_end], start_percentage=int(low[:-1]), end_percentage=int(high[:-1]), tstops_array=tstops_arr[fp_start:fp_end])
                 elif ('T' in low) and ('T' in high):
-                    if high=='T':
-                        high = 'T-0h'
                     low_hrs = low.split('-')[1]
                     low_hrs = int(low_hrs.replace('h', ''))
                     high_hrs = high.split('-')[1]
@@ -354,28 +352,19 @@ def add_new_feature(ts_df, args):
 
 
 # DATA DICTIONARY STUFF: PARSING FUNCTIONS AND DICT UPDATING
-def update_data_dict_collapse(args): 
-    data_dict = args.data_dict
+def update_data_dict_collapse(data_dict, collapse_range_features, range_pairs): 
 
-    id_cols = parse_id_cols(args.data_dict)
-    feature_cols = parse_feature_cols(args.data_dict)
+    id_cols = parse_id_cols(data_dict)
+    feature_cols = parse_feature_cols(data_dict)
 
     new_fields = []
     for name in id_cols:
         for col in data_dict['fields']:
             if col['name'] == name: 
                 new_fields.append(col)
-    '''
-    for op in args.collapse_features.split(' '):
-        for name in feature_cols:
-            for col in data_dict['fields']:
-                if col['name'] == name: 
-                    new_dict = dict(col)
-                    new_dict['name'] = '{}_{}'.format(name, op)
-                    new_fields.append(new_dict)
-    '''
-    for op in args.collapse_range_features.split(' '):
-        for low, high in ast.literal_eval(args.range_pairs):
+                
+    for op in collapse_range_features.split(' '):
+        for low, high in ast.literal_eval(range_pairs):
             for name in feature_cols:
                 for col in data_dict['fields']:
                     if col['name'] == name: 
@@ -429,13 +418,14 @@ def parse_feature_cols(data_dict):
     for col in data_dict['fields']:
         if 'role' in col and col['role'] in ('feature', 'measurement', 'covariate'):
             non_time_cols.append(col['name'])
+    non_time_cols.sort()
     return non_time_cols
 
 def parse_time_col(data_dict):
     time_cols = []
     for col in data_dict['fields']:
         # TODO avoid hardcoding a column name
-        if (col['name'] == 'hours' or col['role'].count('time')):
+        if (col['name'] == 'hours' or col['role']=='timestamp_relative'):
             time_cols.append(col['name'])
     return time_cols[-1]
             

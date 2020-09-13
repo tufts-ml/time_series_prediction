@@ -2,8 +2,56 @@ import os
 import argparse
 import pandas as pd
 import numpy as np
-from summary_statistics import parse_id_cols, parse_output_cols, parse_feature_cols, parse_time_col
+import sys
+DEFAULT_PROJECT_REPO = os.path.sep.join(__file__.split(os.path.sep)[:-2])
+PROJECT_REPO_DIR = os.path.abspath(
+    os.environ.get('PROJECT_REPO_DIR', DEFAULT_PROJECT_REPO))
+
+sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src'))
 import json
+from feature_transformation import (parse_id_cols, parse_output_cols, parse_feature_cols, parse_time_col)
+
+def get_preprocessed_data(preproc_data_dir):
+    ''' Get the labs vitals and demographics csvs and their data dicts'''
+    labs_dict_path = os.path.join(preproc_data_dir, 'Spec-Labs.json')
+    vitals_dict_path = os.path.join(preproc_data_dir, 'Spec-Vitals.json') 
+    dem_dict_path = os.path.join(preproc_data_dir, 'Spec-Demographics.json')   
+    outcomes_dict_path = os.path.join(preproc_data_dir, 'Spec-Outcomes_TransferToICU.json')
+
+    with open(labs_dict_path, 'r') as f:
+        labs_data_dict = json.load(f)
+    try:
+        labs_data_dict['fields'] = labs_data_dict['schema']['fields']
+    except KeyError:
+        pass
+    
+    with open(vitals_dict_path, 'r') as f:
+        vitals_data_dict = json.load(f)
+    try:
+        vitals_data_dict['fields'] = vitals_data_dict['schema']['fields']
+    except KeyError:
+        pass
+    
+    with open(dem_dict_path, 'r') as f:
+        demographics_data_dict = json.load(f)
+    try:
+        demographics_data_dict['fields'] = demographics_data_dict['schema']['fields']
+    except KeyError:
+        pass   
+    
+    with open(outcomes_dict_path, 'r') as f:
+        outcomes_data_dict = json.load(f)
+    try:
+        outcomes_data_dict['fields'] = outcomes_data_dict['schema']['fields']
+    except KeyError:
+        pass   
+
+    vitals_df = pd.read_csv(os.path.join(preproc_data_dir, 'vitals_before_icu.csv'))
+    labs_df = pd.read_csv(os.path.join(preproc_data_dir, 'labs_before_icu.csv'))
+    demographics_df = pd.read_csv(os.path.join(preproc_data_dir, 'demographics_before_icu.csv'))
+    outcomes_df = pd.read_csv(os.path.join(preproc_data_dir, 'clinical_deterioration_outcomes.csv'))
+    
+    return labs_df, labs_data_dict, vitals_df, vitals_data_dict, demographics_df, demographics_data_dict, outcomes_df, outcomes_data_dict 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -23,29 +71,9 @@ if __name__ == '__main__':
     parser.add_argument('--output_dir', type=str)
 
     args = parser.parse_args()
-    
-    labs_dict_path = os.path.join(args.preproc_data_dir, 'Spec-Labs.json')
-    vitals_dict_path = os.path.join(args.preproc_data_dir, 'Spec-Vitals.json') 
-
-    with open(labs_dict_path, 'r') as f:
-        labs_data_dict = json.load(f)
-    try:
-        labs_data_dict['fields'] = labs_data_dict['schema']['fields']
-    except KeyError:
-        pass
-    
-    with open(vitals_dict_path, 'r') as f:
-        vitals_data_dict = json.load(f)
-    try:
-        vitals_data_dict['fields'] = vitals_data_dict['schema']['fields']
-    except KeyError:
-        pass
-
-    vitals_df = pd.read_csv(os.path.join(args.preproc_data_dir, 'vitals_before_icu.csv'))
-    labs_df = pd.read_csv(os.path.join(args.preproc_data_dir, 'labs_before_icu.csv'))
-    demographics_df = pd.read_csv(os.path.join(args.preproc_data_dir, 'demographics_before_icu.csv'))
-    outcomes_df = pd.read_csv(os.path.join(args.preproc_data_dir, 'clinical_deterioration_outcomes.csv'))
-    
+    labs_df, labs_data_dict, vitals_df, vitals_data_dict, \
+    demographics_df, demographics_data_dict, outcomes_df, outcomes_data_dict = get_preprocessed_data(args.preproc_data_dir)  
+        
     id_cols = parse_id_cols(vitals_data_dict)
     labs_feature_cols = parse_feature_cols(labs_data_dict)
     vitals_feature_cols = parse_feature_cols(vitals_data_dict)
@@ -56,26 +84,27 @@ if __name__ == '__main__':
     #demographics_df_with_stay_lengths = pd.merge(demographics_df, outcomes_df[id_cols + ['stay_length']], on=id_cols, how='inner')
     
     # find stays that satisfy minimum stay length
+    censor_start=504
     tstops_df = outcomes_df[id_cols].copy()
     if ('%' in args.tslice):
         min_stay_length = 0
         print('Including EHR measured in first %s percent of patient stays having atleast %s hours of data'%(args.tslice, min_stay_length))
         perc = int(args.tslice[:-1])
-        vitals_keep_inds = vitals_df_with_stay_lengths.hours_since_admission <= (perc*vitals_df_with_stay_lengths.stay_length)/100
-        labs_keep_inds = labs_df_with_stay_lengths.hours_since_admission <= (perc*labs_df_with_stay_lengths.stay_length)/100
-        tstops_df.loc[:, 'tstop'] = (perc*outcomes_df.stay_length)/100
+        vitals_keep_inds = vitals_df_with_stay_lengths.hours_since_admission <= np.asarray([min(censor_start, i) for i in (perc*vitals_df_with_stay_lengths.stay_length)/100])
+        labs_keep_inds = labs_df_with_stay_lengths.hours_since_admission <= np.asarray([min(censor_start, i) for i in (perc*labs_df_with_stay_lengths.stay_length)/100])
+        tstops_df.loc[:, 'tstop'] = np.asarray([min(censor_start, i) for i in (perc*outcomes_df.stay_length)/100])
     elif ('-' in args.tslice) :
         min_stay_length = abs(int(args.tslice))
         print('Including EHR measured upto %s hours before clinical deterioration in patients stays having atleast %s hours of data'%(min_stay_length, min_stay_length))
-        vitals_keep_inds = vitals_df_with_stay_lengths.hours_since_admission <= (vitals_df_with_stay_lengths.stay_length - min_stay_length)
-        labs_keep_inds = labs_df_with_stay_lengths.hours_since_admission <= (labs_df_with_stay_lengths.stay_length - min_stay_length)
-        tstops_df.loc[:, 'tstop'] = (outcomes_df.stay_length - min_stay_length)
+        vitals_keep_inds = vitals_df_with_stay_lengths.hours_since_admission <= np.asarray([min(censor_start, i) for i in (vitals_df_with_stay_lengths.stay_length - min_stay_length)])
+        labs_keep_inds = labs_df_with_stay_lengths.hours_since_admission <= np.asarray([min(censor_start, i) for i in (labs_df_with_stay_lengths.stay_length - min_stay_length)])
+        tstops_df.loc[:, 'tstop'] = np.asarray([min(censor_start, i) for i in (outcomes_df.stay_length - min_stay_length)])
     else :
         min_stay_length = int(args.tslice)
         print('Including EHR measured within first %s hours of admission in patient stays having atleast %s hours of data'%(min_stay_length, min_stay_length))
-        vitals_keep_inds = vitals_df_with_stay_lengths.hours_since_admission <= min_stay_length
-        labs_keep_inds = labs_df_with_stay_lengths.hours_since_admission <= min_stay_length
-        tstops_df.loc[:, 'tstop'] = min_stay_length
+        vitals_keep_inds = vitals_df_with_stay_lengths.hours_since_admission <= min(censor_start, min_stay_length)
+        labs_keep_inds = labs_df_with_stay_lengths.hours_since_admission <= min(censor_start, min_stay_length)
+        tstops_df.loc[:, 'tstop'] = min(censor_start, min_stay_length)
     
     vitals_df_with_stay_lengths = vitals_df_with_stay_lengths.loc[vitals_keep_inds, :].copy().reset_index(drop=True)
     labs_df_with_stay_lengths = labs_df_with_stay_lengths.loc[labs_keep_inds, :].copy().reset_index(drop=True)

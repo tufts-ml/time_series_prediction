@@ -18,37 +18,7 @@ PROJECT_REPO_DIR = os.path.abspath(
 
 sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src'))
 from split_dataset import (Splitter, split_dataframe_by_keys)
-
-def parse_id_cols(data_dict):
-    cols = []
-    for col in data_dict['fields']:
-        if 'role' in col and (col['role'] == 'id' or 
-                              col['role'] == 'key'):
-            cols.append(col['name'])
-    return cols
-
-def parse_output_cols(data_dict):
-    cols = []
-    for col in data_dict['fields']:
-        if 'role' in col and (col['role'] == 'outcome' or 
-                              col['role'] == 'output'):
-            cols.append(col['name'])
-    return cols
-
-def parse_feature_cols(data_dict):
-    non_time_cols = []
-    for col in data_dict['fields']:
-        if 'role' in col and col['role'] in ('feature', 'measurement', 'covariate'):
-            non_time_cols.append(col['name'])
-    return non_time_cols
-
-def parse_time_col(data_dict):
-    time_cols = []
-    for col in data_dict['fields']:
-        # TODO avoid hardcoding a column name
-        if (col['name'] == 'hours' or col['role'].count('time')):
-            time_cols.append(col['name'])
-    return time_cols[-1]
+from feature_transformation import (parse_id_cols, parse_output_cols, parse_feature_cols, parse_time_col)
 
 def compute_missingness_rate_per_stay(t, x, tstep):
     tstarts = np.arange(0,max(t)+0.00001, tstep)
@@ -109,7 +79,8 @@ if __name__ == '__main__':
     id_cols = parse_id_cols(vitals_data_dict)
     vitals = parse_feature_cols(vitals_data_dict)
     labs = parse_feature_cols(labs_data_dict)
-    
+    time_col = parse_time_col(vitals_data_dict)
+
     # compute missingness per stay
     vital_counts_per_stay_df = df_vitals.groupby(id_cols).count()
     print('#######################################')
@@ -173,7 +144,7 @@ if __name__ == '__main__':
     vitals_summary_df = vitals_summary_df[['min', '5%', 'median', '95%', 'max', 'missing_rate']]
     print(vitals_summary_df)
 
-    #from IPython import embed; embed()
+    
     print('#######################################')
     print('Printing summary statistics for labs')
     labs_summary_df = pd.DataFrame()
@@ -193,7 +164,43 @@ if __name__ == '__main__':
     labs_summary_df.loc[:,'missing_rate'] = labs_missing_rate_entire_stay_series
     labs_summary_df = labs_summary_df[['min', '5%', 'median', '95%', 'max', 'missing_rate']]
     print(labs_summary_df)
+    
     from IPython import embed; embed()
+    print('#######################################')
+    print('Printing time between measurements of vitals')
+    timestamp_arr = np.asarray(df_vitals[time_col].values.copy(), dtype=np.float64)
+    vitals_arr = df_vitals[vitals].values
+
+    keys_df = df_vitals[id_cols].copy()
+    for col in id_cols:
+        if not pd.api.types.is_numeric_dtype(keys_df[col].dtype):
+            keys_df[col] = keys_df[col].astype('category')
+            keys_df[col] = keys_df[col].cat.codes
+    fp = np.hstack([0, 1 + np.flatnonzero(np.diff(keys_df.values, axis=0).any(axis=1)), keys_df.shape[0]])
+    n_stays = len(fp)-1
+
+    tdiff_list = [[] for i in range(len(vitals))]
+    for stay in range(n_stays):
+        fp_start = fp[stay]
+        fp_end = fp[stay+1]
+        curr_vitals_arr = vitals_arr[fp_start:fp_end].copy()
+        curr_timestamp_arr = timestamp_arr[fp_start:fp_end]
+        for vital_ind, vital in enumerate(vitals):
+            curr_vital_arr = curr_vitals_arr[:, vital_ind]
+            non_nan_inds = ~np.isnan(curr_vital_arr)
+            non_nan_t = curr_timestamp_arr[non_nan_inds]
+            curr_vital_tdiff = np.diff(non_nan_t)
+            tdiff_list[vital_ind].extend(curr_vital_tdiff)
+
+    vitals_tdiff_df = pd.DataFrame()
+    for vital_ind, vital in enumerate(vitals):
+        vitals_tdiff_df.loc[vital, 'tdiff_min'] = min(tdiff_list[vital_ind])
+        vitals_tdiff_df.loc[vital, 'tdiff_5%'] = np.percentile(tdiff_list[vital_ind], 5)
+        vitals_tdiff_df.loc[vital, 'tdiff_median'] = np.median(tdiff_list[vital_ind])
+        vitals_tdiff_df.loc[vital, 'tdiff_95%'] = np.percentile(tdiff_list[vital_ind], 95)
+        vitals_tdiff_df.loc[vital, 'tdiff_max'] = max(tdiff_list[vital_ind])
+    print(vitals_tdiff_df)
+
 
     print('#######################################')
     print('Getting train, val, test split statistics')

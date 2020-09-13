@@ -94,7 +94,8 @@ if __name__ == '__main__':
         args.test_csv_filename = os.path.join(fdir_train_test, args.test_csv_filename)
         if args.output_data_dict_filename is not None:
             args.output_data_dict_filename = os.path.join(fdir_train_test, args.output_data_dict_filename)    
-
+    
+    print('saving train test files to :\n%s\n%s'%(args.train_csv_filename, args.test_csv_filename))
     train_df.to_csv(args.train_csv_filename, index=False)
     test_df.to_csv(args.test_csv_filename, index=False)
     

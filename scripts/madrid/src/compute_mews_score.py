@@ -18,9 +18,7 @@ from feature_transformation import (parse_id_cols, remove_col_names_from_list_if
 def compute_mews(ts_df, args, mews_df):
     id_cols = parse_id_cols(args.data_dict)
     id_cols = remove_col_names_from_list_if_not_in_df(id_cols, ts_df)
-    #feature_cols = parse_feature_cols(args.data_dict)
     feature_cols = ['systolic_blood_pressure', 'heart_rate', 'respiratory_rate', 'body_temperature']
-    #feature_cols = remove_col_names_from_list_if_not_in_df(feature_cols, ts_df)
     time_col = parse_time_col(args.data_dict)
 
     # Obtain fenceposts based on where any key differs
@@ -37,30 +35,19 @@ def compute_mews(ts_df, args, mews_df):
     mews_scores = np.zeros(nrows)
     
     # impute missing values per feature to population median for that feature
-    if args.max_time_step=='full':
-        print('Evaluating MEWS on full history...')
-    elif int(args.max_time_step)>0:
-        print('Evaluating MEWS on first %s hours of data'%args.max_time_step)
-    else:
-        print('Evaluating MEWS until last %s hours of data'%abs(int(args.max_time_step)))
-   # print('Imputing missing data for MEWS calculation in first %s hours of data for each patient stay by carry forward'%(args.max_time_step))
     ts_df_imputed = ts_df.groupby(id_cols).apply(lambda x: x.fillna(method='pad'))
     ts_df_imputed.fillna(ts_df_imputed.median(), inplace=True)
     mews_features_df = ts_df_imputed[feature_cols].copy()
     
-    #mews_features_df.fillna(mews_features_df.median(), inplace=True)
     #print('Computing mews score in first %s hours of data'%(args.max_time_step))
     pbar=ProgressBar()
     for p in pbar(range(nrows)):
-    #for p in range(100):
         # get the data for the current fencepost
         fp_start = fp[p]
         fp_end = fp[p+1]
-        lower_bound, upper_bound = calc_start_and_stop_indices_from_percentiles(timestamp_arr[fp_start:fp_end], 
-                start_percentile=0, end_percentile=100, max_time_step=args.max_time_step)
 
-        cur_timestamp_arr = timestamp_arr[fp_start:fp_end][lower_bound:upper_bound]
-        cur_features_df = mews_features_df.iloc[fp_start:fp_end,:].reset_index(drop=True).iloc[lower_bound:upper_bound,:]
+        cur_timestamp_arr = timestamp_arr[fp_start:fp_end]
+        cur_features_df = mews_features_df.iloc[fp_start:fp_end,:].reset_index(drop=True)
         
         cur_mews_scores = np.zeros(len(cur_timestamp_arr))
         for feature in feature_cols:
@@ -110,14 +97,9 @@ def update_data_dict_mews(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Script for computing mews score for a subject-episode")
     parser.add_argument('--input', type=str, required=True,
-                        help='Path to csv dataframe of readings')
+                        help='Path to vitals csv dataframe of readings')
     parser.add_argument('--data_dict', type=str, required=True,
-                        help='Path to json data dictionary file')
-    parser.add_argument('--max_time_step', type=str, required=False,
-                        default=None, help="Specify the maximum number of time "
-                                         "steps to compute mews, for example, "
-                                         "input 48 for 48 hours at 1 hour time steps. "
-                                         "Set to -1 for no limit.")
+                        help='Path to vitals json data dictionary file')
     parser.add_argument('--output', type=str, required=False, default=None)
     parser.add_argument('--data_dict_output', type=str, required=False, 
                         default=None)
