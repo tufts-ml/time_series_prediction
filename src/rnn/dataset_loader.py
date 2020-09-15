@@ -2,12 +2,16 @@ import os
 import numpy as np
 import pandas as pd
 import torch
+import sys
+cwd = sys.path[0]
+sys.path.append(os.path.dirname(cwd))
+from feature_transformation import get_fenceposts
 
 class TidySequentialDataCSVLoader(object):
 
     def __init__(self,
-            per_tstep_csv_path=None,
-            per_seq_csv_path=None,
+            x_csv_path=None,
+            y_csv_path=None,
             x_col_names='__all__',
             idx_col_names='seq_id',
             y_col_name='y',
@@ -25,24 +29,28 @@ class TidySequentialDataCSVLoader(object):
         --------------
         Updates internal attribute .batches
         '''
-        per_tstep_csv_df = pd.read_csv(per_tstep_csv_path)
-        if per_seq_csv_path is not None and os.path.exists(per_seq_csv_path):
-            per_seq_csv_df = pd.read_csv(per_seq_csv_path)
+        
+        x_csv_df = pd.read_csv(x_csv_path)
+        if y_csv_path is not None and os.path.exists(y_csv_path):
+            y_csv_df = pd.read_csv(y_csv_path)
 
         ## Parse sequence ids and compute fenceposts
-        idx_P = per_tstep_csv_df[idx_col_names].values.copy()
-        per_tstep_csv_df.drop(columns=idx_col_names, inplace=True)
-        uvals = np.unique(idx_P)
-        seq_fp = list()
-        prev_uval = None
-        for pp in range(idx_P.shape[0]):
-            if np.array_equal(idx_P[pp], prev_uval):
-                continue
-            else:
-                seq_fp.append(pp)
-                prev_uval = idx_P[pp]
-        seq_fp.append(idx_P.shape[0])
+        idx_P = x_csv_df[idx_col_names].values.copy()
+#         uvals = np.unique(idx_P)
+#         seq_fp = list()
+#         prev_uval = None
+#         for pp in range(idx_P.shape[0]):
+#             if np.array_equal(idx_P[pp], prev_uval):
+#                 continue
+#             else:
+#                 seq_fp.append(pp)
+#                 prev_uval = idx_P[pp]
+#         seq_fp.append(idx_P.shape[0])
+#         self.seq_fp = seq_fp
+
+        seq_fp = get_fenceposts(x_csv_df, idx_col_names)
         self.seq_fp = seq_fp
+        x_csv_df.drop(columns=idx_col_names, inplace=True)
 
         ## Parse sequence lengths
         N = len(seq_fp) - 1
@@ -58,22 +66,22 @@ class TidySequentialDataCSVLoader(object):
 
         ## Parse y
         if y_label_type == 'per_tstep':
-            y_P = per_tstep_csv_df[y_col_name].values.copy()
-            del per_tstep_csv_df[y_col_name]
+            y_P = y_csv_df[y_col_name].values.copy()
+            del y_csv_df[y_col_name]
             # TODO load full seq labels when needed
             laststep_N = np.cumsum(self.seq_lens_N) - 1
             self.y_N = np.asarray(y_P[laststep_N], dtype=np.int64)
         else:
-            y_N = per_seq_csv_df[y_col_name].values.copy()
-            del per_seq_csv_df[y_col_name]
+            y_N = y_csv_df[y_col_name].values.copy()
+            del y_csv_df[y_col_name]
             self.y_N = np.asarray(y_N, dtype=np.int64)
 
         ## Parse x
         if x_col_names == '__all__':
-            x_PF = per_tstep_csv_df.values.copy()
-            print(per_tstep_csv_df.columns)
+            x_PF = x_csv_df.values.copy()
+            print(x_csv_df.columns)
         else:
-            x_PF = per_tstep_csv_df[x_col_names].values.copy()
+            x_PF = x_csv_df[x_col_names].values.copy()
         self.x_PF = x_PF
 
         ## Randomly assign seqs to batches
@@ -107,7 +115,7 @@ class TidySequentialDataCSVLoader(object):
         assert n_total >= N
         # Trim off excess, so we've assigned exacty N seqs to B batches
         ii = 0
-        while n_total > N:
+        while (n_total > N) & (ii<len(n_per_batch)):
             n_per_batch[ii] -= 1
             ii += 1
             n_total = np.sum(n_per_batch)

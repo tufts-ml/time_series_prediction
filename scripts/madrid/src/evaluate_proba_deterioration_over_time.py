@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from joblib import dump, load
 import sys
+from matplotlib.pyplot import cm
 sys.path.append(os.path.join(os.path.abspath('../'), 'src'))
 
 DEFAULT_PROJECT_REPO = os.path.sep.join(__file__.split(os.path.sep)[:-2])
@@ -54,8 +55,7 @@ if __name__ == '__main__':
     
     y_test_dict = load_data_dict_json(y_test_dict_file)
     id_cols = parse_id_cols(y_test_dict)
-    # get id's  of 3 patients with clinical deterioration and 3 different stay lengths
-    
+    # get id's  of 3 patients with clinical deterioration and 3 different stay lengths  
     chosen_thresh = 192
     chosen_stay_ids_df = y_test_df[(y_test_df[args.outcome_column_name]==1)][id_cols].copy().reset_index(drop=True)
 
@@ -89,12 +89,15 @@ if __name__ == '__main__':
     chosen_long_stay_subj_list = ['12702290', '19160387', '19806342', '19222313', '17863017']
     
     chosen_stay_subj_list = chosen_short_stay_subj_list + chosen_long_stay_subj_list
+#     chosen_stay_subj_list = chosen_long_stay_subj_list[0:2]
     for idx in chosen_stay_subj_list:
 #         try:
         chosen_stay_subj = chosen_stay_ids_df[chosen_stay_ids_df.hospital_admission_id == int(idx)]   
         print('chosen patient stay %s'%(idx))
         # get all the features for the chosen subject
         chosen_stay_subj_highfreq_features_df = pd.merge(chosen_stay_highfreq_df, chosen_stay_subj)
+        chosen_stay_subj_vitals_df = pd.merge(chosen_stay_vitals_df, chosen_stay_subj)
+        
         time_col = parse_time_col(highfreq_features_dict['schema'])
         
         # collapse features in slices of first 16 hrs, first 24 hours, ... full stay 
@@ -128,29 +131,46 @@ if __name__ == '__main__':
             x_test = features_df[feature_cols].values.astype(np.float32)
             for p, model in enumerate(models):
                 proba_deterioration_over_time[p,q] = clf_models_dict[model].predict_proba(x_test)[0][1]
-
-        f, axs = plt.subplots(1,1, figsize=[10,8])
-        fontsize= 18
-        markers = ['r*-', 'bo-']
-        for p, model in enumerate(models):
-            axs.plot(eval_times, proba_deterioration_over_time[p,:], markers[p], markersize=10, label=model)
         
-#         ticklabels = [item.get_text() for item in axs.get_xticklabels()]
-#         ticklabels_new = [str(int(i)) for i in eval_times]
-#         axs.set_xticks(eval_times)
-#         axs.set_xticklabels(ticklabels_new)
-        axs.set_ylim([0, 1])
-        axs.set_xlabel('Hours from Admission', fontsize=fontsize)
-        axs.set_ylabel('Probability of Deterioration', fontsize=fontsize)
-        axs.set_title('Predicting Deterioration over Time', fontsize=fontsize)
-        axs.tick_params(labelsize=fontsize)
-        plt.legend(fontsize=fontsize-2)
+        ## plot vitals collected over time
+        plot_vitals_dict = {'heart_rate':'bpm','o2_sat':'%',
+                  'blood_glucose_concentration':'/vol', 'body_temperature':'$^\circ$C', 
+                  'systolic_blood_pressure':'mmHg', 'diastolic_blood_pressure':'mmHg'
+                }
+        plot_vitals = list(plot_vitals_dict.keys())
+        f, axs = plt.subplots(len(plot_vitals)+1,1,figsize=(8,14), sharex=True)
+        plot_subj = chosen_stay_subj_vitals_df[chosen_stay_subj_vitals_df.hospital_admission_id==int(idx)]
+        color=cm.rainbow(np.linspace(0,0.8,len(plot_vitals)))
+        fontsize=12
+        for p,vital in enumerate(plot_vitals):
+
+            x = plot_subj[time_col]
+            y = plot_subj[vital]
+            mask = np.isfinite(y)
+            axs[p].plot(x[mask], y[mask], c=color[p,:], marker = '*')
+            axs[p].set_title(vital, fontsize=fontsize)
+            axs[p].set_xlabel('hours since admission', fontsize=fontsize)
+            axs[p].set_ylabel(plot_vitals_dict[vital], fontsize=fontsize)
+#             axs[p].set_xticklabels([''])
+            axs[p].set_xlabel('')        
+        
+        ## plot probability of deterioration over time
+        markers = ['r*-', 'bo-']
+        for k, model in enumerate(models):
+            axs[-1].plot(eval_times, proba_deterioration_over_time[k,:], markers[k], markersize=5, label=model)
+        axs[-1].set_ylim([0, 1.2])
+        axs[-1].set_xlim([0, max(x)+1])
+        axs[-1].set_xlabel('Hours from Admission', fontsize=fontsize)
+        axs[-1].set_title('Probability of Deterioration', fontsize=fontsize)
+        axs[-1].tick_params(labelsize=fontsize)
+        axs[-1].legend(loc='upper left', fontsize=fontsize-2, borderaxespad=0)
+        
+#         plt.legend()
+        plt.subplots_adjust(hspace=0.4)
         if chosen_stay_subj_highfreq_features_df[time_col].max() > chosen_thresh:
             fig_file = os.path.join(args.clf_models_dir, 'long_stays_predict_proba', '%s_proba_deterioration.pdf'%(int(chosen_stay_subj.hospital_admission_id)))
         else:
             fig_file = os.path.join(args.clf_models_dir, 'short_stays_predict_proba', '%s_proba_deterioration.pdf'%(int(chosen_stay_subj.hospital_admission_id)))
         print('Performance fig saved to : \n%s'%fig_file)
-        f.savefig(fig_file)
+        f.savefig(fig_file, bbox_inches='tight')
         plt.close()
-#         except:
-#             continue

@@ -23,6 +23,17 @@ import time
 import copy
 from scipy.stats import skew
 
+def get_fenceposts(ts_df, id_cols):
+    keys_df = ts_df[id_cols].copy()
+    for col in id_cols:
+        if not pd.api.types.is_numeric_dtype(keys_df[col].dtype):
+            keys_df[col] = keys_df[col].astype('category')
+            keys_df[col] = keys_df[col].cat.codes
+    fp = np.hstack([0, 1 + np.flatnonzero(np.diff(keys_df.values, axis=0).any(axis=1)), keys_df.shape[0]]) 
+    return fp
+
+
+
 def main():
     parser = argparse.ArgumentParser(description="Script for collapsing"
                                                  "time features or adding"

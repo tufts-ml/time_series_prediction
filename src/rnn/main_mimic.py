@@ -3,205 +3,224 @@ import argparse
 import numpy as np 
 import pandas as pd
 import json
-
 import torch
 import skorch
-from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import GridSearchCV, cross_validate, ShuffleSplit
 from sklearn.metrics import (roc_curve, accuracy_score, log_loss, 
-                            balanced_accuracy_score, confusion_matrix, 
-                            roc_auc_score)
+                             balanced_accuracy_score, confusion_matrix, 
+                             roc_auc_score, make_scorer)
 from yattag import Doc
 import matplotlib.pyplot as plt
 
 from dataset_loader import TidySequentialDataCSVLoader
 from RNNBinaryClassifier import RNNBinaryClassifier
+from feature_transformation import (parse_id_cols, parse_feature_cols)
+from utils import load_data_dict_json
+from joblib import dump
+
+import warnings
+warnings.filterwarnings("ignore")
+
+from skorch.callbacks import (Callback, LoadInitState, 
+                              TrainEndCheckpoint, Checkpoint, 
+                              EpochScoring, EarlyStopping, LRScheduler, GradientNormClipping)
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from skorch.utils import noop
+import glob
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 
 def main():
     parser = argparse.ArgumentParser(description='PyTorch RNN with variable-length numeric sequences wrapper')
-    
-    parser.add_argument('--train_vitals_csv', type=str, required=True,
-                        help='Location of vitals data for training')
-    parser.add_argument('--test_vitals_csv', type=str, required=True,
-                        help='Location of vitals data for testing')
-    parser.add_argument('--metadata_csv', type=str, required=True,
-                        help='Location of metadata for testing and training')
-    parser.add_argument('--data_dict', type=str, required=True)
-    parser.add_argument('--batch_size', type=int, default=256,
+    parser.add_argument('--outcome_col_name', type=str, required=True)
+    parser.add_argument('--train_csv_files', type=str, required=True)
+    parser.add_argument('--test_csv_files', type=str, required=True)
+    parser.add_argument('--data_dict_files', type=str, required=True)
+    parser.add_argument('--batch_size', type=int, default=1024,
                         help='Number of sequences per minibatch')
-    parser.add_argument('--epochs', type=int, default=500, metavar='N',
+    parser.add_argument('--epochs', type=int, default=50,
                         help='Number of epochs')
+    parser.add_argument('--hidden_units', type=int, default=32,
+                        help='Number of hidden units')
+    parser.add_argument('--hidden_layers', type=int, default=1,
+                        help='Number of hidden layers')
+    parser.add_argument('--lr', type=float, default=0.0005,
+                        help='Learning rate for the optimizer')
+    parser.add_argument('--dropout', type=float, default=0,
+                        help='dropout for optimizer')
+    parser.add_argument('--weight_decay', type=float, default=0.0001,
+                        help='weight decay for optimizer')
     parser.add_argument('--seed', type=int, default=1111,
                         help='random seed')
-    parser.add_argument('--save', type=str,  default='RNNmodel.pt',
-                        help='path to save the final model')
-    parser.add_argument('--report_dir', type=str, default='results',
-                        help='dir in which to save results report')
+    parser.add_argument('--validation_size', type=float, default=0.15,
+                        help='validation split size')
+    parser.add_argument('--is_data_simulated', type=bool, default=False,
+                        help='boolean to check if data is simulated or from mimic')
+    parser.add_argument('--simulated_data_dir', type=str, default='simulated_data/2-state/',
+                        help='dir in which to simulated data is saved.Must be provide if is_data_simulated = True')
+    parser.add_argument('--output_dir', type=str, default=None, 
+                        help='directory where trained model and loss curves over epochs are saved')
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
     device = 'cpu'
 
+    x_train_csv_filename, y_train_csv_filename = args.train_csv_files.split(',')
+    x_test_csv_filename, y_test_csv_filename = args.test_csv_files.split(',')
+    x_dict, y_dict = args.data_dict_files.split(',')
+    x_data_dict = load_data_dict_json(x_dict)
+
+    # get the id and feature columns
+    id_cols = parse_id_cols(x_data_dict)
+    feature_cols = parse_feature_cols(x_data_dict)
     # extract data
     train_vitals = TidySequentialDataCSVLoader(
-        per_tstep_csv_path=args.train_vitals_csv,
-        per_seq_csv_path=args.metadata_csv,
-        idx_col_names=['subject_id', 'episode_id'],
-        x_col_names='__all__',
-        y_col_name='inhospital_mortality',
-        y_label_type='')
+        x_csv_path=x_train_csv_filename,
+        y_csv_path=y_train_csv_filename,
+        x_col_names=feature_cols,
+        idx_col_names=id_cols,
+        y_col_name=args.outcome_col_name,
+        y_label_type='per_sequence'
+    )
 
     test_vitals = TidySequentialDataCSVLoader(
-        per_tstep_csv_path=args.test_vitals_csv,
-        per_seq_csv_path=args.metadata_csv,
-        idx_col_names=['subject_id', 'episode_id'],
-        x_col_names='__all__',
-        y_col_name='inhospital_mortality',
-        y_label_type='')
+        x_csv_path=x_test_csv_filename,
+        y_csv_path=y_test_csv_filename,
+        x_col_names=feature_cols,
+        idx_col_names=id_cols,
+        y_col_name=args.outcome_col_name,
+        y_label_type='per_sequence'
+    )
 
     X_train, y_train = train_vitals.get_batch_data(batch_id=0)
     X_test, y_test = test_vitals.get_batch_data(batch_id=0)
+    _,T,F = X_train.shape
+    
+    # set class weights as 1/(number of samples in class) for each class to handle class imbalance
+    class_weights = torch.tensor([1/(y_train==0).sum(),
+                                  1/(y_train==1).sum()]).double()
 
-    # hyperparameter space
-    learning_rate = [0.0001, 0.001, 0.01, 0.1, 1]
-    hyperparameters = dict(lr=learning_rate)
+    # scale features
+    X_train = standard_scaler_3d(X_train)
+    X_test = standard_scaler_3d(X_test)
 
-    # grid search
+    # callback to compute gradient norm
+    compute_grad_norm = ComputeGradientNorm(norm_type=2)
+
+    # LSTM
+    output_filename_prefix = ('hiddens=%s-layers=%s-lr=%s-dropout=%s'%(args.hidden_units, 
+                                                                       args.hidden_layers, 
+                                                                       args.lr, 
+                                                                       args.dropout))
+    print('RNN parameters : '+ output_filename_prefix)
+#     from IPython import embed; embed()
     rnn = RNNBinaryClassifier(
-        max_epochs=args.epochs,
-        batch_size=args.batch_size,
-        device=device,
-        callbacks=[
-            #skorch.callbacks.ProgressBar(),
-        ],
-        module__rnn_type='LSTM',
-        module__n_inputs=X_train.shape[-1],
-        module__n_hiddens=10,
-        module__n_layers=1,
-        optimizer=torch.optim.SGD,)
+              max_epochs=50,
+              batch_size=args.batch_size,
+              device=device,
+              lr=args.lr,
+              callbacks=[
+              EpochScoring('roc_auc', lower_is_better=False, on_train=True, name='aucroc_score_train'),
+              EpochScoring('roc_auc', lower_is_better=False, on_train=False, name='aucroc_score_valid'),
+#               EarlyStopping(monitor='aucroc_score_valid', patience=20, threshold=0.002, threshold_mode='rel',
+#                                              lower_is_better=False),
+#               LRScheduler(policy=ReduceLROnPlateau, mode='max', monitor='aucroc_score_valid', patience=10),
+                  compute_grad_norm,
+              GradientNormClipping(gradient_clip_value=0.15, gradient_clip_norm_type=2),
+#               Checkpoint(monitor='aucroc_score_valid', f_history=os.path.join(args.output_dir, output_filename_prefix+'.json'))
+              ],
+              criterion=torch.nn.CrossEntropyLoss,
+              criterion__weight=class_weights,
+              train_split=skorch.dataset.CVSplit(args.validation_size),
+              module__rnn_type='LSTM',
+              module__n_layers=args.hidden_layers,
+              module__n_hiddens=args.hidden_units,
+              module__n_inputs=X_train.shape[-1],
+#               module__dropout_proba_non_recurrent=args.dropout,
+#               module__convert_to_log_reg=False,
+              optimizer=torch.optim.Adam,
+#               optimizer__weight_decay=args.weight_decay
+                         ) 
 
-    classifier = GridSearchCV(rnn, hyperparameters, n_jobs=-1, cv=5, verbose=1)
-    best_rnn = classifier.fit(X_train, y_train)
-
-    # View best hyperparameters
-    best_lr = best_rnn.best_estimator_.get_params()['lr']
-
-    y_pred_proba = best_rnn.predict_proba(X_test)
-    y_pred = convert_proba_to_binary(y_pred_proba)
-
-    # Brief Summary
-    print('Best lr:', best_rnn.best_estimator_.get_params()['lr'])
-    print('Accuracy:', accuracy_score(y_test, y_pred))
-    print('Balanced Accuracy:', balanced_accuracy_score(y_test, y_pred))
-    print('Log Loss:', log_loss(y_test, y_pred_proba))
-    conf_matrix = confusion_matrix(y_test, y_pred)
-    true_neg = conf_matrix[0][0]
-    true_pos = conf_matrix[1][1]
-    false_neg = conf_matrix[1][0]
-    false_pos = conf_matrix[0][1]
-    print('True Positive Rate:', float(true_pos) / (true_pos + false_neg))
-    print('True Negative Rate:', float(true_neg) / (true_neg + false_pos))
-    print('Positive Predictive Value:', float(true_pos) / (true_pos + false_pos))
-    print('Negative Predictive Value', float(true_neg) / (true_neg + false_pos))
-
-    create_html_report(args.report_dir, y_test, y_pred, y_pred_proba, 
-                       hyperparameters, best_lr)
-
-def create_html_report(report_dir, y_test, y_pred, y_pred_proba, hyperparameters, best_lr):
-    try:
-        os.mkdir(report_dir)
-    except OSError:
-        pass
-
-    # Set up HTML report
-    doc, tag, text = Doc().tagtext()
-
-    # Metadata
-    with tag('h2'):
-        text('Random rnn Classifier Results')
-    with tag('h3'):
-        text('Hyperparameters searched:')
-    with tag('p'):
-        text('Learning rate: ', str(hyperparameters['lr']))
-
-    # Model
-    with tag('h3'):
-        text('Parameters of best model:')
-    with tag('p'):
-        text('Learning rate: ', best_lr)
-    
-    # Performance
-    with tag('h3'):
-        text('Performance Metrics:')
-    with tag('p'):
-        text('Accuracy: ', accuracy_score(y_test, y_pred))
-    with tag('p'):
-        text('Balanced Accuracy: ', balanced_accuracy_score(y_test, y_pred))
-    with tag('p'):
-        text('Log Loss: ', log_loss(y_test, y_pred_proba))
-    
-    conf_matrix = confusion_matrix(y_test, y_pred)
-    conf_matrix_norm = conf_matrix.astype('float') / conf_matrix.sum(axis=1)[:, np.newaxis]
-
-    true_neg = conf_matrix[0][0]
-    true_pos = conf_matrix[1][1]
-    false_neg = conf_matrix[1][0]
-    false_pos = conf_matrix[0][1]
-    with tag('p'):
-        text('True Positive Rate: ', float(true_pos) / (true_pos + false_neg))
-    with tag('p'):
-        text('True Negative Rate: ', float(true_neg) / (true_neg + false_pos))
-    with tag('p'):
-        text('Positive Predictive Value: ', float(true_pos) / (true_pos + false_pos))
-    with tag('p'):
-        text('Negative Predictive Value: ', float(true_neg) / (true_neg + false_pos))
-    
-    # Confusion Matrix
-    columns = ['Predicted 0', 'Predicted 1']
-    rows = ['Actual 0', 'Actual 1']
-    cell_text = []
-    for cm_row, cm_norm_row in zip(conf_matrix, conf_matrix_norm):
-        row_text = []
-        for i, i_norm in zip(cm_row, cm_norm_row):
-            row_text.append('{} ({})'.format(i, i_norm))
-        cell_text.append(row_text)
-
-    ax = plt.subplot(111, frame_on=False) 
-    ax.xaxis.set_visible(False) 
-    ax.yaxis.set_visible(False)
-
-    confusion_table = ax.table(cellText=cell_text,
-                               rowLabels=rows,
-                               colLabels=columns,
-                               loc='center')
-    plt.savefig(report_dir + '/confusion_matrix.png')
-    plt.close()
-
-    with tag('p'):
-        text('Confusion Matrix:')
-    doc.stag('img', src=('confusion_matrix.png'))
-
-    # ROC curve/area
+    clf = rnn.fit(X_train, y_train)
+    y_pred_proba = clf.predict_proba(X_train)
     y_pred_proba_neg, y_pred_proba_pos = zip(*y_pred_proba)
-    fpr, tpr, thresholds = roc_curve(y_test, y_pred_proba_pos)
-    roc_area = roc_auc_score(y_test, y_pred_proba_pos)
-    plt.plot(fpr, tpr)
-    plt.xlabel('FPR')
-    plt.ylabel('TPR')
-    plt.savefig(report_dir + '/roc_curve.png')
-    plt.close()
+    auroc_train_final = roc_auc_score(y_train, y_pred_proba_pos)
+    print('AUROC with LSTM (Train) : %.2f'%auroc_train_final)
 
-    with tag('p'):
-        text('ROC Curve:')
-    doc.stag('img', src=('roc_curve.png'))  
-    with tag('p'):
-        text('ROC Area: ', roc_area)
+    y_pred_proba = clf.predict_proba(X_test)
+    y_pred_proba_neg, y_pred_proba_pos = zip(*y_pred_proba)
+    auroc_test_final = roc_auc_score(y_test, y_pred_proba_pos)
+    print('AUROC with LSTM (Test) : %.2f'%auroc_test_final)
 
-    with open(report_dir + '/report.html', 'w') as f:
-        f.write(doc.getvalue())
+
 
 def convert_proba_to_binary(probabilites):
     return [0 if probs[0] > probs[1] else 1 for probs in probabilites]
+
+def standard_scaler_3d(X):
+    # input : X (N, T, F)
+    # ouput : scaled_X (N, T, F)
+    N, T, F = X.shape
+    if T==1:
+        scalers = {}
+        for i in range(X.shape[1]):
+            scalers[i] = StandardScaler()
+            X[:, i, :] = scalers[i].fit_transform(X[:, i, :])
+    else:
+        # zscore across subjects and time points for each feature
+        for i in range(F):
+            mean_across_NT = X[:,:,i].mean()
+            std_across_NT = X[:,:,i].std()            
+            if std_across_NT<0.0001: # handling precision
+                std_across_NT = 0.0001
+            X[:,:,i] = (X[:,:,i]-mean_across_NT)/std_across_NT
+    return X
+
+def get_paramater_gradient_l2_norm(net,**kwargs):
+    parameters = [i for  _,i in net.module_.named_parameters()]
+    total_norm = 0
+    for p in parameters:
+        if p.requires_grad==True:
+            param_norm = p.grad.data.norm(2)
+            total_norm += param_norm.item() ** 2
+    total_norm = total_norm ** (1. / 2)
+    return total_norm
+
+def get_paramater_gradient_inf_norm(net, **kwargs):
+    parameters = [i for  _,i in net.module_.named_parameters()]
+    total_norm = max(p.grad.data.abs().max() for p in parameters if p.grad==True)
+    return total_norm
+
+
+class ComputeGradientNorm(Callback):
+    def __init__(self, norm_type=1, f_history=None):
+        self.norm_type = norm_type
+        self.batch_num = 1
+        self.epoch_num = 1
+        self.f_history = f_history
+
+    def on_epoch_begin(self, net,  dataset_train=None, dataset_valid=None, **kwargs):
+        self.batch_num = 1
+
+    def on_epoch_end(self, net, dataset_train=None, dataset_valid=None, **kwargs):
+        self.epoch_num += 1
+
+    def on_grad_computed(self, net, named_parameters, **kwargs):
+        if self.norm_type == 1:
+            gradient_norm = get_paramater_gradient_inf_norm(net)
+            print('epoch: %d, batch: %d, gradient_norm: %.3f'%(self.epoch_num, self.batch_num, gradient_norm))
+            if self.f_history is not None:
+                self.write_to_file(gradient_norm)
+            self.batch_num += 1
+        else:
+            gradient_norm = get_paramater_gradient_l2_norm(net)
+            print('epoch: %d, batch: %d, gradient_norm: %.3f'%(self.epoch_num, self.batch_num, gradient_norm))
+            if self.f_history is not None:
+                self.write_to_file(gradient_norm)
+            self.batch_num += 1
+
 
 if __name__ == '__main__':
     main()

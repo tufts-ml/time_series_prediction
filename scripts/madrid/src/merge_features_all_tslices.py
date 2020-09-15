@@ -28,7 +28,29 @@ def merge_data_dicts(data_dicts_list):
             features_data_dict['schema']['fields'].append(feat_dict)
             feat_names.append(feat_dict['name'])
     return features_data_dict
-    
+
+def get_all_features_data(labs_df, labs_data_dict, vitals_df, vitals_data_dict, demographics_df, demographics_data_dict):
+    '''Returns the merged labs, vitals and demographics features into a single table and the data dict'''
+
+    time_col = parse_time_col(vitals_data_dict)
+    id_cols = parse_id_cols(vitals_data_dict)
+
+    # merge the labs and vitals
+    highfreq_df = pd.merge(vitals_df, labs_df, on=id_cols +[time_col], how='outer')
+    highfreq_data_dict = merge_data_dicts([labs_data_dict, vitals_data_dict])
+    highfreq_data_dict['fields'] = highfreq_data_dict['schema']['fields']
+    cols_to_keep = parse_id_cols(highfreq_data_dict) + [parse_time_col(highfreq_data_dict)] + parse_feature_cols(highfreq_data_dict)
+    highfreq_df = highfreq_df[cols_to_keep].copy()
+
+
+    # merge the highfrequency features with the static features
+    features_df = pd.merge(highfreq_df, demographics_df, on=id_cols, how='inner')
+    features_data_dict = merge_data_dicts([highfreq_data_dict, demographics_data_dict])
+    features_data_dict['fields'] = features_data_dict['schema']['fields']
+
+    return features_df, features_data_dict
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--tslice_folder', type=str, 
