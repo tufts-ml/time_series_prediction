@@ -10,12 +10,13 @@ import glob
 from config_loader import (
     D_CONFIG,
     DATASET_STD_PATH, DATASET_SPLIT_PATH,
-    DATASET_PERTSTEP_SPLIT_PATH, PROJECT_REPO_DIR, PROJECT_CONDA_ENV_YAML,
-    RESULTS_PATH, RESULTS_PERTSTEP_PATH, CLF_TRAIN_TEST_SPLIT_PATH)
+    DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, PROJECT_REPO_DIR, PROJECT_CONDA_ENV_YAML,
+    RESULTS_SPLIT_PATH, RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH)
 
 random_seed_list=D_CONFIG['CLF_RANDOM_SEED_LIST']
-RESULTS_PATH=os.path.join(RESULTS_PATH, 'mews')
-RESULTS_PERTSTEP_PATH=os.path.join(RESULTS_PERTSTEP_PATH, 'mews')
+RESULTS_SPLIT_PATH=os.path.join(RESULTS_SPLIT_PATH, 'mews')
+RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH=os.path.join(RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH, 'mews')
+CLF_TRAIN_TEST_SPLIT_PATH=os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, 'classifier_train_test_split')
 
 rule evaluate_mews_score:
     input:
@@ -28,12 +29,12 @@ rule evaluate_mews_score:
         y_dict_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_dict.json')
     
     params:
-        output_dir=os.path.join(RESULTS_PERTSTEP_PATH),
+        output_dir=RESULTS_SPLIT_PATH,
         random_seed=int(random_seed_list[0])
         
 
     output:
-        output_csv=os.path.join(RESULTS_PERTSTEP_PATH, "mews_performance_df.csv")
+        output_csv=os.path.join(RESULTS_SPLIT_PATH, "mews_performance_df.csv")
     
     conda:
         PROJECT_CONDA_ENV_YAML

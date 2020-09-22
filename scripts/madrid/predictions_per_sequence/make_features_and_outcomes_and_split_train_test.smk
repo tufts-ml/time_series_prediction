@@ -9,17 +9,18 @@ sys.path.append(os.path.abspath('../predictions_collapsed'))
 # Can override with local env variables
 from config_loader import (
     D_CONFIG, DATASET_TOP_PATH,
-    DATASET_STD_PATH, DATASET_PERTSTEP_SPLIT_PATH,
+    DATASET_SITE_PATH, DATASET_FEAT_PER_TSLICE_PATH,
+    DATASET_FEAT_PER_TSLICE_PATH,
     PROJECT_REPO_DIR, PROJECT_CONDA_ENV_YAML,
     DATASET_SPLIT_PATH)
 
-CLF_TRAIN_TEST_SPLIT_PATH = os.path.join(DATASET_SPLIT_PATH, 'classifier_train_test_split')
+CLF_TRAIN_TEST_SPLIT_PATH = os.path.join(DATASET_FEAT_PER_TSLICE_PATH, 'classifier_train_test_split')
 
 # evaluate on the filtered tslices
 evaluate_tslice_hours_list=D_CONFIG['EVALUATE_TIMESLICE_LIST']
 
 # filtered sequences
-filtered_pertslice_csvs=[os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tslice}","{feature}_before_icu_filtered_{tslice}_hours.csv").format(feature=feature, tslice=str(tslice)) for tslice in evaluate_tslice_hours_list for feature in ['vitals', 'labs']]
+filtered_pertslice_csvs=[os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}","{feature}_before_icu_filtered_{tslice}_hours.csv").format(feature=feature, tslice=str(tslice)) for tslice in evaluate_tslice_hours_list for feature in ['vitals', 'labs']]
 
 rule filter_admissions_by_tslice_many_tslices:
     input:
@@ -30,14 +31,14 @@ rule filter_admissions_by_tslice:
         script=os.path.join(os.path.abspath('../'), 'src', 'filter_admissions_by_tslice.py'),
     
     params:
-        preproc_data_dir = DATASET_STD_PATH,
-        output_dir=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tslice}")
+        preproc_data_dir = DATASET_SITE_PATH,
+        output_dir=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}")
     
     output:
-        filtered_demographics_csv=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tslice}", "demographics_before_icu_filtered_{tslice}_hours.csv"),
-        filtered_vitals_csv=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tslice}", "vitals_before_icu_filtered_{tslice}_hours.csv"),
-        filtered_labs_csv=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tslice}", "labs_before_icu_filtered_{tslice}_hours.csv"),
-        filtered_y_csv=os.path.join(DATASET_PERTSTEP_SPLIT_PATH, "TSTEP={tslice}", "clinical_deterioration_outcomes_filtered_{tslice}_hours.csv")
+        filtered_demographics_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "demographics_before_icu_filtered_{tslice}_hours.csv"),
+        filtered_vitals_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "vitals_before_icu_filtered_{tslice}_hours.csv"),
+        filtered_labs_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "labs_before_icu_filtered_{tslice}_hours.csv"),
+        filtered_y_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "clinical_deterioration_outcomes_filtered_{tslice}_hours.csv")
     
     shell:
         '''
@@ -52,12 +53,12 @@ rule make_features_and_outcomes:
         script=os.path.join(os.path.abspath('../'), 'src', 'make_features_and_outcomes_per_sequence.py'),
     
     params:
-        preproc_data_dir=DATASET_STD_PATH,
-        output_dir=DATASET_SPLIT_PATH
+        preproc_data_dir=DATASET_SITE_PATH,
+        output_dir=CLF_TRAIN_TEST_SPLIT_PATH
     
     output:
-        features_csv=os.path.join(DATASET_SPLIT_PATH, 'features.csv'),
-        outcomes_csv=os.path.join(DATASET_SPLIT_PATH, 'outcomes.csv')
+        features_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "features.csv"),
+        outcomes_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "outcomes.csv")
     
     shell:
         '''
@@ -69,10 +70,10 @@ rule make_features_and_outcomes:
 rule split_into_train_and_test:
     input:
         script=os.path.join(PROJECT_REPO_DIR, 'src', 'split_dataset.py'),
-        features_csv=os.path.join(DATASET_SPLIT_PATH, 'features.csv'),
-        outcomes_csv=os.path.join(DATASET_SPLIT_PATH, "outcomes.csv"),
-        features_json=os.path.join(DATASET_SPLIT_PATH, "features_dict.json"),
-        outcomes_json=os.path.join(DATASET_SPLIT_PATH, "outcomes_dict.json"),
+        features_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'features.csv'),
+        outcomes_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "outcomes.csv"),
+        features_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "features_dict.json"),
+        outcomes_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "outcomes_dict.json"),
 
     params:
         train_test_split_dir=CLF_TRAIN_TEST_SPLIT_PATH

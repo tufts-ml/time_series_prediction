@@ -102,8 +102,8 @@ def main():
                                   1/(y_train==1).sum()]).double()
 
     # scale features
-    X_train = standard_scaler_3d(X_train)
-    X_test = standard_scaler_3d(X_test)
+#     X_train = standard_scaler_3d(X_train)
+#     X_test = standard_scaler_3d(X_test)
 
     # callback to compute gradient norm
     compute_grad_norm = ComputeGradientNorm(norm_type=2)
@@ -114,7 +114,7 @@ def main():
                                                                        args.lr, 
                                                                        args.dropout))
     print('RNN parameters : '+ output_filename_prefix)
-#     from IPython import embed; embed()
+# #     from IPython import embed; embed()
     rnn = RNNBinaryClassifier(
               max_epochs=50,
               batch_size=args.batch_size,
@@ -123,12 +123,12 @@ def main():
               callbacks=[
               EpochScoring('roc_auc', lower_is_better=False, on_train=True, name='aucroc_score_train'),
               EpochScoring('roc_auc', lower_is_better=False, on_train=False, name='aucroc_score_valid'),
-#               EarlyStopping(monitor='aucroc_score_valid', patience=20, threshold=0.002, threshold_mode='rel',
-#                                              lower_is_better=False),
-#               LRScheduler(policy=ReduceLROnPlateau, mode='max', monitor='aucroc_score_valid', patience=10),
+              EarlyStopping(monitor='aucroc_score_valid', patience=20, threshold=0.002, threshold_mode='rel',
+                                             lower_is_better=False),
+              LRScheduler(policy=ReduceLROnPlateau, mode='max', monitor='aucroc_score_valid', patience=10),
                   compute_grad_norm,
-              GradientNormClipping(gradient_clip_value=0.15, gradient_clip_norm_type=2),
-#               Checkpoint(monitor='aucroc_score_valid', f_history=os.path.join(args.output_dir, output_filename_prefix+'.json'))
+              GradientNormClipping(gradient_clip_value=0.3, gradient_clip_norm_type=2),
+              Checkpoint(monitor='aucroc_score_valid', f_history=os.path.join(args.output_dir, output_filename_prefix+'.json'))
               ],
               criterion=torch.nn.CrossEntropyLoss,
               criterion__weight=class_weights,
@@ -140,9 +140,13 @@ def main():
 #               module__dropout_proba_non_recurrent=args.dropout,
 #               module__convert_to_log_reg=False,
               optimizer=torch.optim.Adam,
-#               optimizer__weight_decay=args.weight_decay
+              optimizer__weight_decay=args.weight_decay
                          ) 
-
+#     X_train = X_train.astype(np.float32)
+#     y_train = y_train.astype(np.float32)
+#     X_test = X_test.astype(np.float32)
+#     y_test = y_test.astype(np.float32)
+    
     clf = rnn.fit(X_train, y_train)
     y_pred_proba = clf.predict_proba(X_train)
     y_pred_proba_neg, y_pred_proba_pos = zip(*y_pred_proba)

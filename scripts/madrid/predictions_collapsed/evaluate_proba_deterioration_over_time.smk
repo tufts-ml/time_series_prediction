@@ -10,15 +10,17 @@ import sys
 from config_loader import (
     D_CONFIG,
     DATASET_STD_PATH, DATASET_SPLIT_PATH,
-    DATASET_PERTSTEP_SPLIT_PATH, PROJECT_REPO_DIR, PROJECT_CONDA_ENV_YAML,
-    RESULTS_PATH, RESULTS_PERTSTEP_PATH, CLF_TRAIN_TEST_SPLIT_PATH)
+    DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, PROJECT_REPO_DIR, PROJECT_CONDA_ENV_YAML,
+    RESULTS_SPLIT_PATH, RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH)
     
+CLF_TRAIN_TEST_SPLIT_PATH=os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, 'classifier_train_test_split')
+
 rule evaluate_proba_deterioration:
     input:
         script=os.path.join(os.path.abspath('../'), "src", "evaluate_proba_deterioration_over_time.py")
 
     params:
-        clf_models_dir=RESULTS_PERTSTEP_PATH,
+        clf_models_dir=RESULTS_SPLIT_PATH,
         clf_train_test_split_dir=CLF_TRAIN_TEST_SPLIT_PATH,
         preproc_data_dir=DATASET_STD_PATH
         

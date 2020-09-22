@@ -53,8 +53,10 @@ def get_all_features_data(labs_df, labs_data_dict, vitals_df, vitals_data_dict, 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.add_argument('--collapsed_tslice_folder', type=str, 
+            help='folder where collapsed features from each tslice are stored')
     parser.add_argument('--tslice_folder', type=str, 
-            help='folder where collapsed features and static features from each tslice are stored')
+            help='folder where raw features and static features from each tslice are stored')
     parser.add_argument('--tslice_list', type=str, 
             help='list of all the tslices used for training the classifier')
     parser.add_argument('--static_data_dict_dir', type=str,
@@ -80,10 +82,11 @@ if __name__ == '__main__':
     mews_df_all_slices_list = list()
     for tslice in args.tslice_list.split(' '):
         curr_tslice_folder = args.tslice_folder+tslice
-        collapsed_labs_df = pd.read_csv(os.path.join(curr_tslice_folder, 'CollapsedLabsPerSequence.csv'))
-        collapsed_vitals_df = pd.read_csv(os.path.join(curr_tslice_folder, 'CollapsedVitalsPerSequence.csv'))
+        curr_collapsed_tslice_folder = args.collapsed_tslice_folder+tslice
+        collapsed_labs_df = pd.read_csv(os.path.join(curr_collapsed_tslice_folder, 'CollapsedLabsPerSequence.csv'))
+        collapsed_vitals_df = pd.read_csv(os.path.join(curr_collapsed_tslice_folder, 'CollapsedVitalsPerSequence.csv'))
         demographics_df = pd.read_csv(os.path.join(curr_tslice_folder, 'demographics_before_icu_filtered_%s_hours.csv'%tslice))
-        mews_df = pd.read_csv(os.path.join(curr_tslice_folder, 'MewsScoresPerSequence.csv'))
+        mews_df = pd.read_csv(os.path.join(curr_collapsed_tslice_folder, 'MewsScoresPerSequence.csv'))
         collapsed_vitals_labs_df = pd.merge(collapsed_vitals_df, collapsed_labs_df, on=id_cols, how='inner')
 
         # merge the collapsed feaatures and static features in each tslice
@@ -105,13 +108,13 @@ if __name__ == '__main__':
     
     # get collapsed vitals and labs dict
     print('Merging collapsed vitals, collapsed labs, demographics and outcomes data dicts into a single features data dict and a single outcomes data dict...')
-    with open(os.path.join(curr_tslice_folder, 'Spec_CollapsedLabsPerSequence.json'), 'r') as f3:
+    with open(os.path.join(curr_collapsed_tslice_folder, 'Spec_CollapsedLabsPerSequence.json'), 'r') as f3:
         collapsed_labs_data_dict = json.load(f3)
 
-    with open(os.path.join(curr_tslice_folder, 'Spec_CollapsedVitalsPerSequence.json'), 'r') as f4:
+    with open(os.path.join(curr_collapsed_tslice_folder, 'Spec_CollapsedVitalsPerSequence.json'), 'r') as f4:
         collapsed_vitals_data_dict = json.load(f4)
     
-    with open(os.path.join(curr_tslice_folder, 'Spec_MewsScoresPerSequence.json'), 'r') as f5:
+    with open(os.path.join(curr_collapsed_tslice_folder, 'Spec_MewsScoresPerSequence.json'), 'r') as f5:
         mews_data_dict = json.load(f5)
         
     # get a single consolidated data dict for all features and another for outcomes
