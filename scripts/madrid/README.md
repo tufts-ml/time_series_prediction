@@ -1,4 +1,4 @@
-EEG dataset
+Madrid dataset
 
 # Prereqs
 

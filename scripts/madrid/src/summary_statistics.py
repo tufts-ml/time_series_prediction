@@ -165,7 +165,6 @@ if __name__ == '__main__':
     labs_summary_df = labs_summary_df[['min', '5%', 'median', '95%', 'max', 'missing_rate']]
     print(labs_summary_df)
     
-    from IPython import embed; embed()
     print('#######################################')
     print('Printing time between measurements of vitals')
     timestamp_arr = np.asarray(df_vitals[time_col].values.copy(), dtype=np.float64)
