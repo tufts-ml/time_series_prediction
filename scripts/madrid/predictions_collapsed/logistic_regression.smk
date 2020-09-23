@@ -1,6 +1,7 @@
 '''
 Train collapsed feature classifier on Madrid transfer to ICU task
 
+>> snakemake --cores 1 --snakefile logistic_regression.smk
 '''
 
 # Default environment variables
@@ -8,9 +9,9 @@ Train collapsed feature classifier on Madrid transfer to ICU task
 
 from config_loader import (
     D_CONFIG,
-    DATASET_STD_PATH, DATASET_SPLIT_PATH, PROJECT_CONDA_ENV_YAML,
+    DATASET_SPLIT_PATH, PROJECT_CONDA_ENV_YAML,
     DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH,
-    RESULTS_SPLIT_PATH, 
+    RESULTS_SPLIT_PATH, PROJECT_REPO_DIR,
     RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH)
 #tstep_hours_list=D_CONFIG['TIMESTEP_LIST']
 random_seed_list=D_CONFIG['CLF_RANDOM_SEED_LIST']

@@ -1,6 +1,10 @@
 '''
 Get the performance plots of a single trained classifier for clinical deterioration at multiple patient-stay-slices
 
+Usage : Evaluate the probability of deterioration over time using multiple classifiers (LR, RF, RNN, GPVAE, PC-HMM...)
+----------------------------------------------------------------------------------------------------------------------
+>> snakemake --cores 1 --snakefile evaluate_proba_deterioration_over_time.smk evaluate_proba_deterioration
+
 '''
 
 import glob
@@ -9,7 +13,7 @@ import sys
 
 from config_loader import (
     D_CONFIG,
-    DATASET_STD_PATH, DATASET_SPLIT_PATH,
+    DATASET_SITE_PATH, DATASET_SPLIT_PATH,
     DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, PROJECT_REPO_DIR, PROJECT_CONDA_ENV_YAML,
     RESULTS_SPLIT_PATH, RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH)
     
@@ -22,7 +26,7 @@ rule evaluate_proba_deterioration:
     params:
         clf_models_dir=RESULTS_SPLIT_PATH,
         clf_train_test_split_dir=CLF_TRAIN_TEST_SPLIT_PATH,
-        preproc_data_dir=DATASET_STD_PATH
+        preproc_data_dir=DATASET_SITE_PATH
         
     conda:
         PROJECT_CONDA_ENV_YAML

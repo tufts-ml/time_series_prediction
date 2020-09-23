@@ -31,11 +31,9 @@ Usage : Split the features table into train - test. A single classifier will be 
 -------------------------------------------------------------------------------------------------------------
 >> snakemake --cores 1 --snakefile make_collapsed_dataset_per_tslice_and_split_train_test.smk split_into_train_and_test
 
-
-
 Usage : Do every step above in squence
 -------------------------------------
->> snakemake --cores all --snakefile make_collapsed_dataset_and_split_train_test_per_tstep.smk all
+>> snakemake --cores all --snakefile make_collapsed_dataset_per_tslice_and_split_train_test.smk all
 '''
 
 # Default environment variables

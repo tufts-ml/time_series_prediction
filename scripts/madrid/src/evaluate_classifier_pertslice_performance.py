@@ -33,8 +33,10 @@ if __name__ == '__main__':
                         help='Directory where classifier models are saved')
     parser.add_argument('--clf_train_test_split_dir', default=None, type=str,
                         help='Directory where the train-test split data for the classifier is saved')
+    parser.add_argument('--collapsed_tslice_folder', type=str, 
+                        help='folder where collapsed features from each tslice are stored')
     parser.add_argument('--tslice_folder', type=str, 
-                        help='folder where collapsed features and static features from each tslice are stored')
+                        help='folder where features filtered by tslice are stored')
     parser.add_argument('--evaluation_tslices', type=str,
                         help='evaluation tslices separated by spaces')
     parser.add_argument('--preproc_data_dir', type=str,
@@ -64,7 +66,8 @@ if __name__ == '__main__':
     y_test_dict = load_data_dict_json(y_test_dict_file)
     id_cols = parse_id_cols(y_test_dict)
     
-    tslice_folders = os.path.join(args.tslice_folder, 'TSTEP=')
+    tslice_folders = os.path.join(args.tslice_folder, 'TSLICE=')
+    collapsed_tslice_folders = os.path.join(args.collapsed_tslice_folder, 'TSLICE=')
     outcome_col = args.outcome_column_name
     tslices_list = args.evaluation_tslices.split(' ')
     y_test_ids_df = y_test_df[id_cols].drop_duplicates(subset=id_cols).reset_index(drop=True)
@@ -78,16 +81,16 @@ if __name__ == '__main__':
     perf_df = pd.DataFrame()
     for p, tslice in enumerate(tslices_list):
         tslice_folder = tslice_folders + tslice
-
+        collapsed_tslice_folder = collapsed_tslice_folders + tslice
         # get test set collapsed labs and vitals
-        collapsed_vitals_df = pd.read_csv(os.path.join(tslice_folder, 'CollapsedVitalsPerSequence.csv'))
-        collapsed_labs_df = pd.read_csv(os.path.join(tslice_folder, 'CollapsedLabsPerSequence.csv'))
-        mews_df = pd.read_csv(os.path.join(tslice_folder, 'MewsScoresPerSequence.csv'))
+        collapsed_vitals_df = pd.read_csv(os.path.join(collapsed_tslice_folder, 'CollapsedVitalsPerSequence.csv'))
+        collapsed_labs_df = pd.read_csv(os.path.join(collapsed_tslice_folder, 'CollapsedLabsPerSequence.csv'))
+        mews_df = pd.read_csv(os.path.join(collapsed_tslice_folder, 'MewsScoresPerSequence.csv'))
         outcomes_df = pd.read_csv(os.path.join(tslice_folder,
                                                'clinical_deterioration_outcomes_filtered_%s_hours.csv'%tslice))
-        collapsed_vitals_data_dict = load_data_dict_json(os.path.join(tslice_folder, 'Spec_CollapsedVitalsPerSequence.json'))
-        collapsed_labs_data_dict = load_data_dict_json(os.path.join(tslice_folder, 'Spec_CollapsedLabsPerSequence.json'))
-        mews_data_dict = load_data_dict_json(os.path.join(tslice_folder, 'Spec_MewsScoresPerSequence.json'))
+        collapsed_vitals_data_dict = load_data_dict_json(os.path.join(collapsed_tslice_folder, 'Spec_CollapsedVitalsPerSequence.json'))
+        collapsed_labs_data_dict = load_data_dict_json(os.path.join(collapsed_tslice_folder, 'Spec_CollapsedLabsPerSequence.json'))
+        mews_data_dict = load_data_dict_json(os.path.join(collapsed_tslice_folder, 'Spec_MewsScoresPerSequence.json'))
         test_vitals_df = pd.merge(collapsed_vitals_df, y_test_ids_df, on=id_cols)
         test_labs_df = pd.merge(collapsed_labs_df, y_test_ids_df, on=id_cols)
         test_mews_df = pd.merge(mews_df, y_test_ids_df, on=id_cols)
