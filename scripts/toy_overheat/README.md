@@ -1,5 +1,15 @@
 Toy Overheat dataset
 
+# Background
+
+Toy "overheat" is a simple time series dataset with regular fictional temperature measurements (1d) over time, which we pretend is from a fictional device operating in the world.
+
+We want to look at temperature over time and answer the binary question "did the device" overheat?
+
+Code to generate multiple sequences and their labels is here:
+
+https://github.com/tufts-ml/time_series_prediction/blob/master/scripts/toy_overheat/standardize_dataset/make_dataset.py
+
 # Prereqs
 
 It's assumed you have the `tspred_env` conda environment installed locally.
