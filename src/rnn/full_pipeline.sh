@@ -1,15 +1,15 @@
 #!/bin/bash
 
 # Path to directory with github code
-SOURCE_PATH="/cluster/home/prath01/projects/mimic3_benchmarks/Code/time_series_prediction/src"
+SOURCE_PATH="/cluster/home/onewla01/hughes/time_series_prediction/src"
 
 # Paths to raw dataset
 TS_DATA_PATH="/cluster/tufts/hugheslab/datasets/mimic-iii-v1.4/v20181213/tidy/mimic3benchmarks_inhospital_mortality/20190406/vitals_data_per_tstamp.csv"
 TS_METADATA_PATH="/cluster/tufts/hugheslab/datasets/mimic-iii-v1.4/v20181213/tidy/mimic3benchmarks_inhospital_mortality/20190406/metadata_per_seq.csv"
-TS_DATA_DICT_PATH="/cluster/home/prath01/projects/mimic3_benchmarks/Code/time_series_prediction/docs/mimic-iii-v1.4/20190406/mimic_dict.json"
+TS_DATA_DICT_PATH="/cluster/home/onewla01/hughes/time_series_prediction/docs/mimic-iii-v1.4/20190406/mimic_dict.json"
 
 # Path to directory in which modified dataset files will be stored
-TEMP_DATA_PATH="/cluster/tufts/hugheslab/prath01/projects/mimic3_benchmarks/code_results/rnn/"
+TEMP_DATA_PATH="/cluster/tufts/hugheslab/onewla01/mimic"
 
 # Path to directory in which html classifier performance report should be saved
 REPORT_DIR="$SOURCE_PATH/rnn/html"
@@ -59,11 +59,11 @@ if [ "$1" != "classifier" ]; then
         --output $TEMP_DATA_PATH/ts_temp.csv \
         --third_strategy nulls
 
-#     echo "Normalize Features"
-#     python $SOURCE_PATH/normalize_features.py \
-#         --input $TEMP_DATA_PATH/ts_temp.csv \
-#         --data_dict $TS_DATA_DICT_PATH \
-#         --output $TEMP_DATA_PATH/ts_temp.csv 
+    echo "Normalize Features"
+    python $SOURCE_PATH/normalize_features.py \
+        --input $TEMP_DATA_PATH/ts_temp.csv \
+        --data_dict $TS_DATA_DICT_PATH \
+        --output $TEMP_DATA_PATH/ts_temp.csv 
 
     echo "Split dataset"
     python $SOURCE_PATH/split_dataset.py \
@@ -88,10 +88,11 @@ if [ ! -d "$REPORT_DIR" ]; then
 fi
 
 # Run classifier
-# echo "Run classifier" 
-# python $SOURCE_PATH/rnn/main_mimic.py \
-#     --train_vitals_csv $TEMP_DATA_PATH/ts_test_train/train.csv \
-#     --test_vitals_csv $TEMP_DATA_PATH/ts_test_train/test.csv \
-#     --metadata_csv $TS_METADATA_PATH \
-#     --data_dict $TS_DATA_DICT_PATH \
-#     --report_dir $SOURCE_PATH/rnn/html
+echo "Run classifier" 
+python $SOURCE_PATH/rnn/main_mimic.py \
+    --train_vitals_csv $TEMP_DATA_PATH/ts_test_train/train.csv \
+    --test_vitals_csv $TEMP_DATA_PATH/ts_test_train/test.csv \
+    --metadata_csv $TS_METADATA_PATH \
+    --data_dict $TS_DATA_DICT_PATH \
+    --report_dir $SOURCE_PATH/rnn/html
+
