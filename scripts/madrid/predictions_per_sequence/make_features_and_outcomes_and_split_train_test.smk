@@ -1,6 +1,23 @@
 '''
 Prediction of ICU Deterioration per full sequency with RNN's
 
+Usage : filter and save multiple patient-stay-slices (0-8h, 0-16h, first 30%, last 5 hours) for evaluation
+----------------------------------------------------------------------------------------------------------
+>> snakemake --cores all --snakefile make_features_and_outcomes_and_split_train_test.smk filter_admissions_by_tslice_many_tslices
+
+Usage : make a single set of features containing from all patient-stays and outcomes for each patient stay
+----------------------------------------------------------------------------------------------------------
+>>  snakemake --cores 1 --snakefile make_features_and_outcomes_and_split_train_test.smk make_features_and_outcomes
+
+Usage : Split into train and test sets containing sequences
+-----------------------------------------------------------
+>> snakemake --cores 1 --snakefile make_features_and_outcomes_and_split_train_test.smk split_into_train_and_test
+
+Usage : Impute missing values for train and test sets seaparately by carry forward and population mean
+------------------------------------------------------------------------------------------------------
+>> snakemake --cores 1 --snakefile make_features_and_outcomes_and_split_train_test.smk impute_missing_values
+
+
 '''
 
 sys.path.append(os.path.abspath('../predictions_collapsed'))
