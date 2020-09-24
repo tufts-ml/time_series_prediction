@@ -37,6 +37,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import glob
 from yattag import Doc
+from joblib import dump
 
 import sklearn.linear_model
 import sklearn.tree
@@ -51,12 +52,14 @@ from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer, make_column_selector
 from sklearn.preprocessing import StandardScaler
 from split_dataset import Splitter
+
 from utils_scoring import (
     HYPERSEARCH_SCORING_OPTIONS, THRESHOLD_SCORING_OPTIONS,
     calc_cross_entropy_base2_score,
     calc_score_for_binary_predictions)
 from utils_calibration import plot_binary_clf_calibration_curve_and_histograms
 
+from feature_transformation import (parse_id_cols, parse_time_col, parse_feature_cols, parse_output_cols)
 
 def get_sorted_list_of_kwargs_specific_to_group_parser(group_parser):
     keys = [a.option_strings[0].replace('--', '') for a in group_parser._group_actions]
@@ -82,6 +85,15 @@ except KeyError:
 FIG_KWARGS = dict(
     figsize=(4, 4),
     tight_layout=True)
+
+def load_data_dict_json(data_dict_file):
+    with open(data_dict_file, 'r') as f:
+        data_dict = json.load(f)
+        try:
+            data_dict['fields'] = data_dict['schema']['fields']
+        except KeyError:
+            pass
+    return data_dict
 
 
 if __name__ == '__main__':
@@ -147,7 +159,9 @@ if __name__ == '__main__':
         data_group.add_argument('--test_csv_files', type=str, required=True)
         data_group.add_argument('--data_dict_files', type=str, required=True)
         data_group.add_argument('--output_dir', default='./html/', type=str, required=False)
-
+        data_group.add_argument('--merge_x_y', default=True,
+                                type=lambda x: (str(x).lower() == 'true'), required=False,
+                                help='If True, features and outcomes are merged on id columns, if false, they get concatenated.')
         protocol_group = p.add_argument_group('protocol')
         protocol_group.add_argument('--outcome_col_name', type=str, required=False)
         protocol_group.add_argument('--validation_size', type=float, default=0.1)
@@ -189,12 +203,14 @@ if __name__ == '__main__':
     outcome_cols = []
     info_per_feature_col = dict()
     feature_ranges = []
+
     df_by_split = dict()
     for split_name, csv_files in [
             ('train', args.train_csv_files.split(',')),
             ('test', args.test_csv_files.split(','))]:
         cur_df = None
         for csv_file, data_dict_file in zip(csv_files, args.data_dict_files.split(',')):
+            
             with open(data_dict_file, 'r') as f:
                 data_fields = json.load(f)['schema']['fields']
                 key_cols = [c['name'] for c in data_fields if c['role'] in ('key', 'id')]
@@ -225,9 +241,17 @@ if __name__ == '__main__':
             if cur_df is None:
                 cur_df = more_df
             else:
-                cur_df = cur_df.merge(more_df, on=key_cols)
+                if args.merge_x_y:
+                    cur_df = cur_df.merge(more_df, on=key_cols)
+                else:
+                    cur_df = pd.concat([cur_df, more_df], axis=1)
+                    cur_df = cur_df.loc[:,~cur_df.columns.duplicated()]
+        
         df_by_split[split_name] = cur_df
 
+    # for consistency
+    feature_cols.sort()
+    
     outcome_col_name = args.outcome_col_name
     if outcome_col_name is None:
         if len(outcome_cols) > 1:
@@ -241,10 +265,10 @@ if __name__ == '__main__':
             outcome_col_name))
 
     # Prepare data for classification
-    x_train = df_by_split['train'][feature_cols].values
+    x_train = df_by_split['train'][feature_cols].values.astype(np.float32)
     y_train = np.ravel(df_by_split['train'][outcome_col_name])
-
-    x_test = df_by_split['test'][feature_cols].values
+    
+    x_test = df_by_split['test'][feature_cols].values.astype(np.float32)
     y_test = np.ravel(df_by_split['test'][outcome_col_name])
     is_multiclass = len(np.unique(y_train)) > 2
     
@@ -287,6 +311,12 @@ if __name__ == '__main__':
     n_examples = int(np.ceil(x_train.shape[0] * (1 - args.validation_size)))
     n_features = x_train.shape[1]
     pipeline_param_grid_dict = dict()
+
+    # Perform hyper_searcher search
+    n_examples = int(np.ceil(x_train.shape[0] * (1 - args.validation_size)))
+    n_features = x_train.shape[1]
+    print('training on %s examples and %s features...'%(x_train.shape[0], x_train.shape[1]))
+
     for key, grid in raw_param_grid.items():
         filter_key = 'filter__' + key
         if filter_key in argdict:
@@ -309,7 +339,12 @@ if __name__ == '__main__':
     # Create classifier pipeline
     # --------------------------
     clf = args.clf_constructor(
-        random_state=int(args.random_seed), **fixed_args, **passthrough_args)
+        random_state=int(args.random_seed), **fixed_args, **passthrough_args)    
+    # Perform hyper_searcher search
+    splitter = Splitter(
+        size=args.validation_size, random_state=args.random_seed,
+        n_splits=args.n_splits,
+        cols_to_group=args.key_cols_to_group_when_splitting)
     step_list = list()
     if args.standardize_numeric_features:
         numeric_feature_ids = [
@@ -332,6 +367,7 @@ if __name__ == '__main__':
     # Assign training instances to splits by provided keys
     key_train = splitter.make_groups_from_df(df_by_split['train'][key_cols])
 
+
     scoring_dict = dict()
     scoring_weights_dict = dict()
     for score_expr in args.scoring.split("+"):
@@ -348,7 +384,8 @@ if __name__ == '__main__':
     # ----------------------------------
     hyper_searcher = GridSearchCV(
         prediction_pipeline, pipeline_param_grid_dict,
-        scoring=scoring_dict, cv=splitter, refit=False, return_train_score=True, verbose=5)
+        scoring=scoring_dict, cv=splitter, refit=False,
+        return_train_score=True, verbose=5)
     hyper_searcher.fit(x_train, y_train, groups=key_train)
 
     # Pretty tables for results of hyper_searcher search
@@ -363,32 +400,62 @@ if __name__ == '__main__':
                 target_arr += wt * cv_perf_df[src_colname]
             cv_perf_df[target_colname] = target_arr
 
-    tr_split_keys = ['mean_train_score'] + ['split%d_train_score' % a for a in range(args.n_splits)]
-    te_split_keys = ['mean_test_score'] + ['split%d_test_score' % a for a in range(args.n_splits)]
-    cv_tr_perf_df = cv_perf_df[['params'] + tr_split_keys].copy()
-    cv_te_perf_df = cv_perf_df[['params'] + te_split_keys].copy()
+    tr_split_keys = ['params', 'mean_train_score'] + [
+        'split%d_train_score' % a for a in range(args.n_splits)]
+    te_split_keys = ['params', 'mean_test_score'] + [
+        'split%d_test_score' % a for a in range(args.n_splits)]
+    cv_tr_perf_df = cv_perf_df[tr_split_keys].copy()
+    cv_te_perf_df = cv_perf_df[te_split_keys].copy()
+    cv_tr_perf_df.rename(
+        dict(zip(
+            tr_split_keys,
+            [a.replace('_train', '') for a in tr_split_keys])),
+        axis='columns',
+        inplace=True)
+    cv_te_perf_df.rename(
+        dict(zip(
+            te_split_keys,
+            [a.replace('_test', '') for a in te_split_keys])),
+        axis='columns',
+        inplace=True)
 
-    score_on_worst_split_S = np.min(cv_te_perf_df[te_split_keys], axis=1)
+    from IPython import embed; embed()
+    if False:
+        # TODO release this feature
+        # If any simpler model achieved a score within the 'best' model's range,
+        # use that simpler model instead.
 
-    # Select hyperparameter config scores best on test set
-    best_row_id = cv_te_perf_df['mean_test_score'].argmax()
+        # Build the simplicity score function from its str specification
+        calc_simplicity_score = eval(args.simplicity_score_func.replace(
+            "d['", "d['classifier__"))
+        S = cv_te_perf_df.shape[0]
+        simplicity_S = np.zeros(S)
+        for ss in range(S):
+            param_dict = cv_te_perf_df.loc[ss, 'params']
+            simplicity_S[ss] = calc_simplicity_score(param_dict, n_examples, n_features)
+        cv_te_perf_df['simplicity_score'] = simplicity_S
+    
+        score_on_worst_split_S = np.min(cv_te_perf_df.values[:,2:], axis=1)
+        cv_te_perf_df['worst_split_+_simplicity_score'] = score_on_worst_split_S + simplicity_S
 
-    # If any simpler model achieved a score within the picked model's range, use that instead
-    S = cv_te_perf_df.shape[0]
-    calc_simplicity_score = eval(args.simplicity_score_func.replace("d['", "d['classifier__"))
-    simplicity_S = np.zeros(S)
-    for ss in range(S):
-        param_dict = cv_te_perf_df.loc[ss, 'params']
-        simplicity_S[ss] = calc_simplicity_score(param_dict, n_examples, n_features)
-    bmask_S = cv_te_perf_df['mean_test_score'].values >= score_on_worst_split_S[best_row_id]
-    score_S = cv_te_perf_df['mean_test_score'].values * bmask_S + simplicity_S * bmask_S
+        mean_test_score_S = cv_te_perf_df['mean_score'].values
+        best_row_id = mean_test_score_S.argmax()
+        bmask_S = mean_test_score_S >= score_on_worst_split_S[best_row_id]
+        total_score_S = -np.inf + np.zeros(S)
+        total_score_S[bmask_S] = (
+            mean_test_score_S[bmask_S] + simplicity_S[bmask_S])
+        cv_te_perf_df['total_score'] = total_score_S
+    else:
+        mean_test_score_S = cv_te_perf_df['mean_score'].values
+        cv_te_perf_df['total_score'] = mean_test_score_S.copy()
 
-    cv_te_perf_df['score_with_simplicity'] = score_S
-    best_row_id = score_S.argmax()
+    # Select the single best set of hyperparameters
+    best_row_id = cv_te_perf_df['total_score'].argmax()
     best_param_dict = cv_te_perf_df.loc[best_row_id, 'params']
     hyper_searcher.best_estimator_ = hyper_searcher.estimator
     hyper_searcher.best_estimator_.set_params(**best_param_dict)
-    # Refit!
+
+    # Refit the best estimator with these hypers!
     hyper_searcher.best_estimator_.fit(x_train, y_train)
 
     # Threshold search
@@ -466,6 +533,11 @@ if __name__ == '__main__':
         best_clf = ThresholdClassifier(hyper_searcher.best_estimator_, threshold=best_thr)
     else:
         best_clf = hyper_searcher.best_estimator_
+    
+    # save model to disk
+    print('saving %s model to disk'%args.clf_name)
+    model_file = os.path.join(args.output_dir, args.clf_name+'_trained_model.joblib')
+    dump(best_clf, model_file)
 
 
     # Evaluation of selected model
@@ -509,12 +581,38 @@ if __name__ == '__main__':
         accuracy = accuracy_score(y, y_pred)
         balanced_accuracy = balanced_accuracy_score(y, y_pred)
 
-        f1_score_val = f1_score(y, y_pred)
+        log2_loss = log_loss(y, y_pred_proba, normalize=True) / np.log(2)
         row_dict.update(dict(
-            confusion_html=cm_df.to_html(),
-            accuracy=accuracy,
-            balanced_accuracy=balanced_accuracy,
-            f1_score=f1_score_val))
+            confusion_html=cm_df.to_html(), cross_entropy_base2=log2_loss,
+            accuracy=accuracy, balanced_accuracy=balanced_accuracy))
+
+        if not is_multiclass:
+            f1 = f1_score(y, y_pred)
+
+            avg_precision = average_precision_score(y, y_pred_proba)
+            roc_auc = roc_auc_score(y, y_pred_proba)
+            row_dict.update(dict(f1_score=f1, average_precision=avg_precision, AUROC=roc_auc))
+
+            # Plots
+            roc_fpr, roc_tpr, _ = roc_curve(y, y_pred_proba)
+            ax = plt.gca()
+            ax.plot(roc_fpr, roc_tpr)
+            ax.set_xlabel('False Positive Rate')
+            ax.set_ylabel('True Positive Rate')
+            ax.set_xlim([0, 1])
+            ax.set_ylim([0, 1])
+            plt.savefig(os.path.join(fig_dir, '{split_name}_roc_curve.png'.format(split_name=split_name)))
+            plt.clf()
+
+            pr_precision, pr_recall, _ = precision_recall_curve(y, y_pred_proba)
+            ax = plt.gca()
+            ax.plot(pr_recall, pr_precision)
+            ax.set_xlabel('Recall')
+            ax.set_ylabel('Precision')
+            ax.set_xlim([0, 1])
+            ax.set_ylim([0, 1])
+            plt.savefig(os.path.join(fig_dir, '{split_name}_pr_curve.png'.format(split_name=split_name)))
+            plt.clf()
 
         npv, ppv = np.diag(cm_df.values) / cm_df.sum(axis=0)
         tnr, tpr = np.diag(cm_df.values) / cm_df.sum(axis=1)
@@ -571,7 +669,6 @@ if __name__ == '__main__':
     csv_path = os.path.join(fig_dir, 'performance_df.csv')
     perf_df.to_csv(csv_path)
     print("Wrote to: %s" % csv_path)
-
 
 
     # Write HTML report
@@ -673,11 +770,14 @@ if __name__ == '__main__':
                             text('Hyperparameter Search results')
                     with tag('h4'):
                         text('Train Scores across splits')
-
+                    with tag('p'):
+                        text("Score function: %s" % args.scoring)
                     doc.asis(pd.DataFrame(cv_tr_perf_df).to_html())
 
                     with tag('h4'):
                         text('Heldout Scores across splits')
+                    with tag('p'):
+                        text("Score function: %s" % args.scoring)
                     doc.asis(pd.DataFrame(cv_te_perf_df).to_html())
 
                 # Add dark region on right side

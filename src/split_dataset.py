@@ -55,8 +55,8 @@ def split_dataframe_by_keys(data_df=None, size=0, random_state=0, cols_to_group=
 if __name__ == '__main__':
     # Parse command line arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument('--input', required=True)
-    parser.add_argument('--data_dict', required=True)
+    parser.add_argument('--input', type=str, required=True)
+    parser.add_argument('--data_dict', type=str, required=True)
     parser.add_argument('--test_size', required=True, type=float)
     parser.add_argument('--output_dir', default=None)
     parser.add_argument('--train_csv_filename', default='train.csv')
@@ -65,7 +65,8 @@ if __name__ == '__main__':
     parser.add_argument('--group_cols', nargs='*', default=[None])
     parser.add_argument('--random_state', required=False, type=int, default=20190206)
     args = parser.parse_args()
-
+    
+    print('Creating train-test splits for %s'%args.input)
     # Import data
     df = pd.read_csv(args.input)
     data_dict = json.load(open(args.data_dict))
@@ -92,8 +93,9 @@ if __name__ == '__main__':
         args.train_csv_filename = os.path.join(fdir_train_test, args.train_csv_filename)
         args.test_csv_filename = os.path.join(fdir_train_test, args.test_csv_filename)
         if args.output_data_dict_filename is not None:
-            args.output_data_dict_filename = os.path.join(fdir_train_test, args.output_data_dict_filename)
-
+            args.output_data_dict_filename = os.path.join(fdir_train_test, args.output_data_dict_filename)    
+    
+    print('saving train test files to :\n%s\n%s'%(args.train_csv_filename, args.test_csv_filename))
     train_df.to_csv(args.train_csv_filename, index=False)
     test_df.to_csv(args.test_csv_filename, index=False)
     

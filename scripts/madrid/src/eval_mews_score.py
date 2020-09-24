@@ -41,7 +41,9 @@ if __name__ == '__main__':
     parser.add_argument('--test_csv_files', type=str, required=True)
     parser.add_argument('--data_dict_files', type=str, required=True)
     parser.add_argument('--output_dir', default='./html/', type=str, required=False)
-
+    parser.add_argument('--merge_x_y', default=True,
+                                type=lambda x: (str(x).lower() == 'true'), required=False,
+                                help='If True, features and outcomes are merged on id columns, if false, they get concatenated.')
     parser.add_argument('--outcome_col_name', type=str, required=False)
     parser.add_argument('--key_cols_to_group_when_splitting', type=str,
             default=None, nargs='*')
@@ -54,19 +56,8 @@ if __name__ == '__main__':
     
     args=parser.parse_args()
     fig_dir = os.path.abspath(args.output_dir)
-    
-    # key[5:] strips the 'grid_' prefix from the argument
     argdict = vars(args)
-    #raw_param_grid = {
-    #    key[5:]: argdict[key] for key in argdict if key.startswith('grid_')}
-    '''
-    raw_param_grid = dict()
-    for key, val  in argdict.items():
-        if key.startswith('grid_'):
-            raw_param_grid[key[5:]] = val
-        elif key.startswith('filter_'):
-            raw_param_grid[key] = val
-    '''
+    
     # Parse unspecified arguments to be passed through to the classifier
     def auto_convert_str(x):
         try:
@@ -79,8 +70,8 @@ if __name__ == '__main__':
         except ValueError:
             return x
 
-    # Import data
 
+    # Import data
     feature_cols = []
     outcome_cols = []
 
@@ -101,16 +92,23 @@ if __name__ == '__main__':
                     c['name'] for c in data_fields if (
                         c['role'].lower() in ('output', 'outcome')
                         and c['name'] not in feature_cols)])
-
+            
             # TODO use json data dict to load specific columns as desired types
             more_df =  pd.read_csv(csv_file)
             if cur_df is None:
                 cur_df = more_df
             else:
-                cur_df = cur_df.merge(more_df, on=key_cols)
+                if args.merge_x_y:
+                    cur_df = cur_df.merge(more_df, on=key_cols)
+                else:
+                    cur_df = pd.concat([cur_df, more_df], axis=1)
+                    cur_df = cur_df.loc[:,~cur_df.columns.duplicated()]
+                    
         df_by_split[split_name] = cur_df
 
-
+    # for consistency
+    feature_cols.sort()
+    
     outcome_col_name = args.outcome_col_name
     if outcome_col_name is None:
         if len(outcome_cols) > 1:
@@ -226,14 +224,14 @@ if __name__ == '__main__':
         accuracy = accuracy_score(y, y_pred)
         balanced_accuracy = balanced_accuracy_score(y, y_pred)
         log2_loss = log_loss(y, y_scores/max_mews_score, normalize=True) / np.log(2)
-        row_dict.update(dict(confusion_html=cm_df.to_html(), cross_entropy_base2=log2_loss, accuracy=accuracy, balanced_accuracy=balanced_accuracy))
+        row_dict.update(dict(cross_entropy_base2=log2_loss, accuracy=accuracy, balanced_accuracy=balanced_accuracy))
         if not is_multiclass:
             f1 = f1_score(y, y_pred)
 
             avg_precision = average_precision_score(y, y_scores)
             roc_auc = roc_auc_score(y, y_scores)
             row_dict.update(dict(f1_score=f1, average_precision=avg_precision, AUROC=roc_auc))
-
+            '''
             # Plots
             roc_fpr, roc_tpr, _ = roc_curve(y, y_scores)
             ax = plt.gca()
@@ -254,12 +252,15 @@ if __name__ == '__main__':
             ax.set_ylim([0, 1])
             plt.savefig(os.path.join(fig_dir, '{split_name}_pr_curve_random_seed={random_seed}.png'.format(split_name=split_name, random_seed=str(args.random_seed))))
             plt.clf()
+            '''
 
         row_dict_list.append(row_dict)
 
     perf_df = pd.DataFrame(row_dict_list)
     perf_df = perf_df.set_index('split_name')
     #print('saving to %s'%(os.path.join(fig_dir, 'performance_df_random_seed={random_seed}.csv'.format(random_seed=str(args.random_seed)))))
-    perf_df.to_csv(os.path.join(fig_dir, 'performance_df_random_seed={random_seed}.csv'.format(random_seed=str(args.random_seed))))
+    perf_df.to_csv(os.path.join(fig_dir, 'mews_performance_df.csv'))
+    best_thr_df = pd.DataFrame({'best_thr':best_thr}, index=[0])
+    best_thr_df.to_csv(os.path.join(fig_dir, 'mews_best_threshold.csv'), index=False)
 
 

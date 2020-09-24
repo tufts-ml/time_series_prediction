@@ -11,9 +11,9 @@ sys.path.append(config_loader_dir)
 
 from config_loader import (
     D_CONFIG, DATASET_TOP_PATH,
-    DATASET_STD_PATH, DATASET_SPLIT_PATH,
-    DATASET_PERTSTEP_SPLIT_PATH, PROJECT_REPO_DIR, PROJECT_CONDA_ENV_YAML,
-    RESULTS_PATH, RESULTS_PERTSTEP_PATH, RESULTS_TOP_PATH)
+    DATASET_SITE_PATH, DATASET_SPLIT_PATH,
+    PROJECT_REPO_DIR, PROJECT_CONDA_ENV_YAML,
+    RESULTS_TOP_PATH)
 
 
 rule compute_summary_statistics:
@@ -21,8 +21,8 @@ rule compute_summary_statistics:
         script=os.path.join(os.path.abspath('../'), 'src', 'summary_statistics.py'),
         
     params:
-        preproc_data_dir=DATASET_STD_PATH,
-        data_dicts_dir=DATASET_TOP_PATH,
+        preproc_data_dir=DATASET_SITE_PATH,
+        data_dicts_dir=DATASET_SITE_PATH,
         output_dir=RESULTS_TOP_PATH
 
     shell:

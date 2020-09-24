@@ -48,8 +48,8 @@ rule train_and_evaluate_classifier:
             --key_cols_to_group_when_splitting {{SPLIT_KEY_COL_NAMES}} \
             --n_splits 3 \
             --validation_size 0.1 \
-            --scoring roc_auc \
-            --threshold_scoring balanced_accuracy \
+            --scoring roc_auc_score+0.001*cross_entropy_base2_score \
+            --threshold_scoring balanced_accuracy_score \
             --class_weight balanced \
         '''\
         .replace("{{RESULTS_PATH}}", RESULTS_PATH)\

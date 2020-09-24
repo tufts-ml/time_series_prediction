@@ -23,6 +23,17 @@ import time
 import copy
 from scipy.stats import skew
 
+def get_fenceposts(ts_df, id_cols):
+    keys_df = ts_df[id_cols].copy()
+    for col in id_cols:
+        if not pd.api.types.is_numeric_dtype(keys_df[col].dtype):
+            keys_df[col] = keys_df[col].astype('category')
+            keys_df[col] = keys_df[col].cat.codes
+    fp = np.hstack([0, 1 + np.flatnonzero(np.diff(keys_df.values, axis=0).any(axis=1)), keys_df.shape[0]]) 
+    return fp
+
+
+
 def main():
     parser = argparse.ArgumentParser(description="Script for collapsing"
                                                  "time features or adding"
@@ -50,11 +61,9 @@ def main():
                         default='[(0, 10), (0, 25), (0, 50), (50, 100), (75, 100), (90, 100), (0, 100)]',
                         help="Enclose pairs list with 's and [], list all desired ranges in "
                              "parentheses like this: '[(0, 50), (25, 75), (50, 100)]'")
-    parser.add_argument('--max_time_step', type=int, required=False,
-                        default=None, help="Specify the maximum number of time "
-                                         "steps to collapse on, for example, "
-                                         "input 48 for 48 hours at 1 hour time steps. "
-                                         "Set to -1 for no limit.")
+    parser.add_argument('--tstops', type=str, required=False,
+                        default=None, help='''csv containing end times of each patient-stay-slice. If set as None, 
+                        then, the last timestamp is considered as the end of each patient-stay-slice''')
 
     # TODO: Add arithmetic opertions (ie column1 * column2 / column3)
     parser.add_argument('--add_feature', default=False, action='store_true')
@@ -81,15 +90,17 @@ def main():
     data_dict = None
 
     # transform data
-    if args.max_time_step is None:
+    if args.tstops is None:
         print('collapsing entire history of data..')
-    else:
-        print('collapsing first %s hours of data..'%(args.max_time_step))
-
+        tstops_df = None
+    else :
+        print('collapsing features in patient-stay-slices with end times stored in %s'%(args.tstops))
+        tstops_df = pd.read_csv(args.tstops)
+    
     t1 = time.time()
     if args.collapse:
-        ts_df = collapse_np(ts_df, args)
-        data_dict = update_data_dict_collapse(args)
+        ts_df = collapse_np(ts_df, args.data_dict, args.collapse_range_features, args.range_pairs, tstops_df)
+        data_dict = update_data_dict_collapse(args.data_dict, args.collapse_range_features, args.range_pairs)
     elif args.add_feature:
         ts_df = add_new_feature(ts_df, args)
         data_dict = update_data_dict_add_feature(args)
@@ -108,7 +119,7 @@ def main():
         data_output = '{}.csv'.format(args.output)
     ts_df.to_csv(data_output, index=False)
     print("Wrote to output CSV:\n%s" % (data_output))
-
+    
     # save data dictionary to file
     if args.data_dict_output is None:
         file_name = args.data_dict_path.split('/')[-1].split('.')[0]
@@ -119,15 +130,15 @@ def main():
         dict_output = '{}.json'.format(args.data_dict_output)
     with open(dict_output, 'w') as f:
         json.dump(data_dict, f, indent=4)
+    
 
-
-def collapse_np(ts_df, args):
-    id_cols = parse_id_cols(args.data_dict)
+def collapse_np(ts_df, data_dict, collapse_range_features, range_pairs, tstops_df):
+    id_cols = parse_id_cols(data_dict)
     id_cols = remove_col_names_from_list_if_not_in_df(id_cols, ts_df)
-    feature_cols = parse_feature_cols(args.data_dict)
+    feature_cols = parse_feature_cols(data_dict)
     feature_cols = remove_col_names_from_list_if_not_in_df(feature_cols, ts_df)
-    time_col = parse_time_col(args.data_dict)
-
+    time_col = parse_time_col(data_dict)
+    
     # Obtain fenceposts based on where any key differs
     # Be sure keys are converted to a numerical datatype (so fencepost detection is possible)
     keys_df = ts_df[id_cols].copy()
@@ -145,44 +156,106 @@ def collapse_np(ts_df, args):
 
     timestamp_arr = np.asarray(ts_df[time_col].values.copy(), dtype=np.float64)
     features_arr = ts_df[feature_cols].values
-
-    for op in args.collapse_range_features.split(' '):
-        for low, high in ast.literal_eval(args.range_pairs):           
-            print('Collapsing with func %s in %d to %d percentile range'%(op, low, high))
-            t1 = time.time()
+    
+    if tstops_df is None:
+        ts_with_max_tstop_df = ts_df[id_cols + [time_col]].groupby(id_cols, as_index=False).max().rename(columns={time_col:'max_tstop'})
+        tstops_arr = np.asarray(pd.merge(ts_df, ts_with_max_tstop_df, on=id_cols, how='left')['max_tstop'], dtype=np.float64)
+    else:
+        tstops_arr = np.asarray(pd.merge(ts_df, tstops_df, on=id_cols, how='left')['tstop'], dtype=np.float64)
+    
+    for op_ind, op in enumerate(collapse_range_features.split(' ')):
+        print('Collapsing with func %s'%op)
+        t1=time.time()
+        for low, high in ast.literal_eval(range_pairs):           
+            #print('Collapsing with func %s in %d to %d percentile range'%(op, low, high))
+            #t1 = time.time()
             # initialize collapsed dataframe for the current summary function
             n_rows = len(fp) - 1
             n_feats = len(feature_cols)
             collapsed_feat_arr = np.zeros([n_rows, n_feats])
 
             # loop through all the subject episode fenceposts
+            empty_arrays = 0
             for p in range(n_rows):
                 # get the data for the current fencepost
                 fp_start = fp[p]
                 fp_end = fp[p+1]
-                lower_bound, upper_bound = calc_start_and_stop_indices_from_percentiles(
-                    timestamp_arr[fp_start:fp_end], start_percentile=low, end_percentile=high, max_time_step=args.max_time_step)
+
+                if (low[-1]=='%') and (high[-1]=='%'):
+                    lower_bound, upper_bound = calc_start_and_stop_indices_from_percentages(
+                            timestamp_arr[fp_start:fp_end], start_percentage=int(low[:-1]), end_percentage=int(high[:-1]), tstops_array=tstops_arr[fp_start:fp_end])
+                elif ('T' in low) and ('T' in high):
+                    low_hrs = low.split('-')[1]
+                    low_hrs = int(low_hrs.replace('h', ''))
+                    high_hrs = high.split('-')[1]
+                    high_hrs = int(high_hrs.replace('h', ''))
+                    lower_bound, upper_bound = calc_start_and_stop_indices_from_abs_hrs(
+                            timestamp_arr[fp_start:fp_end], start_hr=low_hrs, end_hr=high_hrs, tstops_array=tstops_arr[fp_start:fp_end])
+                else:
+                    lower_bound, upper_bound = calc_start_and_stop_indices_from_percentiles(timestamp_arr, 
+                            start_percentile=low, end_percentile=high, max_time_step=None)
+
 
                 cur_feat_arr = features_arr[fp_start:fp_end,:].copy()
                 cur_timestamp_arr = timestamp_arr[fp_start:fp_end]
-                
+
+                if len(cur_feat_arr[lower_bound:upper_bound])==0:
+                    empty_arrays+=1
+
                 # compute summary function on that particular subject episode dataframe
                 collapsed_feat_arr[p,:] = COLLAPSE_FUNCTIONS_np[op](cur_feat_arr, lower_bound, upper_bound, cur_timestamp_arr=cur_timestamp_arr)
-
-            t2 = time.time()
-            print('done in %d seconds'%(t2-t1)) 
-            total_time = total_time + t2-t1 
             
+            if op_ind==0:
+                print('percentage of empty arrays in %s to %s of patient-stay-slice is %.2f'%(low, high, (empty_arrays/n_rows)*100))
             list_of_collapsed_feat_arr.append(collapsed_feat_arr)
             list_of_collapsed_feat_names.extend([x+'_'+op+'_'+str(low)+'_to_'+str(high) for x in feature_cols])
+        
+        t2 = time.time()
+        print('done in %d seconds'%(t2-t1))
+        total_time = total_time + t2-t1
     print('-----------------------------------------')
-    print('total time taken = %d seconds'%total_time)
+    print('total time taken to collapse features = %d seconds'%total_time)
     print('-----------------------------------------')
     collapsed_df = pd.DataFrame(np.hstack(list_of_collapsed_feat_arr), columns=list_of_collapsed_feat_names)
     
     for col_name in id_cols[::-1]:
         collapsed_df.insert(0, col_name, ts_df[col_name].values[fp[:-1]].copy())
     return collapsed_df
+
+
+def calc_start_and_stop_indices_from_percentages(timestamp_arr, start_percentage, end_percentage, tstops_array=None):
+    ''' Find start and stop indices selecting start percentage to stop percentage of  time in tstop array'''
+    tstop = np.max(tstops_array)
+    lower_bound = np.searchsorted(timestamp_arr, start_percentage*tstop/100)
+    upper_bound = np.searchsorted(timestamp_arr, (end_percentage+0.001)*tstop/100)
+
+    # if lower bound and upper bound are the same, add 1 to the upper bound
+    if lower_bound >= upper_bound:
+        upper_bound = lower_bound + 1
+    assert upper_bound <= timestamp_arr.size + 1
+    
+    return int(lower_bound), int(upper_bound)
+
+def calc_start_and_stop_indices_from_abs_hrs(timestamp_arr, start_hr, end_hr, tstops_array=None):
+    ''' Find start and stop indices selecting start percentage to stop percentage of  time in tstop array'''
+    tstop = np.max(tstops_array)
+    lower_bound = np.searchsorted(timestamp_arr, tstop-start_hr)
+    upper_bound = np.searchsorted(timestamp_arr, tstop-end_hr+0.001)
+
+        # if lower bound and upper bound are the same, add 1 to the upper bound
+    if lower_bound >= upper_bound:
+        upper_bound = lower_bound + 1
+    assert upper_bound <= timestamp_arr.size + 1
+
+    return int(lower_bound), int(upper_bound)
+
+
+    # if lower bound and upper bound are the same, add 1 to the upper bound
+    if lower_bound >= upper_bound:
+        upper_bound = lower_bound + 1
+    assert upper_bound <= timestamp_arr.size + 1
+
+    return int(lower_bound), int(upper_bound)
 
 
 def calc_start_and_stop_indices_from_percentiles(timestamp_arr, start_percentile, end_percentile, max_time_step=None):
@@ -218,19 +291,26 @@ def calc_start_and_stop_indices_from_percentiles(timestamp_arr, start_percentile
 
     # Consider last data point as first timestamp + step size input by the user. For eg. If the step size is 1hr, then consider only 
     # first hour of time series data
+    
     min_timestamp = timestamp_arr[0]
-    if (max_time_step is None) or (max_time_step==-1):
+    if max_time_step is None:
         max_timestamp = timestamp_arr[-1]
-    elif (min_timestamp + max_time_step > timestamp_arr[-1]):
-        max_timestamp = timestamp_arr[-1]
+    elif int(max_time_step) > 0:
+        if (min_timestamp + int(max_time_step)) >= timestamp_arr[-1]:
+            max_timestamp = timestamp_arr[-1]
+        else:
+            max_timestamp = min_timestamp + int(max_time_step)
     else :
-        max_timestamp = min_timestamp + max_time_step
+        max_timestamp = timestamp_arr[-1]+int(max_time_step)
+    
     lower_bound = np.searchsorted(timestamp_arr, (min_timestamp + (max_timestamp - min_timestamp)*start_percentile/100))
     upper_bound = np.searchsorted(timestamp_arr, (min_timestamp + (max_timestamp - min_timestamp)*(end_percentile + 0.001)/100))
+    
     # if lower bound and upper bound are the same, add 1 to the upper bound
     if lower_bound >= upper_bound:
         upper_bound = lower_bound + 1
     assert upper_bound <= timestamp_arr.size + 1
+
     return int(lower_bound), int(upper_bound)
 
     # TODO handle this case??
@@ -283,28 +363,19 @@ def add_new_feature(ts_df, args):
 
 
 # DATA DICTIONARY STUFF: PARSING FUNCTIONS AND DICT UPDATING
-def update_data_dict_collapse(args): 
-    data_dict = args.data_dict
+def update_data_dict_collapse(data_dict, collapse_range_features, range_pairs): 
 
-    id_cols = parse_id_cols(args.data_dict)
-    feature_cols = parse_feature_cols(args.data_dict)
+    id_cols = parse_id_cols(data_dict)
+    feature_cols = parse_feature_cols(data_dict)
 
     new_fields = []
     for name in id_cols:
         for col in data_dict['fields']:
             if col['name'] == name: 
                 new_fields.append(col)
-    '''
-    for op in args.collapse_features.split(' '):
-        for name in feature_cols:
-            for col in data_dict['fields']:
-                if col['name'] == name: 
-                    new_dict = dict(col)
-                    new_dict['name'] = '{}_{}'.format(name, op)
-                    new_fields.append(new_dict)
-    '''
-    for op in args.collapse_range_features.split(' '):
-        for low, high in ast.literal_eval(args.range_pairs):
+                
+    for op in collapse_range_features.split(' '):
+        for low, high in ast.literal_eval(range_pairs):
             for name in feature_cols:
                 for col in data_dict['fields']:
                     if col['name'] == name: 
@@ -358,13 +429,14 @@ def parse_feature_cols(data_dict):
     for col in data_dict['fields']:
         if 'role' in col and col['role'] in ('feature', 'measurement', 'covariate'):
             non_time_cols.append(col['name'])
+    non_time_cols.sort()
     return non_time_cols
 
 def parse_time_col(data_dict):
     time_cols = []
     for col in data_dict['fields']:
         # TODO avoid hardcoding a column name
-        if (col['name'] == 'hours' or col['role'].count('time')):
+        if (col['name'] == 'hours' or col['role']=='timestamp_relative'):
             time_cols.append(col['name'])
     return time_cols[-1]
             
@@ -390,8 +462,11 @@ def remove_col_names_from_list_if_not_in_df(col_list, df):
 # NEW collapse functions
 def replace_all_nan_cols_with_zeros(data_np, lower_bound, upper_bound, **kwargs):
     percentile_data_np = data_np[lower_bound:upper_bound,:]
-    all_nan_col_ind = np.isnan(percentile_data_np).all(axis = 0)
-    if sum(all_nan_col_ind)>0:
+
+    if len(percentile_data_np)==0:
+        percentile_data_np = np.zeros((1, percentile_data_np.shape[1]))
+    else:
+        all_nan_col_ind = np.isnan(percentile_data_np).all(axis = 0)
         percentile_data_np[:,all_nan_col_ind] = 0 
     return percentile_data_np
 
@@ -407,7 +482,7 @@ def collapse_median_np(data_np, lower_bound, upper_bound, **kwargs):
     
 def collapse_standard_dev_np(data_np, lower_bound, upper_bound, **kwargs):
     # replace columns containing all nans to 0 because nanfunc throws error on all nan columns
-    percentile_data_np = replace_all_nan_cols_with_zeros(data_np, lower_bound, upper_bound)   
+    percentile_data_np = replace_all_nan_cols_with_zeros(data_np, lower_bound, upper_bound)  
     return np.nanstd(percentile_data_np, axis=0)
     
 def collapse_min_np(data_np, lower_bound, upper_bound, **kwargs):

@@ -25,23 +25,51 @@ update_os_environ_vars()
 DATASET_TOP_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["DATASET_TOP_PATH_LIST"])))
 update_os_environ_vars()
 
-DATASET_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["DATASET_PATH_LIST"])))
+DATASET_SITE_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["DATASET_SITE_PATH_LIST"])))
 update_os_environ_vars()
 
-DATASET_STD_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["STD_PATH_LIST"])))
+# DATASET_STD_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["STD_PATH_LIST"])))
+# update_os_environ_vars()
+
+DATASET_SPLIT_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["DATASET_SPLIT_PATH_LIST"])))
 update_os_environ_vars()
 
-DATASET_SPLIT_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["SPLIT_PATH_LIST_FEAT_PER_SEQUENCE"])))
+DATASET_FEAT_PER_TSLICE_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["FEAT_PER_TIMESLICE_PATH_LIST"])))
 update_os_environ_vars()
 
-DATASET_PERTSTEP_SPLIT_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["SPLIT_PATH_LIST_FEAT_PER_TIMESTEP"])))
+DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["COLLAPSED_FEAT_PER_TIMESLICE_PATH_LIST"])))
+update_os_environ_vars()
+
+DATASET_COLLAPSED_FEAT_PER_SEQUENCE_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["COLLAPSED_FEAT_PER_SEQUENCE_PATH_LIST"])))
+update_os_environ_vars()
+
+DATASET_FEAT_PER_SEQUENCE_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["FEAT_PER_SEQUENCE_PATH_LIST"])))
+update_os_environ_vars()
+
+DATASET_FEAT_PER_TSTEP_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["FEAT_PER_TIMESTEP_PATH_LIST"])))
 update_os_environ_vars()
 
 RESULTS_TOP_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["RESULTS_TOP_PATH_LIST"])))
 update_os_environ_vars()
 
-RESULTS_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["RESULTS_PATH_LIST_FEAT_PER_SEQUENCE"])))
+RESULTS_SPLIT_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["RESULTS_SPLIT_PATH_LIST"])))
 update_os_environ_vars()
 
-RESULTS_PERTSTEP_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["RESULTS_PATH_LIST_FEAT_PER_TIMESTEP"])))
+RESULTS_FEAT_PER_TSLICE_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["RESULTS_FEAT_PER_TIMESLICE_PATH_LIST"])))
+update_os_environ_vars()
+
+RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH = os.path.join(*list(map(os.path.expandvars,
+                                                                D_CONFIG["RESULTS_COLLAPSED_FEAT_PER_TIMESLICE_PATH_LIST"])))
+update_os_environ_vars()
+
+RESULTS_COLLAPSED_FEAT_PER_SEQUENCE_PATH = os.path.join(*list(map(os.path.expandvars,
+                                                                  D_CONFIG["RESULTS_COLLAPSED_FEAT_PER_SEQUENCE_PATH_LIST"])))
+update_os_environ_vars()
+
+RESULTS_FEAT_PER_SEQUENCE_PATH = os.path.join(*list(map(os.path.expandvars,
+                                                        D_CONFIG["RESULTS_FEAT_PER_SEQUENCE_PATH_LIST"])))
+update_os_environ_vars()
+
+RESULTS_FEAT_PER_TSTEP_PATH = os.path.join(*list(map(os.path.expandvars,
+                                                     D_CONFIG["RESULTS_FEAT_PER_TIMESTEP_PATH_LIST"])))
 update_os_environ_vars()

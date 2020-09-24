@@ -1,0 +1,136 @@
+'''
+Prediction of ICU Deterioration per full sequency with RNN's
+
+'''
+
+sys.path.append(os.path.abspath('../predictions_collapsed'))
+
+# Default environment variables
+# Can override with local env variables
+from config_loader import (
+    D_CONFIG, DATASET_TOP_PATH,
+    DATASET_SITE_PATH, DATASET_FEAT_PER_TSLICE_PATH,
+    DATASET_FEAT_PER_TSLICE_PATH,
+    PROJECT_REPO_DIR, PROJECT_CONDA_ENV_YAML,
+    DATASET_SPLIT_PATH)
+
+CLF_TRAIN_TEST_SPLIT_PATH = os.path.join(DATASET_FEAT_PER_TSLICE_PATH, 'classifier_train_test_split')
+
+# evaluate on the filtered tslices
+evaluate_tslice_hours_list=D_CONFIG['EVALUATE_TIMESLICE_LIST']
+
+# filtered sequences
+filtered_pertslice_csvs=[os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}","{feature}_before_icu_filtered_{tslice}_hours.csv").format(feature=feature, tslice=str(tslice)) for tslice in evaluate_tslice_hours_list for feature in ['vitals', 'labs']]
+
+rule filter_admissions_by_tslice_many_tslices:
+    input:
+        filtered_pertslice_csvs
+
+rule filter_admissions_by_tslice:
+    input:
+        script=os.path.join(os.path.abspath('../'), 'src', 'filter_admissions_by_tslice.py'),
+    
+    params:
+        preproc_data_dir = DATASET_SITE_PATH,
+        output_dir=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}")
+    
+    output:
+        filtered_demographics_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "demographics_before_icu_filtered_{tslice}_hours.csv"),
+        filtered_vitals_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "vitals_before_icu_filtered_{tslice}_hours.csv"),
+        filtered_labs_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "labs_before_icu_filtered_{tslice}_hours.csv"),
+        filtered_y_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "clinical_deterioration_outcomes_filtered_{tslice}_hours.csv")
+    
+    shell:
+        '''
+            python -u {input.script} \
+                --preproc_data_dir {params.preproc_data_dir} \
+                --tslice "{wildcards.tslice}" \
+                --output_dir {params.output_dir} \
+        '''
+
+rule make_features_and_outcomes:
+    input:
+        script=os.path.join(os.path.abspath('../'), 'src', 'make_features_and_outcomes_per_sequence.py'),
+    
+    params:
+        preproc_data_dir=DATASET_SITE_PATH,
+        output_dir=CLF_TRAIN_TEST_SPLIT_PATH
+    
+    output:
+        features_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "features.csv"),
+        outcomes_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "outcomes.csv")
+    
+    shell:
+        '''
+            python -u {input.script} \
+                --preproc_data_dir {params.preproc_data_dir} \
+                --output_dir {params.output_dir} \
+        '''
+
+rule split_into_train_and_test:
+    input:
+        script=os.path.join(PROJECT_REPO_DIR, 'src', 'split_dataset.py'),
+        features_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'features.csv'),
+        outcomes_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "outcomes.csv"),
+        features_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "features_dict.json"),
+        outcomes_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "outcomes_dict.json"),
+
+    params:
+        train_test_split_dir=CLF_TRAIN_TEST_SPLIT_PATH
+ 
+    output:  
+        x_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_train.csv'),
+        x_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_test.csv'),
+        y_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_train.csv'),
+        y_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_test.csv'),
+        x_dict_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_dict.json'),
+        y_dict_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_dict.json')
+
+    conda:
+        PROJECT_CONDA_ENV_YAML
+    
+    shell:
+        '''
+            mkdir -p {{params.train_test_split_dir}} && \
+            python -u {{input.script}} \
+                --input {{input.features_csv}} \
+                --data_dict {{input.features_json}} \
+                --random_state {split_random_state} \
+                --test_size {split_test_size} \
+                --group_cols {split_key_col_names} \
+                --train_csv_filename {{output.x_train_csv}} \
+                --test_csv_filename {{output.x_test_csv}} \
+                --output_data_dict_filename {{output.x_dict_json}} \
+
+            python -u {{input.script}} \
+                --input {{input.outcomes_csv}} \
+                --data_dict {{input.outcomes_json}} \
+                --random_state {split_random_state} \
+                --test_size {split_test_size} \
+                --group_cols {split_key_col_names} \
+                --train_csv_filename {{output.y_train_csv}} \
+                --test_csv_filename {{output.y_test_csv}} \
+                --output_data_dict_filename {{output.y_dict_json}} \
+        '''.format(
+            split_random_state=D_CONFIG['SPLIT_RANDOM_STATE'],
+            split_test_size=D_CONFIG['SPLIT_TEST_SIZE'],
+            split_key_col_names=D_CONFIG['SPLIT_KEY_COL_NAMES'],
+            )
+
+
+rule impute_missing_values:
+    input:
+        script=os.path.join(os.path.abspath('../'), 'src', 'impute_missing_values.py'),
+        x_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_train.csv'),
+        x_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_test.csv'),
+        x_dict_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_dict.json')
+    
+    params:
+        train_test_split_dir=CLF_TRAIN_TEST_SPLIT_PATH
+    
+    shell:
+        '''
+            python -u {input.script} \
+                --train_test_split_dir {params.train_test_split_dir} \
+                --output_dir {params.train_test_split_dir} \
+        '''     
