@@ -45,6 +45,8 @@ if __name__ == '__main__':
                        help='name of outcome column in test dataframe')
     parser.add_argument('--random_seed_list', default='clinical_deterioration_outcome', type=str,
                        help='name of outcome column in test dataframe')
+    parser.add_argument('--output_dir', default='clinical_deterioration_outcome', type=str,
+                       help='name of outcome column in test dataframe')
     
     
     args = parser.parse_args()
@@ -202,4 +204,6 @@ if __name__ == '__main__':
             axs.set_ylabel(perf_measure, fontsize=fontsize)
             axs.legend(fontsize=fontsize-2, loc='upper left')
             axs.tick_params(labelsize=fontsize)
-            f.savefig(os.path.join(args.clf_models_dir, fig_aka))
+            fig_name = os.path.join(args.output_dir, fig_aka)
+            f.savefig(fig_name)
+            print('Saved results to %s'%fig_name)

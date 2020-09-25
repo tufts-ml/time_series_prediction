@@ -23,7 +23,7 @@ warnings.filterwarnings("ignore")
 
 from skorch.callbacks import (Callback, LoadInitState, 
                               TrainEndCheckpoint, Checkpoint, 
-                              EpochScoring, EarlyStopping, LRScheduler, GradientNormClipping)
+                              EpochScoring, EarlyStopping, LRScheduler, GradientNormClipping, TrainEndCheckpoint)
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from skorch.utils import noop
@@ -61,6 +61,8 @@ def main():
                         help='dir in which to simulated data is saved.Must be provide if is_data_simulated = True')
     parser.add_argument('--output_dir', type=str, default=None, 
                         help='directory where trained model and loss curves over epochs are saved')
+    parser.add_argument('--output_filename_prefix', type=str, default=None, 
+                        help='prefix for the training history jsons and trained classifier')
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
@@ -97,6 +99,8 @@ def main():
     X_test, y_test = test_vitals.get_batch_data(batch_id=0)
     _,T,F = X_train.shape
     
+    print('number of time points : %s\n number of features : %s\n'%(T,F))
+    
     # set class weights as 1/(number of samples in class) for each class to handle class imbalance
     class_weights = torch.tensor([1/(y_train==0).sum(),
                                   1/(y_train==1).sum()]).double()
@@ -109,10 +113,15 @@ def main():
     compute_grad_norm = ComputeGradientNorm(norm_type=2)
 
     # LSTM
-    output_filename_prefix = ('hiddens=%s-layers=%s-lr=%s-dropout=%s'%(args.hidden_units, 
+    if args.output_filename_prefix==None:
+        output_filename_prefix = ('hiddens=%s-layers=%s-lr=%s-dropout=%s-weight_decay=%s'%(args.hidden_units, 
                                                                        args.hidden_layers, 
                                                                        args.lr, 
-                                                                       args.dropout))
+                                                                       args.dropout, args.weight_decay))
+    else:
+        output_filename_prefix = args.output_filename_prefix
+        
+        
     print('RNN parameters : '+ output_filename_prefix)
 # #     from IPython import embed; embed()
     rnn = RNNBinaryClassifier(
@@ -128,7 +137,8 @@ def main():
               LRScheduler(policy=ReduceLROnPlateau, mode='max', monitor='aucroc_score_valid', patience=10),
                   compute_grad_norm,
               GradientNormClipping(gradient_clip_value=0.3, gradient_clip_norm_type=2),
-              Checkpoint(monitor='aucroc_score_valid', f_history=os.path.join(args.output_dir, output_filename_prefix+'.json'))
+              Checkpoint(monitor='aucroc_score_valid', f_history=os.path.join(args.output_dir, output_filename_prefix+'.json')),
+              TrainEndCheckpoint(dirname=args.output_dir, fn_prefix=output_filename_prefix),
               ],
               criterion=torch.nn.CrossEntropyLoss,
               criterion__weight=class_weights,
@@ -137,15 +147,10 @@ def main():
               module__n_layers=args.hidden_layers,
               module__n_hiddens=args.hidden_units,
               module__n_inputs=X_train.shape[-1],
-#               module__dropout_proba_non_recurrent=args.dropout,
-#               module__convert_to_log_reg=False,
+              module__dropout_proba=args.dropout,
               optimizer=torch.optim.Adam,
               optimizer__weight_decay=args.weight_decay
                          ) 
-#     X_train = X_train.astype(np.float32)
-#     y_train = y_train.astype(np.float32)
-#     X_test = X_test.astype(np.float32)
-#     y_test = y_test.astype(np.float32)
     
     clf = rnn.fit(X_train, y_train)
     y_pred_proba = clf.predict_proba(X_train)
@@ -228,4 +233,4 @@ class ComputeGradientNorm(Callback):
 
 if __name__ == '__main__':
     main()
-
+    

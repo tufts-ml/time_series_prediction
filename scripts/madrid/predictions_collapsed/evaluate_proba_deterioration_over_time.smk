@@ -24,9 +24,10 @@ rule evaluate_proba_deterioration:
         script=os.path.join(os.path.abspath('../'), "src", "evaluate_proba_deterioration_over_time.py")
 
     params:
-        clf_models_dir=RESULTS_SPLIT_PATH,
+        clf_models_dir=RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH,
         clf_train_test_split_dir=CLF_TRAIN_TEST_SPLIT_PATH,
-        preproc_data_dir=DATASET_SITE_PATH
+        preproc_data_dir=DATASET_SITE_PATH,
+        output_dir=os.path.join(RESULTS_SPLIT_PATH, 'proba_deterioration_over_time')
         
     conda:
         PROJECT_CONDA_ENV_YAML
@@ -38,4 +39,5 @@ rule evaluate_proba_deterioration:
         --clf_train_test_split_dir {params.clf_train_test_split_dir}\
         --preproc_data_dir {params.preproc_data_dir}\
         --outcome_column_name {{OUTCOME_COL_NAME}}\
+        --output_dir {params.output_dir}\
         '''.replace("{{OUTCOME_COL_NAME}}", D_CONFIG["OUTCOME_COL_NAME"])

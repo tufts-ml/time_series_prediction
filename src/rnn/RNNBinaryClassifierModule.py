@@ -94,7 +94,7 @@ class RNNBinaryClassifierModule(nn.Module):
         # Requires sorting all sequences in current batch in descending order by length
         sorted_seq_lens_N, ids_N = seq_lens_N.sort(0, descending=True)
         _, rev_ids_N = ids_N.sort(0, descending=False)
-        sorted_inputs_NTF = inputs_NTF[ids_N] 
+        sorted_inputs_NTF = inputs_NTF[ids_N]
         packed_inputs_PF = nn.utils.rnn.pack_padded_sequence(sorted_inputs_NTF, sorted_seq_lens_N, batch_first=True)
         ## Apply the RNN
         packed_outputs_PH, _ = self.rnn(packed_inputs_PF)
