@@ -10,7 +10,9 @@ import json
 import glob
 
 # Default environment variables
-# Can override with local env variables
+# Can override with:
+# -- local config file variables
+# -- current env variable settings
 PROJECT_REPO_DIR = os.environ.get("PROJECT_REPO_DIR", os.path.abspath("../../../"))
 
 PROJECT_SPEC_UTILS_DIR = os.path.join(PROJECT_REPO_DIR, 'scripts', 'utils_specs')
@@ -22,7 +24,7 @@ DATASET_SCRIPTS_ROOT = os.path.join(PROJECT_REPO_DIR, 'scripts', 'toy_overheat')
 # Input/output paths, etc.
 with open(os.path.join(DATASET_SCRIPTS_ROOT, 'config.json'), 'r') as f:
     D_CONFIG = json.load(f)
-
+# Store all config settings into environment variables 
 for key, val in list(globals().items()):
     if key.startswith("PROJECT_") and isinstance(val, str):
         os.environ[key] = val
@@ -45,19 +47,10 @@ with open('spec_config.json', 'r') as f:
     SPEC_CONFIG = json.load(f)
 
 
-rule all:
-    input:
-        x_std_data_csv=os.path.join(DATASET_STD_PATH, 'features_per_tstep.csv'),
-        y_std_data_csv=os.path.join(DATASET_STD_PATH, 'outcomes_per_seq.csv'),
-        spec_jsons=[os.path.join(
-                DATASET_STD_PATH,
-                SPEC_CONFIG['output_json_path_pattern'].replace(
-                    '{{sheet_name}}', sname))
-                for sname in SPEC_CONFIG['spec_sheet_name_list']]
-
-rule make_directory:
+# Create directory where output will be stored
+rule create_output_dir:
     output:
-        mkdir_complete=touch(os.path.join(DATASET_STD_PATH, '.snakemake_directory_complete')),
+        signal_file=touch(os.path.join(DATASET_STD_PATH, '.snakemake_create_output_dir_complete'))
 
     params:
         output_dir=DATASET_STD_PATH
@@ -67,17 +60,39 @@ rule make_directory:
 
     shell:
         '''
-        mkdir -p {params.output_dir}
+        python -c 'import pathlib; p = pathlib.Path("{params.output_dir}"); p.mkdir(parents=True, exist_ok=True)'
         '''
 
+# Rule "all"
+# ----------
+# Equivalent of the following rules in order:
+# * create_output_dir
+# * build_csv_dataset
+# * build_spec_json_from_csv
+rule all:
+    input:
+        completed_create_output_dir=rules.create_output_dir.output.signal_file,
+        x_std_data_csv=os.path.join(DATASET_STD_PATH, 'features_per_tstep.csv'),
+        y_std_data_csv=os.path.join(DATASET_STD_PATH, 'outcomes_per_seq.csv'),
+        spec_jsons=[os.path.join(
+                DATASET_STD_PATH,
+                SPEC_CONFIG['output_json_path_pattern'].replace(
+                    '{{sheet_name}}', sname))
+                for sname in SPEC_CONFIG['spec_sheet_name_list']]
+
+
+# Create this dataset as tidy CSV files
 rule build_csv_dataset:
     input:
-        output_dir=DATASET_STD_PATH,
+        completed_create_output_dir=rules.create_output_dir.output.signal_file,
         script=os.path.join(DATASET_SCRIPTS_ROOT, 'standardize_dataset', 'make_dataset.py')
 
     output:
         x_std_data_csv=os.path.join(DATASET_STD_PATH, 'features_per_tstep.csv'),
         y_std_data_csv=os.path.join(DATASET_STD_PATH, 'outcomes_per_seq.csv')
+
+    params:
+        output_dir=DATASET_STD_PATH
 
     conda:
         PROJECT_CONDA_ENV_YAML
@@ -85,7 +100,7 @@ rule build_csv_dataset:
     shell:
         '''
         python -u {input.script} \
-            --output_dir {input.output_dir} \
+            --output_dir {params.output_dir} \
             --min_num_sequences_per_label 200 \
             --max_num_sequences_per_label 400 \
             --Nmax 5000 \
@@ -97,6 +112,7 @@ rule build_csv_dataset:
 # Download google sheet as CSV
 rule download_spec_from_gsheet_as_csv:
     input:
+        completed_create_output_dir=rules.create_output_dir.output.signal_file,
         download_script=os.path.expandvars(os.path.join(PROJECT_REPO_DIR, 'scripts/utils_specs/download_spec_csv_from_gsheet.py')),
         spec_config_path='spec_config.json'        
 
@@ -118,8 +134,10 @@ rule download_spec_from_gsheet_as_csv:
         '''.format(output_dir=DATASET_STD_PATH)
 
 
+# Transform downloaded CSV into a JSON file
 rule build_spec_json_from_csv:
     input:
+        completed_create_output_dir=rules.create_output_dir.output.signal_file,
         convert_script=os.path.expandvars(os.path.join(PROJECT_SPEC_UTILS_DIR, 'convert_spec_csv_to_json.py')),
         sheet_template_json_path=os.path.expandvars(os.path.join(PROJECT_SPEC_UTILS_DIR, 'sheet_template.json')),
         row_template_json_path=os.path.expandvars(os.path.join(PROJECT_SPEC_UTILS_DIR, 'row_template.json')),
@@ -148,3 +166,4 @@ rule build_spec_json_from_csv:
             --row_template_json {{input.row_template_json_path}} \
             --output_dir {output_dir}
         '''.format(output_dir=DATASET_STD_PATH)
+

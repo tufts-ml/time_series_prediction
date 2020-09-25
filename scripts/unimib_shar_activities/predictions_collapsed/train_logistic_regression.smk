@@ -22,6 +22,8 @@ rule train_and_evaluate_classifier:
     input:
         script=os.path.join(PROJECT_REPO_DIR, 'src', 'eval_classifier.py'),
         python_src_files=glob.glob(os.path.join(PROJECT_REPO_DIR, 'src', '*.py')),
+        hyper_src_files=glob.glob(os.path.join(
+            PROJECT_REPO_DIR, 'src', 'default_hyperparameters', '*.json')),
         x_train_csv=os.path.join(DATASET_SPLIT_PATH, 'x_train.csv'),
         x_test_csv=os.path.join(DATASET_SPLIT_PATH, 'x_test.csv'),
         y_train_csv=os.path.join(DATASET_SPLIT_PATH, 'y_train.csv'),
@@ -48,8 +50,8 @@ rule train_and_evaluate_classifier:
             --key_cols_to_group_when_splitting {{SPLIT_KEY_COL_NAMES}} \
             --n_splits 3 \
             --validation_size 0.1 \
-            --scoring roc_auc \
-            --threshold_scoring balanced_accuracy \
+            --scoring roc_auc_score+0.001*cross_entropy_base2_score \
+            --threshold_scoring balanced_accuracy_score \
             --class_weight balanced \
         '''\
         .replace("{{RESULTS_PATH}}", RESULTS_PATH)\

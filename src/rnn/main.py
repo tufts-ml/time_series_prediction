@@ -31,11 +31,10 @@ if __name__ == '__main__':
     torch.manual_seed(args.seed)
 
     device = 'cpu'
-    
-#     dataset = TidySequentialDataCSVLoader('my_dataset.csv')
-#     X, y = dataset.get_batch_data(batch_id=0)
-    
-    from IPython import embed; embed()
+
+    dataset = TidySequentialDataCSVLoader('my_dataset.csv')
+    X, y = dataset.get_batch_data(batch_id=0)
+
     rnn = RNNBinaryClassifier(
         max_epochs=args.epochs,
         batch_size=args.batch_size,
@@ -52,8 +51,7 @@ if __name__ == '__main__':
         optimizer__lr=1.00,
         )
 
-    # generate some synthetic data
-#    t = 1000; d = 5; n = 100; X = (torch.rand([n,t,d])).double(); y = (torch.randint(2,(n,1))).reshape(-1).long()
+    X, y = dataset.get_batch_data(batch_id=0)
     rnn.fit(X, y)
 
     ### Evaluate
