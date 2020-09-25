@@ -1,5 +1,7 @@
 '''
-Reproducible workflow for building EEG dataset
+Reproducible workflow for building UniMiB action recogntion dataset.
+
+Downloads source files and produces tidy CSV files in required format.
 
 Usage
 -----

@@ -59,8 +59,6 @@ from utils_scoring import (
     calc_score_for_binary_predictions)
 from utils_calibration import plot_binary_clf_calibration_curve_and_histograms
 
-from feature_transformation import (parse_id_cols, parse_time_col, parse_feature_cols, parse_output_cols)
-
 def get_sorted_list_of_kwargs_specific_to_group_parser(group_parser):
     keys = [a.option_strings[0].replace('--', '') for a in group_parser._group_actions]
     return [k for k in sorted(keys)]
@@ -419,7 +417,6 @@ if __name__ == '__main__':
         axis='columns',
         inplace=True)
 
-    from IPython import embed; embed()
     if False:
         # TODO release this feature
         # If any simpler model achieved a score within the 'best' model's range,
@@ -459,7 +456,7 @@ if __name__ == '__main__':
     hyper_searcher.best_estimator_.fit(x_train, y_train)
 
     # Threshold search
-    # TODO make cast wider net at nearby settings to the best estimator??
+    # TODO cast wider net at nearby settings to the best estimator??
     if str(args.threshold_scoring) != 'None':
         # hyper_searcher search on validation over possible threshold values
         # Make sure all candidates at least provide
@@ -470,12 +467,8 @@ if __name__ == '__main__':
             yproba_valid = hyper_searcher.best_estimator_.predict_proba(x_valid)[:,1]
             yproba_class1_vals.extend(yproba_valid)
 
-        unique_yproba_vals = np.unique(yproba_class1_vals)
-        if unique_yproba_vals.shape[0] == 1:
-            nontrivial_thr_vals = unique_yproba_vals
-        else:
-            # Try all thr values that would give at least one pos and one neg decision
-            nontrivial_thr_vals = np.unique(unique_yproba_vals)[1:-1]
+        # Try all thr values that would give at least one pos and one neg decision
+        nontrivial_thr_vals = np.unique(yproba_class1_vals)
 
         if nontrivial_thr_vals.size > 100:
             # Too many for possible thr values for typical compute power
@@ -489,16 +482,30 @@ if __name__ == '__main__':
                 nontrivial_thr_vals[0],
                 nontrivial_thr_vals[-1],
                 10)
-            thr_grid = np.unique(np.hstack([extreme_thr_grid, dense_thr_grid]))
+            thr_grid = np.unique(np.hstack([
+                np.min(extreme_thr_grid) - 0.0001,
+                np.max(extreme_thr_grid) + 0.0001,
+                extreme_thr_grid, dense_thr_grid]))
         else:
             # Seems feasible to just look at all possible thresholds
             # that give distinct operating points.
-            thr_grid = nontrivial_thr_vals
+            extreme_thr_grid = np.linspace(
+                nontrivial_thr_vals[0],
+                nontrivial_thr_vals[-1],
+                5)
+            thr_grid = np.unique(np.hstack([
+                np.min(extreme_thr_grid) - 0.0001,
+                np.max(extreme_thr_grid) + 0.0001,
+                extreme_thr_grid, nontrivial_thr_vals]))
 
         print("Searching thresholds...")
-        if thr_grid.shape[0] > 3:
+        if thr_grid.shape[0] >= 5:
             print("thr_grid = %.4f, %.4f, %.4f ... %.4f, %.4f" % (
                 thr_grid[0], thr_grid[1], thr_grid[2], thr_grid[-2], thr_grid[-1]))
+        else:
+            print("thr_grid = %s" % (
+                ', '.join(['%.4f' % a for a in thr_grid])))
+
         score_grid_SG = np.zeros((splitter.n_splits, thr_grid.size))
         for ss, (tr_inds, va_inds) in enumerate(
                 splitter.split(x_train, y_train, groups=key_train)):
@@ -512,31 +519,44 @@ if __name__ == '__main__':
             for gg, thr in enumerate(thr_grid):
                 tmp_clf = tmp_clf.set_params(threshold=thr)
                 yhat = tmp_clf.predict(x_va)
-                score_grid_SG[ss, gg] = calc_score_for_binary_predictions(y_va, yhat, scoring=args.threshold_scoring)
+                score_grid_SG[ss, gg] = calc_score_for_binary_predictions(
+                    y_va, yhat, scoring=args.threshold_scoring)
 
         avg_score_G = np.mean(score_grid_SG, axis=0)
 
         # Do a 2nd order quadratic fit to the scores
         # Focusing weight on points near the maximizer
         # This gives us a "smoothed" function mapping thresholds to scores
-        # avoids issues if scores are "wiggly" we don't want to rely too much on max
-        # OR will do right thing when there are many thresholds that work
-        # Using smoothed scores guarantees we get maximizer in the middle of that range
+        # Avoids issues if scores are "wiggly" and don't want to rely on max
+        # Also will do right thing when there are many thresholds that work
+        # Smoothed scores guarantees we get maximizer in middle of that range
         weights_G = np.exp(-10.0 * np.abs(avg_score_G - np.max(avg_score_G)))
         poly_coefs = np.polyfit(thr_grid, avg_score_G, 2, w=weights_G)
         smoothed_score_G = np.polyval(poly_coefs, thr_grid)
-        gg = np.argmax(smoothed_score_G)
 
         # Keep best scoring estimator 
+        gg = np.argmax(smoothed_score_G)
         best_thr = thr_grid[gg]
+        thr_perf_df = pd.DataFrame(np.vstack([
+                thr_grid[np.newaxis,:],
+                avg_score_G[np.newaxis,:],
+                smoothed_score_G[np.newaxis,:]]).T,
+            columns=['thr', 'score', 'smoothed_score'])
+        G = thr_perf_df.shape[0]
+        disp_ids = np.unique(np.hstack([
+            [0,1,2], [gg-2, gg-1, gg, gg+1, gg+2], [G-3, G-2, G-1]]))
+
+        print(thr_perf_df.loc[disp_ids].to_string(index=False))
         print("Chosen Threshold: %.4f" % best_thr)
-        best_clf = ThresholdClassifier(hyper_searcher.best_estimator_, threshold=best_thr)
+        best_clf = ThresholdClassifier(
+            hyper_searcher.best_estimator_, threshold=best_thr)
     else:
         best_clf = hyper_searcher.best_estimator_
     
     # save model to disk
-    print('saving %s model to disk'%args.clf_name)
-    model_file = os.path.join(args.output_dir, args.clf_name+'_trained_model.joblib')
+    print('saving %s model to disk' % args.clf_name)
+    model_file = os.path.join(
+        args.output_dir, args.clf_name+'_trained_model.joblib')
     dump(best_clf, model_file)
 
 
@@ -556,20 +576,6 @@ if __name__ == '__main__':
         y_pred = best_clf.predict(x)
         y_pred_proba = best_clf.predict_proba(x)[:, 1]
 
-        # Metrics that consume probabilities
-        # ----------------------------------
-        log2_loss = calc_cross_entropy_base2_score(y, y_pred_proba)
-        avg_precision = average_precision_score(y, y_pred_proba)
-        roc_auc = roc_auc_score(y, y_pred_proba)
-        row_dict.update(dict(
-            cross_entropy_base2=log2_loss,
-            average_precision=avg_precision,
-            AUROC=roc_auc))
-        # This computation is ordered with *decreasing* recall
-        precision, recall, _ = precision_recall_curve(y, y_pred_proba)
-        # To compute area under curve, make sure we integrate with *increasing* recall
-        row_dict['AUPRC'] = np.trapz(precision[::-1], recall[::-1])
-        
         # Metrics that require a threshold
         # --------------------------------
         # (e.g. use y_pred not y_pred_proba)
@@ -581,85 +587,78 @@ if __name__ == '__main__':
         accuracy = accuracy_score(y, y_pred)
         balanced_accuracy = balanced_accuracy_score(y, y_pred)
 
-        log2_loss = log_loss(y, y_pred_proba, normalize=True) / np.log(2)
         row_dict.update(dict(
-            confusion_html=cm_df.to_html(), cross_entropy_base2=log2_loss,
-            accuracy=accuracy, balanced_accuracy=balanced_accuracy))
+            confusion_html=cm_df.to_html(),
+            accuracy=accuracy,
+            f1_score=f1_score(y, y_pred),
+            balanced_accuracy=balanced_accuracy))
 
+
+        # Metrics that consume probabilities
+        # ----------------------------------
         if not is_multiclass:
-            f1 = f1_score(y, y_pred)
-
+            log2_loss = calc_cross_entropy_base2_score(y, y_pred_proba)
             avg_precision = average_precision_score(y, y_pred_proba)
             roc_auc = roc_auc_score(y, y_pred_proba)
-            row_dict.update(dict(f1_score=f1, average_precision=avg_precision, AUROC=roc_auc))
+            row_dict.update(dict(
+                cross_entropy_base2=log2_loss,
+                average_precision=avg_precision,
+                AUROC=roc_auc))
+            # This computation is ordered with *decreasing* recall
+            precision, recall, _ = precision_recall_curve(y, y_pred_proba)
+            # To compute area under PR curve, integrate *increasing* recall
+            row_dict['AUPRC'] = np.trapz(precision[::-1], recall[::-1])
+        
+            npv, ppv = np.diag(cm_df.values) / cm_df.sum(axis=0)
+            tnr, tpr = np.diag(cm_df.values) / cm_df.sum(axis=1)
+            row_dict.update(dict(TPR=tpr, TNR=tnr, PPV=ppv, NPV=npv))
+            row_dict.update(dict(
+                tn=cm_df.values[0,0], fp=cm_df.values[0,1],
+                fn=cm_df.values[1,0], tp=cm_df.values[1,1]))
 
-            # Plots
+            # Make plots and save to disk
+            # ---------------------------
+            # PLOT #1: Calibration
+            B = 0.03
+            fig_h = plt.figure(**FIG_KWARGS)
+            plot_binary_clf_calibration_curve_and_histograms(
+                y, y_pred_proba, bins=11, B=B)
+            plt.savefig(os.path.join(fig_dir,
+                '{split_name}_calibration_curve.png'.format(
+                    split_name=split_name)))
+            plt.close()
+
+            # PLOT #2: ROC curve
             roc_fpr, roc_tpr, _ = roc_curve(y, y_pred_proba)
+            fig_h = plt.figure(**FIG_KWARGS)
             ax = plt.gca()
-            ax.plot(roc_fpr, roc_tpr)
+            ax.plot(roc_fpr, roc_tpr, 'b.-')
             ax.set_xlabel('False Positive Rate')
             ax.set_ylabel('True Positive Rate')
-            ax.set_xlim([0, 1])
-            ax.set_ylim([0, 1])
-            plt.savefig(os.path.join(fig_dir, '{split_name}_roc_curve.png'.format(split_name=split_name)))
-            plt.clf()
+            ax.set_xlim([-B, 1.0 + B])
+            ax.set_ylim([-B, 1.0 + B])
+            plt.savefig(os.path.join(fig_dir,
+                '{split_name}_roc_curve.png'.format(
+                    split_name=split_name)))
+            plt.close()
 
-            pr_precision, pr_recall, _ = precision_recall_curve(y, y_pred_proba)
+            # Plot #3: PR curve
+            fig_h = plt.figure(**FIG_KWARGS)
             ax = plt.gca()
-            ax.plot(pr_recall, pr_precision)
+            ax.plot(recall, precision, 'b.-') # computed above to get AUPRC
             ax.set_xlabel('Recall')
             ax.set_ylabel('Precision')
-            ax.set_xlim([0, 1])
-            ax.set_ylim([0, 1])
-            plt.savefig(os.path.join(fig_dir, '{split_name}_pr_curve.png'.format(split_name=split_name)))
-            plt.clf()
+            ax.set_xlim([-B, 1.0 + B])
+            ax.set_ylim([-B, 1.0 + B])
+            plt.savefig(os.path.join(fig_dir,
+                '{split_name}_pr_curve.png'.format(
+                    split_name=split_name)))
+            plt.close()
 
-        npv, ppv = np.diag(cm_df.values) / cm_df.sum(axis=0)
-        tnr, tpr = np.diag(cm_df.values) / cm_df.sum(axis=1)
-        row_dict.update(dict(TPR=tpr, TNR=tnr, PPV=ppv, NPV=npv))
-        row_dict.update(dict(tn=cm_df.values[0,0], fp=cm_df.values[0,1], fn=cm_df.values[1,0], tp=cm_df.values[1,1]))
 
         # Append current split's metrics to list for all splits
         row_dict_list.append(row_dict)
 
-
-        # Make plots and save to disk
-        # ---------------------------
-        # PLOT #1: Calibration
-        B = 0.03
-        fig_h = plt.figure(**FIG_KWARGS)
-        plot_binary_clf_calibration_curve_and_histograms(y, y_pred_proba, bins=11, B=B)
-        plt.savefig(os.path.join(fig_dir, '{split_name}_calibration_curve.png'.format(split_name=split_name)))
-        plt.close()
-
-        # PLOT #2: ROC curve
-        roc_fpr, roc_tpr, _ = roc_curve(y, y_pred_proba)
-        fig_h = plt.figure(**FIG_KWARGS)
-        ax = plt.gca()
-        ax.plot(roc_fpr, roc_tpr, 'b.-')
-        ax.set_xlabel('False Positive Rate')
-        ax.set_ylabel('True Positive Rate')
-        ax.set_xlim([-B, 1.0 + B])
-        ax.set_ylim([-B, 1.0 + B])
-        plt.savefig(os.path.join(
-            fig_dir,
-            '{split_name}_roc_curve.png'.format(
-                split_name=split_name)))
-        plt.close()
-
-        # Plot #3: PR curve
-        fig_h = plt.figure(**FIG_KWARGS)
-        ax = plt.gca()
-        ax.plot(recall, precision, 'b.-') # computed above to get AUPRC
-        ax.set_xlabel('Recall')
-        ax.set_ylabel('Precision')
-        ax.set_xlim([-B, 1.0 + B])
-        ax.set_ylim([-B, 1.0 + B])
-        plt.savefig(os.path.join(
-            fig_dir,
-            '{split_name}_pr_curve.png'.format(
-                split_name=split_name)))
-        plt.close()
 
     # Write performance metrics to CSV
     # --------------------------------
@@ -772,12 +771,16 @@ if __name__ == '__main__':
                         text('Train Scores across splits')
                     with tag('p'):
                         text("Score function: %s" % args.scoring)
+                    with tag('p'):
+                        text("Selected hypers: %s" % str(best_param_dict))
                     doc.asis(pd.DataFrame(cv_tr_perf_df).to_html())
 
                     with tag('h4'):
                         text('Heldout Scores across splits')
                     with tag('p'):
                         text("Score function: %s" % args.scoring)
+                    with tag('p'):
+                        text("Selected hypers: %s" % str(best_param_dict))
                     doc.asis(pd.DataFrame(cv_te_perf_df).to_html())
 
                 # Add dark region on right side

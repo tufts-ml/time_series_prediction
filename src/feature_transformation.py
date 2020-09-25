@@ -135,10 +135,19 @@ def main():
 def collapse_np(ts_df, data_dict, collapse_range_features, range_pairs, tstops_df):
     id_cols = parse_id_cols(data_dict)
     id_cols = remove_col_names_from_list_if_not_in_df(id_cols, ts_df)
+
     feature_cols = parse_feature_cols(data_dict)
     feature_cols = remove_col_names_from_list_if_not_in_df(feature_cols, ts_df)
-    time_col = parse_time_col(data_dict)
-    
+
+    time_cols = parse_time_cols(data_dict)
+    time_cols = remove_col_names_from_list_if_not_in_df(time_cols, ts_df)
+
+    if len(time_cols) == 0:
+        raise ValueError("Expected at least one variable with role='time'")
+    elif len(time_cols) > 1:
+        raise ValueError("More than one time variable found. Expected exactly one.")
+    time_col = time_cols[-1]
+
     # Obtain fenceposts based on where any key differs
     # Be sure keys are converted to a numerical datatype (so fencepost detection is possible)
     keys_df = ts_df[id_cols].copy()
@@ -153,7 +162,6 @@ def collapse_np(ts_df, data_dict, collapse_range_features, range_pairs, tstops_d
 
     # Start timer
     total_time = 0
-
     timestamp_arr = np.asarray(ts_df[time_col].values.copy(), dtype=np.float64)
     features_arr = ts_df[feature_cols].values
     
@@ -166,6 +174,7 @@ def collapse_np(ts_df, data_dict, collapse_range_features, range_pairs, tstops_d
     for op_ind, op in enumerate(collapse_range_features.split(' ')):
         print('Collapsing with func %s'%op)
         t1=time.time()
+
         for low, high in ast.literal_eval(range_pairs):           
             #print('Collapsing with func %s in %d to %d percentile range'%(op, low, high))
             #t1 = time.time()
@@ -174,39 +183,54 @@ def collapse_np(ts_df, data_dict, collapse_range_features, range_pairs, tstops_d
             n_feats = len(feature_cols)
             collapsed_feat_arr = np.zeros([n_rows, n_feats])
 
+            is_str_lo_and_hi = isinstance(low, str) and isinstance(high, str)
+            do_case_percentage = is_str_lo_and_hi and (
+                low.endswith('%') and high.endswith('%'))
+            do_case_abs_hrs = is_str_lo_and_hi and (
+                low.count('T') > 0 and high.count('T'))
+
             # loop through all the subject episode fenceposts
             empty_arrays = 0
             for p in range(n_rows):
-                # get the data for the current fencepost
+                # Get features and times for the current fencepost
                 fp_start = fp[p]
                 fp_end = fp[p+1]
+                cur_feat_arr = features_arr[fp_start:fp_end,:].copy()
+                cur_timestamp_arr = timestamp_arr[fp_start:fp_end]
 
-                if (low[-1]=='%') and (high[-1]=='%'):
-                    lower_bound, upper_bound = calc_start_and_stop_indices_from_percentages(
-                            timestamp_arr[fp_start:fp_end], start_percentage=int(low[:-1]), end_percentage=int(high[:-1]), tstops_array=tstops_arr[fp_start:fp_end])
-                elif ('T' in low) and ('T' in high):
+                if do_case_percentage:
+                    start, stop = calc_start_and_stop_indices_from_percentages(
+                        cur_timestamp_arr,
+                        start_percentage=int(low[:-1]),
+                        end_percentage=int(high[:-1]),
+                        tstops_array=tstops_arr[fp_start:fp_end])
+                elif do_case_abs_hrs:
                     low_hrs = low.split('-')[1]
                     low_hrs = int(low_hrs.replace('h', ''))
                     high_hrs = high.split('-')[1]
                     high_hrs = int(high_hrs.replace('h', ''))
-                    lower_bound, upper_bound = calc_start_and_stop_indices_from_abs_hrs(
-                            timestamp_arr[fp_start:fp_end], start_hr=low_hrs, end_hr=high_hrs, tstops_array=tstops_arr[fp_start:fp_end])
+                    start, stop = calc_start_and_stop_indices_from_abs_hrs(
+                        cur_timestamp_arr,
+                        start_hr=low_hrs,
+                        end_hr=high_hrs,
+                        tstops_array=tstops_arr[fp_start:fp_end])
                 else:
-                    lower_bound, upper_bound = calc_start_and_stop_indices_from_percentiles(timestamp_arr, 
-                            start_percentile=low, end_percentile=high, max_time_step=None)
+                    start, stop = calc_start_and_stop_indices_from_percentiles(
+                        cur_timestamp_arr,
+                        start_percentile=low,
+                        end_percentile=high)
 
-
-                cur_feat_arr = features_arr[fp_start:fp_end,:].copy()
-                cur_timestamp_arr = timestamp_arr[fp_start:fp_end]
-
-                if len(cur_feat_arr[lower_bound:upper_bound])==0:
-                    empty_arrays+=1
+                if len(cur_feat_arr[start:stop])==0:
+                    empty_arrays += 1
 
                 # compute summary function on that particular subject episode dataframe
-                collapsed_feat_arr[p,:] = COLLAPSE_FUNCTIONS_np[op](cur_feat_arr, lower_bound, upper_bound, cur_timestamp_arr=cur_timestamp_arr)
+                collapsed_feat_arr[p,:] = COLLAPSE_FUNCTIONS_np[op](
+                    cur_feat_arr, start, stop,
+                    cur_timestamp_arr=cur_timestamp_arr)
             
             if op_ind==0:
-                print('percentage of empty arrays in %s to %s of patient-stay-slice is %.2f'%(low, high, (empty_arrays/n_rows)*100))
+                print('Percentage of empty slices in %s to %s is %.2f'%(
+                    low, high, (empty_arrays/n_rows)*100))
             list_of_collapsed_feat_arr.append(collapsed_feat_arr)
             list_of_collapsed_feat_names.extend([x+'_'+op+'_'+str(low)+'_to_'+str(high) for x in feature_cols])
         
@@ -258,7 +282,8 @@ def calc_start_and_stop_indices_from_abs_hrs(timestamp_arr, start_hr, end_hr, ts
     return int(lower_bound), int(upper_bound)
 
 
-def calc_start_and_stop_indices_from_percentiles(timestamp_arr, start_percentile, end_percentile, max_time_step=None):
+def calc_start_and_stop_indices_from_percentiles(
+        timestamp_arr, start_percentile, end_percentile, max_timestamp=None):
     ''' Find start and stop indices to select specific percentile range
     
     Args
@@ -283,8 +308,12 @@ def calc_start_and_stop_indices_from_percentiles(timestamp_arr, start_percentile
     (0, 1)
 
     >>> timestamp_arr = np.asarray([0.7, 0.8, 0.9, 0.95, 0.99, 50.0, 98.1])
+
+    # If we want the first 1% of the sequence, we'd get first 5 values
     >>> calc_start_and_stop_indices_from_percentiles(timestamp_arr, 0, 1, 100)
     (0, 5)
+
+    # If we want the slice from 1% to 100%, we'd get the last 2 values
     >>> calc_start_and_stop_indices_from_percentiles(timestamp_arr, 1, 100, 100)
     (5, 7)
     '''
@@ -293,18 +322,17 @@ def calc_start_and_stop_indices_from_percentiles(timestamp_arr, start_percentile
     # first hour of time series data
     
     min_timestamp = timestamp_arr[0]
-    if max_time_step is None:
+    if max_timestamp is None:
         max_timestamp = timestamp_arr[-1]
-    elif int(max_time_step) > 0:
-        if (min_timestamp + int(max_time_step)) >= timestamp_arr[-1]:
-            max_timestamp = timestamp_arr[-1]
-        else:
-            max_timestamp = min_timestamp + int(max_time_step)
-    else :
-        max_timestamp = timestamp_arr[-1]+int(max_time_step)
+    max_timestamp = np.minimum(max_timestamp, timestamp_arr[-1])
     
-    lower_bound = np.searchsorted(timestamp_arr, (min_timestamp + (max_timestamp - min_timestamp)*start_percentile/100))
-    upper_bound = np.searchsorted(timestamp_arr, (min_timestamp + (max_timestamp - min_timestamp)*(end_percentile + 0.001)/100))
+    lower_tstamp = (min_timestamp +
+        (max_timestamp - min_timestamp) * float(start_percentile) / 100)
+    lower_bound = np.searchsorted(timestamp_arr, lower_tstamp)
+
+    upper_tstamp = (min_timestamp +
+        (max_timestamp - min_timestamp) * float(end_percentile) / 100)
+    upper_bound = np.searchsorted(timestamp_arr, upper_tstamp)
     
     # if lower bound and upper bound are the same, add 1 to the upper bound
     if lower_bound >= upper_bound:
@@ -432,13 +460,13 @@ def parse_feature_cols(data_dict):
     non_time_cols.sort()
     return non_time_cols
 
-def parse_time_col(data_dict):
+def parse_time_cols(data_dict):
     time_cols = []
     for col in data_dict['fields']:
         # TODO avoid hardcoding a column name
-        if (col['name'] == 'hours' or col['role']=='timestamp_relative'):
+        if (col['name'] == 'hours' or col['role'].count('time') > 0):
             time_cols.append(col['name'])
-    return time_cols[-1]
+    return time_cols
             
     
 
