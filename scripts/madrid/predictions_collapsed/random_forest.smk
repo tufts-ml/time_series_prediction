@@ -32,7 +32,7 @@ rule train_and_evaluate_classifier:
         y_dict_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_dict.json')
 
     params:
-        output_dir=RESULTS_SPLIT_PATH,
+        output_dir=RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH,
         random_seed=int(random_seed_list[0])
 
     output:

@@ -38,6 +38,8 @@ if __name__ == '__main__':
                         help='folder where the preprocessed data is stored')
     parser.add_argument('--outcome_column_name', default='clinical_deterioration_outcome', type=str,
                        help='name of outcome column in test dataframe')
+    parser.add_argument('--output_dir', default='', type=str,
+                       help='dir to save plots')
     
     args = parser.parse_args()
     
@@ -168,9 +170,9 @@ if __name__ == '__main__':
 #         plt.legend()
         plt.subplots_adjust(hspace=0.4)
         if chosen_stay_subj_highfreq_features_df[time_col].max() > chosen_thresh:
-            fig_file = os.path.join(args.clf_models_dir, 'proba_deterioration_over_time' 'long_stays_predict_proba', '%s_proba_deterioration.pdf'%(int(chosen_stay_subj.hospital_admission_id)))
+            fig_file = os.path.join(args.clf_models_dir, 'long_stays_predict_proba', '%s_proba_deterioration.pdf'%(int(chosen_stay_subj.hospital_admission_id)))
         else:
-            fig_file = os.path.join(args.clf_models_dir, 'proba_deterioration_over_time', 'short_stays_predict_proba', '%s_proba_deterioration.pdf'%(int(chosen_stay_subj.hospital_admission_id)))
+            fig_file = os.path.join(args.clf_models_dir, 'short_stays_predict_proba', '%s_proba_deterioration.pdf'%(int(chosen_stay_subj.hospital_admission_id)))
         print('Performance fig saved to : \n%s'%fig_file)
         f.savefig(fig_file, bbox_inches='tight')
         plt.close()

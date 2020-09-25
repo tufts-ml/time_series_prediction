@@ -27,13 +27,14 @@ rule evaluate_performance:
         script=os.path.join(os.path.abspath('../'), "src", "evaluate_classifier_pertslice_performance.py")
 
     params:
-        clf_models_dir=RESULTS_SPLIT_PATH,
+        clf_models_dir=RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH,
         clf_train_test_split_dir=CLF_TRAIN_TEST_SPLIT_PATH,
         evaluation_tslices=evaluate_tslice_hours_list,
         collapsed_tslice_folder=DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH,
         tslice_folder=DATASET_FEAT_PER_TSLICE_PATH,
         preproc_data_dir=DATASET_SITE_PATH,
-        random_seed_list=random_seed_list
+        random_seed_list=random_seed_list,
+        output_dir=os.path.join(RESULTS_SPLIT_PATH, 'classifier_per_tslice_performance')
         
     conda:
         PROJECT_CONDA_ENV_YAML
@@ -49,4 +50,5 @@ rule evaluate_performance:
         --preproc_data_dir {params.preproc_data_dir}\
         --outcome_column_name {{OUTCOME_COL_NAME}}\
         --random_seed_list "{params.random_seed_list}"\
+        --output_dir {params.output_dir}\
         '''.replace("{{OUTCOME_COL_NAME}}", D_CONFIG["OUTCOME_COL_NAME"])

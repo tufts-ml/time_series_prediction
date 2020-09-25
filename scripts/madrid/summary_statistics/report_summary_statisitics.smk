@@ -1,5 +1,7 @@
 '''
-Get summary statistics on madrid data and plot them
+Report summary statistics on madrid data
+
+>> snakemake --cores 1 --snakefile report_summary_statisitics.smk compute_summary_statistics
 '''
 
 import glob

@@ -34,7 +34,7 @@ rule evaluate_mews_score:
         
 
     output:
-        output_csv=os.path.join(RESULTS_SPLIT_PATH, "mews_performance_df.csv")
+        output_csv=os.path.join(RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH, "mews_performance_df.csv")
     
     conda:
         PROJECT_CONDA_ENV_YAML
