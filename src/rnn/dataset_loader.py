@@ -29,9 +29,14 @@ class TidySequentialDataCSVLoader(object):
         --------------
         Updates internal attribute .batches
         '''
+        if type(x_csv_path) == pd.DataFrame :
+            x_csv_df = x_csv_path.copy()
+        elif x_csv_path is not None and os.path.exists(x_csv_path):
+            x_csv_df = pd.read_csv(x_csv_path)
         
-        x_csv_df = pd.read_csv(x_csv_path)
-        if y_csv_path is not None and os.path.exists(y_csv_path):
+        if type(y_csv_path) == pd.DataFrame :
+            y_csv_df = y_csv_path.copy()        
+        elif y_csv_path is not None and os.path.exists(y_csv_path):
             y_csv_df = pd.read_csv(y_csv_path)
 
         ## Parse sequence ids and compute fenceposts

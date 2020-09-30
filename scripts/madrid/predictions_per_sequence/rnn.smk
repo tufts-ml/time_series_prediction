@@ -5,7 +5,7 @@ Usage:
 $ snakemake --cores 1 --snakefile rnn.smk
 
 To run with multiple random seeds (prespecified in a config file)
-$ snakemake --cores all --snakefile rnn.smk train_and_evaluate_classifier_many_hyperparams
+$ snakemake --cores 2 --snakefile rnn.smk train_and_evaluate_classifier_many_hyperparams
 '''
 
 

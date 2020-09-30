@@ -468,7 +468,13 @@ def parse_time_cols(data_dict):
             time_cols.append(col['name'])
     return time_cols
             
-    
+def parse_time_col(data_dict):
+    time_cols = []
+    for col in data_dict['fields']:
+        # TODO avoid hardcoding a column name
+        if (col['name'] == 'hours' or col['role']=='timestamp_relative'):
+            time_cols.append(col['name'])
+    return time_cols[-1]
 
 def remove_col_names_from_list_if_not_in_df(col_list, df):
     ''' Remove column names from provided list if not in dataframe

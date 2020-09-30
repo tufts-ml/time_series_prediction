@@ -99,7 +99,7 @@ def main():
     X_test, y_test = test_vitals.get_batch_data(batch_id=0)
     _,T,F = X_train.shape
     
-    print('number of time points : %s\n number of features : %s\n'%(T,F))
+    print('number of time points : %s\nnumber of features : %s\n'%(T,F))
     
     # set class weights as 1/(number of samples in class) for each class to handle class imbalance
     class_weights = torch.tensor([1/(y_train==0).sum(),
@@ -123,19 +123,18 @@ def main():
         
         
     print('RNN parameters : '+ output_filename_prefix)
-# #     from IPython import embed; embed()
     rnn = RNNBinaryClassifier(
-              max_epochs=50,
+              max_epochs=30,
               batch_size=args.batch_size,
               device=device,
               lr=args.lr,
               callbacks=[
               EpochScoring('roc_auc', lower_is_better=False, on_train=True, name='aucroc_score_train'),
               EpochScoring('roc_auc', lower_is_better=False, on_train=False, name='aucroc_score_valid'),
-              EarlyStopping(monitor='aucroc_score_valid', patience=20, threshold=0.002, threshold_mode='rel',
+              EarlyStopping(monitor='aucroc_score_valid', patience=15, threshold=0.002, threshold_mode='rel',
                                              lower_is_better=False),
               LRScheduler(policy=ReduceLROnPlateau, mode='max', monitor='aucroc_score_valid', patience=10),
-                  compute_grad_norm,
+#                   compute_grad_norm,
               GradientNormClipping(gradient_clip_value=0.3, gradient_clip_norm_type=2),
               Checkpoint(monitor='aucroc_score_valid', f_history=os.path.join(args.output_dir, output_filename_prefix+'.json')),
               TrainEndCheckpoint(dirname=args.output_dir, fn_prefix=output_filename_prefix),
