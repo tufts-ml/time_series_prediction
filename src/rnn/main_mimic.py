@@ -3,314 +3,170 @@ import argparse
 import numpy as np 
 import pandas as pd
 import json
-
 import torch
 import skorch
-from sklearn.model_selection import GridSearchCV, cross_validate
+from sklearn.model_selection import GridSearchCV, cross_validate, ShuffleSplit
 from sklearn.metrics import (roc_curve, accuracy_score, log_loss, 
-                            balanced_accuracy_score, confusion_matrix, 
-                            roc_auc_score, make_scorer)
+                             balanced_accuracy_score, confusion_matrix, 
+                             roc_auc_score, make_scorer)
 from yattag import Doc
 import matplotlib.pyplot as plt
 
 from dataset_loader import TidySequentialDataCSVLoader
 from RNNBinaryClassifier import RNNBinaryClassifier
-
+from feature_transformation import (parse_id_cols, parse_feature_cols)
+from utils import load_data_dict_json
 from joblib import dump
 
 import warnings
 warnings.filterwarnings("ignore")
 
-from skorch.callbacks import Callback
-from MLPModule import MLPModule
-from skorch import NeuralNet
+from skorch.callbacks import (Callback, LoadInitState, 
+                              TrainEndCheckpoint, Checkpoint, 
+                              EpochScoring, EarlyStopping, LRScheduler, GradientNormClipping, TrainEndCheckpoint)
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
-from SkorchLogisticRegression import SkorchLogisticRegression
+from skorch.utils import noop
+import glob
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-           
+
 def main():
     parser = argparse.ArgumentParser(description='PyTorch RNN with variable-length numeric sequences wrapper')
-    
-    parser.add_argument('--train_vitals_csv', type=str,
-                        help='Location of vitals data for training')
-    parser.add_argument('--test_vitals_csv', type=str,
-                        help='Location of vitals data for testing')
-    parser.add_argument('--metadata_csv', type=str,
-                        help='Location of metadata for testing and training')
-    parser.add_argument('--data_dict', type=str)
-    parser.add_argument('--batch_size', type=int, default=256,
+    parser.add_argument('--outcome_col_name', type=str, required=True)
+    parser.add_argument('--train_csv_files', type=str, required=True)
+    parser.add_argument('--test_csv_files', type=str, required=True)
+    parser.add_argument('--data_dict_files', type=str, required=True)
+    parser.add_argument('--batch_size', type=int, default=1024,
                         help='Number of sequences per minibatch')
-    parser.add_argument('--epochs', type=int, default=100000,
+    parser.add_argument('--epochs', type=int, default=50,
                         help='Number of epochs')
-    parser.add_argument('--hidden_units', type=int, default=10,
-                        help='Number of hidden units')   
-    parser.add_argument('--lr', type=float, default=1e-2,
+    parser.add_argument('--hidden_units', type=int, default=32,
+                        help='Number of hidden units')
+    parser.add_argument('--hidden_layers', type=int, default=1,
+                        help='Number of hidden layers')
+    parser.add_argument('--lr', type=float, default=0.0005,
                         help='Learning rate for the optimizer')
-    parser.add_argument('--dropout', type=float, default=0.3,
+    parser.add_argument('--dropout', type=float, default=0,
                         help='dropout for optimizer')
+    parser.add_argument('--weight_decay', type=float, default=0.0001,
+                        help='weight decay for optimizer')
     parser.add_argument('--seed', type=int, default=1111,
                         help='random seed')
-    parser.add_argument('--save', type=str,  default='RNNmodel.pt',
-                        help='path to save the final model')
-    parser.add_argument('--report_dir', type=str, default='html',
-                        help='dir in which to save results report')
-    parser.add_argument('--simulated_data_dir', type=str, default='simulated_data/2-state/',
-                        help='dir in which to simulated data is saved')    
+    parser.add_argument('--validation_size', type=float, default=0.15,
+                        help='validation split size')
     parser.add_argument('--is_data_simulated', type=bool, default=False,
                         help='boolean to check if data is simulated or from mimic')
-    parser.add_argument('--output_filename_prefix', type=str, default='current_config', help='file to save the loss and validation over epochs')
+    parser.add_argument('--simulated_data_dir', type=str, default='simulated_data/2-state/',
+                        help='dir in which to simulated data is saved.Must be provide if is_data_simulated = True')
+    parser.add_argument('--output_dir', type=str, default=None, 
+                        help='directory where trained model and loss curves over epochs are saved')
+    parser.add_argument('--output_filename_prefix', type=str, default=None, 
+                        help='prefix for the training history jsons and trained classifier')
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
     device = 'cpu'
-    
-    # hyperparameter space
-#     learning_rate = [1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1]
-#     hyperparameters = dict(lr=learning_rate)
-    
-    # extract data
-    if not(args.is_data_simulated):
-#------------------------Loaded from TidySequentialDataCSVLoader--------------------#
-        train_vitals = TidySequentialDataCSVLoader(
-            per_tstep_csv_path=args.train_vitals_csv,
-            per_seq_csv_path=args.metadata_csv,
-            idx_col_names=['subject_id', 'episode_id'],
-            x_col_names='__all__',
-            y_col_name='inhospital_mortality',
-            y_label_type='per_tstep')
 
-        test_vitals = TidySequentialDataCSVLoader(
-            per_tstep_csv_path=args.test_vitals_csv,
-            per_seq_csv_path=args.metadata_csv,
-            idx_col_names=['subject_id', 'episode_id'],
-            x_col_names='__all__',
-            y_col_name='inhospital_mortality',
-            y_label_type='per_tstep')
-        
-        X_train_with_time_appended, y_train = train_vitals.get_batch_data(batch_id=0)
-        X_test_with_time_appended, y_test = test_vitals.get_batch_data(batch_id=0)
-        _,T,F = X_train_with_time_appended.shape
-        
-        if T>1:
-            X_train = X_train_with_time_appended[:,:,1:]# removing hours column
-            X_test = X_test_with_time_appended[:,:,1:]# removing hours column
-        else:# account for collapsed features across time
-            X_train = X_train_with_time_appended
-            X_test = X_test_with_time_appended
+    x_train_csv_filename, y_train_csv_filename = args.train_csv_files.split(',')
+    x_test_csv_filename, y_test_csv_filename = args.test_csv_files.split(',')
+    x_dict, y_dict = args.data_dict_files.split(',')
+    x_data_dict = load_data_dict_json(x_dict)
+
+    # get the id and feature columns
+    id_cols = parse_id_cols(x_data_dict)
+    feature_cols = parse_feature_cols(x_data_dict)
+    # extract data
+    train_vitals = TidySequentialDataCSVLoader(
+        x_csv_path=x_train_csv_filename,
+        y_csv_path=y_train_csv_filename,
+        x_col_names=feature_cols,
+        idx_col_names=id_cols,
+        y_col_name=args.outcome_col_name,
+        y_label_type='per_sequence'
+    )
+
+    test_vitals = TidySequentialDataCSVLoader(
+        x_csv_path=x_test_csv_filename,
+        y_csv_path=y_test_csv_filename,
+        x_col_names=feature_cols,
+        idx_col_names=id_cols,
+        y_col_name=args.outcome_col_name,
+        y_label_type='per_sequence'
+    )
+
+    X_train, y_train = train_vitals.get_batch_data(batch_id=0)
+    X_test, y_test = test_vitals.get_batch_data(batch_id=0)
+    _,T,F = X_train.shape
     
-    # set class weights as (1-Beta)/(1-Beta^(number of training samples in class))
-#     beta = (len(y_train)-1)/len(y_train)
-#     class_weights = torch.tensor(np.asarray([(1-beta)/(1-beta**((y_train==0).sum())), (1-beta)/(1-beta**((y_train==1).sum()))]))
+    print('number of time points : %s\n number of features : %s\n'%(T,F))
     
     # set class weights as 1/(number of samples in class) for each class to handle class imbalance
     class_weights = torch.tensor([1/(y_train==0).sum(),
                                   1/(y_train==1).sum()]).double()
-    
-    
-    # define a auc scorer function and pass it as callback of skorch to track training and validation AUROC
-    roc_auc_scorer = make_scorer(roc_auc_score, greater_is_better=True,
-                                 needs_threshold=True)
-    
-        # use only last time step as feature for LR debugging
-#     X_train = X_train[:,-1,:][:,np.newaxis,:]
-#     X_test = X_test[:,-1,:][:,np.newaxis,:]
-    
-    # use time steps * features as vectorized feature into RNN for LR debugging
-#     X_train = X_train.reshape((X_train.shape[0], 1, X_train.shape[1]*X_train.shape[2]))
-#     X_test = X_test.reshape((X_test.shape[0], 1, X_test.shape[1]*X_test.shape[2]))
-    
-#---------------------------------------------------------------------#
-# Pseudo LSTM (hand engineered features through LSTM, collapsed across time)
-#---------------------------------------------------------------------#
-    # instantiate RNN
+
+    # scale features
+#     X_train = standard_scaler_3d(X_train)
+#     X_test = standard_scaler_3d(X_test)
+
+    # callback to compute gradient norm
+    compute_grad_norm = ComputeGradientNorm(norm_type=2)
+
+    # LSTM
+    if args.output_filename_prefix==None:
+        output_filename_prefix = ('hiddens=%s-layers=%s-lr=%s-dropout=%s-weight_decay=%s'%(args.hidden_units, 
+                                                                       args.hidden_layers, 
+                                                                       args.lr, 
+                                                                       args.dropout, args.weight_decay))
+    else:
+        output_filename_prefix = args.output_filename_prefix
+        
+        
+    print('RNN parameters : '+ output_filename_prefix)
+# #     from IPython import embed; embed()
     rnn = RNNBinaryClassifier(
-        max_epochs=args.epochs,
-        batch_size=args.batch_size,
-        device=device,
-        criterion=torch.nn.CrossEntropyLoss,
-        criterion__weight=class_weights,
-        train_split=skorch.dataset.CVSplit(4),
-        callbacks=[
-            skorch.callbacks.GradientNormClipping(gradient_clip_value=0.4, gradient_clip_norm_type=2) ,
-            skorch.callbacks.EpochScoring(roc_auc_scorer, lower_is_better=False, on_train=True, name='aucroc_score_train'),
-            skorch.callbacks.EpochScoring(roc_auc_scorer, lower_is_better=False, on_train=False, name='aucroc_score_valid'),
-            ComputeGradientNorm(norm_type=2, f_history = args.report_dir + '/%s_running_rnn_classifer_gradient_norm_history.csv'%args.output_filename_prefix),
-#             LSTMtoLogReg(),# transformation to log reg for debugging
-            skorch.callbacks.EarlyStopping(monitor='aucroc_score_valid', patience=1000, threshold=1e-10, threshold_mode='rel', lower_is_better=False),
-            skorch.callbacks.Checkpoint(monitor='train_loss', f_history = args.report_dir + '/%s_running_rnn_classifer_history.json'%args.output_filename_prefix),
-#             skorch.callbacks.Checkpoint(monitor='aucroc_score_valid', f_pickle = args.report_dir + '/%s_running_rnn_classifer_model'%args.output_filename_prefix),
-            skorch.callbacks.PrintLog(floatfmt='.2f')
-        ],
-        module__rnn_type='LSTM',
-        module__n_inputs=X_train.shape[-1],
-        module__n_hiddens=args.hidden_units,
-        module__n_layers=1,
-#         module__dropout_proba_non_recurrent=args.dropout,
-#         module__dropout_proba=args.dropout,
-        optimizer=torch.optim.SGD,
-        optimizer__weight_decay=1e-2,
-#         optimizer__momentum=0.9,
-#         optimizer=torch.optim.Adam,
-        lr=args.lr)
+              max_epochs=50,
+              batch_size=args.batch_size,
+              device=device,
+              lr=args.lr,
+              callbacks=[
+              EpochScoring('roc_auc', lower_is_better=False, on_train=True, name='aucroc_score_train'),
+              EpochScoring('roc_auc', lower_is_better=False, on_train=False, name='aucroc_score_valid'),
+              EarlyStopping(monitor='aucroc_score_valid', patience=20, threshold=0.002, threshold_mode='rel',
+                                             lower_is_better=False),
+              LRScheduler(policy=ReduceLROnPlateau, mode='max', monitor='aucroc_score_valid', patience=10),
+                  compute_grad_norm,
+              GradientNormClipping(gradient_clip_value=0.3, gradient_clip_norm_type=2),
+              Checkpoint(monitor='aucroc_score_valid', f_history=os.path.join(args.output_dir, output_filename_prefix+'.json')),
+              TrainEndCheckpoint(dirname=args.output_dir, fn_prefix=output_filename_prefix),
+              ],
+              criterion=torch.nn.CrossEntropyLoss,
+              criterion__weight=class_weights,
+              train_split=skorch.dataset.CVSplit(args.validation_size),
+              module__rnn_type='LSTM',
+              module__n_layers=args.hidden_layers,
+              module__n_hiddens=args.hidden_units,
+              module__n_inputs=X_train.shape[-1],
+              module__dropout_proba=args.dropout,
+              optimizer=torch.optim.Adam,
+              optimizer__weight_decay=args.weight_decay
+                         ) 
     
-    from IPython import embed; embed()
-    
-    # scale input features
-    X_train = standard_scaler_3d(X_train)
-    X_test = standard_scaler_3d(X_test) 
-    rnn.fit(X_train, y_train)
-    
-    
-    # get the training history
-    epochs, train_loss, validation_loss, aucroc_score_train, aucroc_score_valid = get_loss_plots_from_training_history(rnn.history)
-    
-    
-    # plot the validation and training error plots and save
-    f = plt.figure()
-    plt.plot(epochs, train_loss, 'r-.', label = 'Train Loss')
-    plt.plot(epochs, validation_loss, 'b-.', label = 'Validation Loss')
-    plt.plot(epochs, aucroc_score_train, 'g-.', label = 'AUCROC score (Train)')
-    plt.plot(epochs, aucroc_score_valid, 'm-.', label = 'AUCROC score (Valid)')
-    plt.xlabel('Epochs')
-    plt.ylabel('Loss')
-    plt.legend()
-    plt.title('Training Performance (learning rate : %s, hidden units : %s)'%(str(args.lr), str(args.hidden_units)))
-    f.savefig(args.report_dir + '/%s_training_performance_plots.png'%args.output_filename_prefix)
-    plt.close()
-    
-    # save the training and validation loss in a csv
-    train_perf_df = pd.DataFrame(data=np.stack([epochs, train_loss,
-                                                validation_loss]).T, 
-                                 columns=['epochs', 'train_loss','validation_loss']) 
-    train_perf_df.to_csv(args.report_dir + '/%s_perf_metrics.csv'%args.output_filename_prefix)
-    
-    
-    # save classifier history to later evaluate early stopping for this model
-    dump(rnn, args.report_dir + '/%s_rnn_classifer.pkl'%args.output_filename_prefix)
-
-    
-    
-    y_pred_proba = rnn.predict_proba(X_test)
-    y_pred = convert_proba_to_binary(y_pred_proba)
-    
+    clf = rnn.fit(X_train, y_train)
+    y_pred_proba = clf.predict_proba(X_train)
     y_pred_proba_neg, y_pred_proba_pos = zip(*y_pred_proba)
-    fpr, tpr, thresholds = roc_curve(y_test, y_pred_proba_pos)
-    roc_area = roc_auc_score(y_test, y_pred_proba_pos)
-    
-    from IPython import embed; embed()
-    
-    # Brief Summary
-#     print('Best lr:', rnn.best_estimator_.get_params()['lr'])
-    print('Accuracy:', accuracy_score(y_test, y_pred))
-    print('Balanced Accuracy:', balanced_accuracy_score(y_test, y_pred))
-    print('Log Loss:', log_loss(y_test, y_pred_proba))
-    print('AUC ROC:', roc_area)
-    conf_matrix = confusion_matrix(y_test, y_pred)
-    true_neg = conf_matrix[0][0]
-    true_pos = conf_matrix[1][1]
-    false_neg = conf_matrix[1][0]
-    false_pos = conf_matrix[0][1]
-    print('True Positive Rate:', float(true_pos) / (true_pos + false_neg))
-    print('True Negative Rate:', float(true_neg) / (true_neg + false_pos))
-    print('Positive Predictive Value:', float(true_pos) / (true_pos + false_pos))
-    print('Negative Predictive Value', float(true_neg) / (true_neg + false_pos))
+    auroc_train_final = roc_auc_score(y_train, y_pred_proba_pos)
+    print('AUROC with LSTM (Train) : %.2f'%auroc_train_final)
 
-    create_html_report(args.report_dir, args.output_filename_prefix, y_test, y_pred, y_pred_proba, args.lr)
-
-def create_html_report(report_dir, output_filename_prefix, y_test, y_pred, y_pred_proba, lr):
-    try:
-        os.mkdir(report_dir)
-    except OSError:
-        pass
-
-    # Set up HTML report
-    doc, tag, text = Doc().tagtext()
-
-    # Metadata
-    with tag('h2'):
-        text('Random rnn Classifier Results')
-    with tag('h3'):
-        text('Hyperparameters searched:')
-    with tag('p'):
-        text('Learning rate: ', str(lr))
-
-#     # Model
-#     with tag('h3'):
-#         text('Parameters of best model:')
-#     with tag('p'):
-#         text('Learning rate: ', best_lr)
-    
-    # Performance
-    with tag('h3'):
-        text('Performance Metrics:')
-    with tag('p'):
-        text('Accuracy: ', accuracy_score(y_test, y_pred))
-    with tag('p'):
-        text('Balanced Accuracy: ', balanced_accuracy_score(y_test, y_pred))
-    with tag('p'):
-        text('Log Loss: ', log_loss(y_test, y_pred_proba))
-    
-    conf_matrix = confusion_matrix(y_test, y_pred)
-    conf_matrix_norm = conf_matrix.astype('float') / conf_matrix.sum(axis=1)[:, np.newaxis]
-
-    true_neg = conf_matrix[0][0]
-    true_pos = conf_matrix[1][1]
-    false_neg = conf_matrix[1][0]
-    false_pos = conf_matrix[0][1]
-    with tag('p'):
-        text('True Positive Rate: ', float(true_pos) / (true_pos + false_neg))
-    with tag('p'):
-        text('True Negative Rate: ', float(true_neg) / (true_neg + false_pos))
-    with tag('p'):
-        text('Positive Predictive Value: ', float(true_pos) / (true_pos + false_pos))
-    with tag('p'):
-        text('Negative Predictive Value: ', float(true_neg) / (true_neg + false_pos))
-    
-    # Confusion Matrix
-    columns = ['Predicted 0', 'Predicted 1']
-    rows = ['Actual 0', 'Actual 1']
-    cell_text = []
-    for cm_row, cm_norm_row in zip(conf_matrix, conf_matrix_norm):
-        row_text = []
-        for i, i_norm in zip(cm_row, cm_norm_row):
-            row_text.append('{} ({})'.format(i, i_norm))
-        cell_text.append(row_text)
-
-    ax = plt.subplot(111, frame_on=False) 
-    ax.xaxis.set_visible(False) 
-    ax.yaxis.set_visible(False)
-
-    confusion_table = ax.table(cellText=cell_text,
-                               rowLabels=rows,
-                               colLabels=columns,
-                               loc='center')
-    plt.savefig(report_dir + '/%s_confusion_matrix.png'%output_filename_prefix)
-    plt.close()
-
-    with tag('p'):
-        text('Confusion Matrix:')
-    doc.stag('img', src=('%s_confusion_matrix.png'%output_filename_prefix))
-
-    # ROC curve/area
+    y_pred_proba = clf.predict_proba(X_test)
     y_pred_proba_neg, y_pred_proba_pos = zip(*y_pred_proba)
-    fpr, tpr, thresholds = roc_curve(y_test, y_pred_proba_pos)
-    roc_area = roc_auc_score(y_test, y_pred_proba_pos)
-    plt.plot(fpr, tpr)
-    plt.xlabel('FPR Test')
-    plt.ylabel('TPR Test')
-    plt.title('AUC : {}'.format(roc_area))
-    plt.savefig(report_dir + '/%s_roc_curve.png'%output_filename_prefix)
-    plt.close()
+    auroc_test_final = roc_auc_score(y_test, y_pred_proba_pos)
+    print('AUROC with LSTM (Test) : %.2f'%auroc_test_final)
 
-    with tag('p'):
-        text('ROC Curve:')
-    doc.stag('img', src=('/%s_roc_curve.png'%output_filename_prefix))  
-    with tag('p'):
-        text('ROC Area: ', roc_area)
 
-    with open(report_dir + '/%s_report.html'%output_filename_prefix, 'w') as f:
-        f.write(doc.getvalue())
+
+def convert_proba_to_binary(probabilites):
+    return [0 if probs[0] > probs[1] else 1 for probs in probabilites]
 
 def standard_scaler_3d(X):
     # input : X (N, T, F)
@@ -320,49 +176,24 @@ def standard_scaler_3d(X):
         scalers = {}
         for i in range(X.shape[1]):
             scalers[i] = StandardScaler()
-            X[:, i, :] = scalers[i].fit_transform(X[:, i, :]) 
+            X[:, i, :] = scalers[i].fit_transform(X[:, i, :])
     else:
         # zscore across subjects and time points for each feature
         for i in range(F):
             mean_across_NT = X[:,:,i].mean()
-            std_across_NT = X[:,:,i].std()
-            
+            std_across_NT = X[:,:,i].std()            
+            if std_across_NT<0.0001: # handling precision
+                std_across_NT = 0.0001
             X[:,:,i] = (X[:,:,i]-mean_across_NT)/std_across_NT
     return X
-    
-        
-        
-def convert_proba_to_binary(probabilites):
-    return [0 if probs[0] > probs[1] else 1 for probs in probabilites]
-
-
-def get_loss_plots_from_training_history(train_history):
-    epochs = train_history[:,'epoch']
-    train_loss = train_history[:,'train_loss']
-    valid_loss = train_history[:,'valid_loss']
-    aucroc_score_train = train_history[:,'aucroc_score_train']
-    aucroc_score_valid = train_history[:,'aucroc_score_valid']
-    
-    return epochs, train_loss, valid_loss, aucroc_score_train, aucroc_score_valid
-
 
 def get_paramater_gradient_l2_norm(net,**kwargs):
     parameters = [i for  _,i in net.module_.named_parameters()]
-    total_norm = 0 
-#     from IPython import embed; embed()
-    for p in parameters: 
+    total_norm = 0
+    for p in parameters:
         if p.requires_grad==True:
-            param_norm = p.grad.data.norm(2) 
-            total_norm += param_norm.item() ** 2 
-    total_norm = total_norm ** (1. / 2)
-    return total_norm
-
-def get_paramater_l2_norm(net,**kwargs):
-    parameters = [i for  _,i in net.module_.named_parameters()]
-    total_norm = 0 
-    for p in parameters: 
-        param_norm = p.norm(2) 
-        total_norm += param_norm.item() ** 2 
+            param_norm = p.grad.data.norm(2)
+            total_norm += param_norm.item() ** 2
     total_norm = total_norm ** (1. / 2)
     return total_norm
 
@@ -378,86 +209,28 @@ class ComputeGradientNorm(Callback):
         self.batch_num = 1
         self.epoch_num = 1
         self.f_history = f_history
-        
+
     def on_epoch_begin(self, net,  dataset_train=None, dataset_valid=None, **kwargs):
         self.batch_num = 1
-        
+
     def on_epoch_end(self, net, dataset_train=None, dataset_valid=None, **kwargs):
-        self.epoch_num += 1        
-#     def on_batch_end(self, net, dataset_train=None, dataset_valid=None, **kwargs ):
-#         weights_norm = get_paramater_l2_norm(net)
-#         print('epoch: %d, batch: %d, weights_norm : %.3f'%(self.epoch_num, self.batch_num, weights_norm))
-    
+        self.epoch_num += 1
+
     def on_grad_computed(self, net, named_parameters, **kwargs):
         if self.norm_type == 1:
             gradient_norm = get_paramater_gradient_inf_norm(net)
             print('epoch: %d, batch: %d, gradient_norm: %.3f'%(self.epoch_num, self.batch_num, gradient_norm))
-            self.write_to_file(gradient_norm)
+            if self.f_history is not None:
+                self.write_to_file(gradient_norm)
             self.batch_num += 1
         else:
             gradient_norm = get_paramater_gradient_l2_norm(net)
             print('epoch: %d, batch: %d, gradient_norm: %.3f'%(self.epoch_num, self.batch_num, gradient_norm))
-            self.write_to_file(gradient_norm)
+            if self.f_history is not None:
+                self.write_to_file(gradient_norm)
             self.batch_num += 1
-        
 
-    def write_to_file(self, gradient_norm):
-        row_df = pd.DataFrame([[
-            self.epoch_num,
-            self.batch_num, 
-            gradient_norm]],
-            columns=['epoch', 
-                     'batch', 
-                     'gradient_norm'])
-        csv_str = row_df.to_csv(
-            None,
-            float_format='%.3f',
-            index=False,
-            header=True if (self.epoch_num == 1 and self.batch_num == 1) else False,
-            )
-        
-        
-        if self.epoch_num == 1 and self.batch_num == 1:
-            # At start, write to a clean file with mode 'w'
-            with open(self.f_history, 'w') as f:
-                f.write(csv_str)
-        else:
-            # Append to existing file with mode 'a'
-            with open(self.f_history, 'a') as f:
-                f.write(csv_str)        
-
-                
-class LSTMtoLogReg(Callback):
-    def __init__(self):
-        self.batch_num = 1
-        self.epoch_num = 1
-        
-    def on_epoch_begin(self, net,  dataset_train=None, dataset_valid=None, **kwargs):
-        self.batch_num = 1
-#         from IPython import embed; embed()
-        # set the W_ho to zero remove time-dependence
-        net.module_.rnn.weight_hh_l0.requires_grad=False
-        net.module_.rnn.weight_hh_l0.data=torch.zeros(4*net.module__n_hiddens,net.module__n_hiddens, dtype=torch.float64)
-        # set the W_ho to zero remove time-dependence
-        net.module_.rnn.bias_hh_l0.requires_grad = False  
-        net.module_.rnn.bias_hh_l0.data = torch.zeros(128, dtype=torch.float64)       
-    
 
 if __name__ == '__main__':
     main()
     
-
-##  SKORCH WITH GRIDSEARCHCV CODE (NOT USED)
-#     cv_results = cross_validate(rnn, X_train, y_train, verbose=10, return_estimator=True, scoring=roc_auc_scorer, cv=2, 
-#                                 n_jobs=-1)
-    # history is in cv_results['estimator'][0].history_    
-#     classifier = GridSearchCV(rnn, hyperparameters, n_jobs=-1, cv=5, scoring = roc_auc_scorer, verbose=10, return_train_score = True)
-#     best_rnn = classifier.fit(X_train, y_train)
-    
-    # get the training and validation loss plots over epochs
-#     train_history = best_rnn.best_estimator_.history_
-#     epochs, train_loss, validation_loss = get_loss_plots_from_training_history(train_history)
-    # View best hyperparameters
-#     best_lr = best_rnn.best_estimator_.get_params()['lr']
-
-

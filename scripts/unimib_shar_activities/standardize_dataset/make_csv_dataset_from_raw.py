@@ -1,8 +1,73 @@
+'''
+
+Notes
+-----
+Uses the 9 "daily living" activities subset
+
+In the 2017 paper, the activities are listed in Table 2 as
+StandingUpFL    stand up from lying down position
+LyingDownFS     lying down from seated position
+StandingUpFS    stand up from seated position
+Running         running forward at "normal" pace
+SittingDown     sitting down from standing position
+GoingDownS      going down stairs
+GoingUpS        going up stairs
+Walking         walking forward at "normal" pace
+jumping         jumping (in place??)
+
+But in the provided zip file, these are listed (in alphabetical order) as
+'getting_up',
+'going_down',
+'going_up',
+'jumping',
+'lying_down',
+'running',
+'sitting_down',
+'standing_up',
+'walking'
+
+Most are easy to match up, but to disambiguate getting_up and standing_up,
+we looked at Figure 4 of the 2017 paper, which says
+StandingUpFL has about 210 examples
+StandingUpFS has about 160 examples
+
+If we look at the raw data, we see
+getting_up     216
+standing_up    153
+
+So getting up must be StandingUpFL, and standing up must be StandingUpFS
+
+'''
 import argparse
 import numpy as np
 import os
 import pandas as pd
 from scipy.io import loadmat
+
+RAW_CATEGORY_NAMES = [
+    'getting_up',
+    'going_down',
+    'going_up',
+    'jumping',
+    'lying_down',
+    'running',
+    'sitting_down',
+    'standing_up',
+    'walking']
+
+NEW_CATEGORY_NAME_MAP = dict(
+    going_up='UpStairs',
+    going_down='DownStairs',
+    getting_up='StandFromLie',
+    standing_up='StandFromSit',
+    jumping='Jump',
+    walking='Walk',
+    running='Run',
+    lying_down='LieDown',
+    sitting_down='SitDown',
+    )
+
+HORIZONTAL_MOTION_CATEGORY_NAMES = ['Walk', 'Run', 'UpStairs', 'DownStairs']
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -57,10 +122,10 @@ if __name__ == '__main__':
             ages_per_subj, height_cm_per_subj, weight_kg_per_subj,
             is_male_per_subj, gender_str_per_subj]).T,
         columns=['age_yr', 'height_cm', 'weight_kg', 'is_male', 'gender_name'])
-    subj_dem_df['subj_id'] = np.arange(1, 31, dtype=np.int32)
+    subj_dem_df['subject_id'] = np.arange(1, 31, dtype=np.int32)
     subj_dem_df.to_csv(
         output_metadata_for_each_subj_csv_path,
-        columns=['subj_id', 'age_yr', 'height_cm', 'weight_kg', 'is_male', 'gender_name'],
+        columns=['subject_id', 'age_yr', 'height_cm', 'weight_kg', 'is_male'],
         index=False)
 
     ## Load Accelerometer data
@@ -70,23 +135,45 @@ if __name__ == '__main__':
 
     labels_path = os.path.join(dataset_path, 'adl_labels.mat')
     meta_data = loadmat(labels_path)
-    y_df = pd.DataFrame(meta_data['adl_labels'], columns=['raw_cat_id', 'subj_id', 'pocket_id'])
+    y_df = pd.DataFrame(meta_data['adl_labels'], columns=['raw_cat_id', 'subject_id', 'pocket_id'])
     n_seq = y_df.shape[0]
-    y_df['subj_id'] = y_df['subj_id'].astype(np.int32)
+    y_df['subject_id'] = y_df['subject_id'].astype(np.int32)
     # Pockets should be binary, {0,1} encoding for {left, right}
     y_df['pocket_id'] = y_df['pocket_id'].astype(np.int32) - 1
     # Category ids should be in {0, 1, ... 8}
     y_df['category_id'] = y_df['raw_cat_id'].astype(np.int32) - 1
-    y_df['seq_id'] = np.arange(n_seq)
+    y_df['sequence_id'] = np.arange(n_seq)
 
     names_path = os.path.join(dataset_path, 'adl_names.mat')
     label_names = [str(np.squeeze(u))
         for u in np.squeeze(loadmat(names_path)['adl_names'])]
     y_df['category_name'] = [
-        label_names[ii] for ii in y_df['category_id']]
+        NEW_CATEGORY_NAME_MAP.get(label_names[ii], label_names[ii])
+        for ii in y_df['category_id']]
+    y_df['horizontal_motion_binary_label'] = np.asarray([
+        NEW_CATEGORY_NAME_MAP.get(label_names[ii], label_names[ii]) in HORIZONTAL_MOTION_CATEGORY_NAMES
+        for ii in y_df['category_id']], dtype=np.int32)
     y_df.to_csv(output_metadata_for_each_ts_csv_path,
-        columns=['seq_id', 'subj_id', 'category_id', 'category_name', 'pocket_id'],
+        columns=['subject_id', 'sequence_id', 'pocket_id', 'horizontal_motion_binary_label', 'category_name'],
         index=False)
+
+    print("")
+    print("subject_id | counts")
+    print("-------------------")
+    print(y_df['subject_id'].value_counts()[:5].sort_values(ascending=False).to_string(header=False))    
+    print("...")
+    print(y_df['subject_id'].value_counts()[-5:].sort_values(ascending=False).to_string(header=False))    
+    
+
+    print("")
+    print("category_name | counts")
+    print("----------------------")
+    print(y_df['category_name'].value_counts()[:15].sort_values(ascending=False).to_string(header=False))    
+    print("")
+    print("pocket_id | counts")
+    print("-------------------")
+    print(y_df['pocket_id'].value_counts()[:15].sort_values(ascending=False).to_string(header=False))    
+    
 
     # Unpack data into tidy time-series
     xyz_ts_arr_per_seq = list()
@@ -98,11 +185,11 @@ if __name__ == '__main__':
         seqid_ts_arr_per_seq.append(seq_id * np.ones(T, dtype=np.int32))
     
     x_df = pd.DataFrame(np.vstack(xyz_ts_arr_per_seq), columns=['acc_x', 'acc_y', 'acc_z'])
-    x_df['seq_id'] = np.hstack(seqid_ts_arr_per_seq)
-    x_df['tstep_id'] = np.hstack([np.arange(idvec.size) for idvec in seqid_ts_arr_per_seq])
-    x_df = x_df.merge(y_df[['seq_id', 'subj_id']], how='inner', on='seq_id')
+    x_df['sequence_id'] = np.hstack(seqid_ts_arr_per_seq)
+    x_df['timestep'] = np.hstack([np.arange(idvec.size) for idvec in seqid_ts_arr_per_seq])
+    x_df = x_df.merge(y_df[['sequence_id', 'subject_id']], how='inner', on='sequence_id')
     x_df.to_csv(output_sensors_ts_csv_path,
-        columns=['seq_id', 'subj_id', 'tstep_id', 'acc_x', 'acc_y', 'acc_z'],
+        columns=['subject_id', 'sequence_id', 'timestep', 'acc_x', 'acc_y', 'acc_z'],
         index=False)
 
 
