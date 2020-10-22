@@ -21,9 +21,11 @@ if __name__ == '__main__':
         for var, val in [('gid', gid), ('sheet_name', sheet_name)]:
             if sheet_url.count("{{%s}}" % var):
                 sheet_url = sheet_url.replace("{{%s}}" % var, val)
+        
+        from IPython import embed; embed()
         ans = requests.get(sheet_url)
         ans.raise_for_status()
-
+        
         csv_str = ans.content.decode('utf-8')
         out_csv_path = os.path.join(
             args.output_dir,

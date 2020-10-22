@@ -99,15 +99,15 @@ def main():
     X_test, y_test = test_vitals.get_batch_data(batch_id=0)
     _,T,F = X_train.shape
     
-    print('number of time points : %s\n number of features : %s\n'%(T,F))
+    print('number of time points : %s\nnumber of features : %s\n'%(T,F))
     
     # set class weights as 1/(number of samples in class) for each class to handle class imbalance
     class_weights = torch.tensor([1/(y_train==0).sum(),
                                   1/(y_train==1).sum()]).double()
-
+    
     # scale features
-#     X_train = standard_scaler_3d(X_train)
-#     X_test = standard_scaler_3d(X_test)
+    X_train = abs_scaler_3d(X_train)
+    X_test = abs_scaler_3d(X_test)
 
     # callback to compute gradient norm
     compute_grad_norm = ComputeGradientNorm(norm_type=2)
@@ -123,7 +123,6 @@ def main():
         
         
     print('RNN parameters : '+ output_filename_prefix)
-# #     from IPython import embed; embed()
     rnn = RNNBinaryClassifier(
               max_epochs=50,
               batch_size=args.batch_size,
@@ -185,6 +184,18 @@ def standard_scaler_3d(X):
             if std_across_NT<0.0001: # handling precision
                 std_across_NT = 0.0001
             X[:,:,i] = (X[:,:,i]-mean_across_NT)/std_across_NT
+    return X
+
+def abs_scaler_3d(X):
+    # input : X (N, T, F)
+    # ouput : scaled_X (N, T, F)
+    N, T, F = X.shape
+    # zscore across subjects and time points for each feature
+    for i in range(F):
+        max_across_NT = X[:,:,i].max()
+        min_across_NT = X[:,:,i].min()  
+        den = max_across_NT - min_across_NT
+        X[:,:,i] = (X[:,:,i]-min_across_NT)/den
     return X
 
 def get_paramater_gradient_l2_norm(net,**kwargs):

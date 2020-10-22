@@ -36,18 +36,6 @@ class TidySequentialDataCSVLoader(object):
 
         ## Parse sequence ids and compute fenceposts
         idx_P = x_csv_df[idx_col_names].values.copy()
-#         uvals = np.unique(idx_P)
-#         seq_fp = list()
-#         prev_uval = None
-#         for pp in range(idx_P.shape[0]):
-#             if np.array_equal(idx_P[pp], prev_uval):
-#                 continue
-#             else:
-#                 seq_fp.append(pp)
-#                 prev_uval = idx_P[pp]
-#         seq_fp.append(idx_P.shape[0])
-#         self.seq_fp = seq_fp
-
         seq_fp = get_fenceposts(x_csv_df, idx_col_names)
         self.seq_fp = seq_fp
         x_csv_df.drop(columns=idx_col_names, inplace=True)

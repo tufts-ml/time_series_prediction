@@ -5,6 +5,6 @@
     "spec_sheet_name_list": ["FeaturesPerSubject", "FeaturesPerTimestep", "OutcomesPerSequence"],
     "spec_csv_filename_list": ["features_per_subject.csv", "features_per_timestep.csv", "outcomes_per_sequence.csv"],
     "spec_gid_list": ["354068233", "0", "730384488"],
-    "output_csv_path_pattern": ".Spec_{{sheet_name}}.csv",
+    "output_csv_path_pattern": "Spec_{{sheet_name}}.csv",
     "output_json_path_pattern": "Spec_{{sheet_name}}.json"
 }

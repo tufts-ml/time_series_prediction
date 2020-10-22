@@ -27,6 +27,7 @@ class RNNBinaryClassifierModule(nn.Module):
             dropout_proba=0.0, dropout_proba_non_recurrent=0.0, bidirectional=False, convert_to_log_reg=False):
         super(RNNBinaryClassifierModule, self).__init__()
         self.drop = nn.Dropout(dropout_proba)
+        self.dropout_proba_non_recurrent = dropout_proba_non_recurrent
         if rnn_type in ['LSTM', 'GRU']:
             self.rnn = getattr(nn, rnn_type)(
                 n_inputs, n_hiddens, n_layers,
