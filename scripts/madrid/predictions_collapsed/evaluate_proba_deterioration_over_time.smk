@@ -15,17 +15,22 @@ from config_loader import (
     D_CONFIG,
     DATASET_SITE_PATH, DATASET_SPLIT_PATH,
     DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, PROJECT_REPO_DIR, PROJECT_CONDA_ENV_YAML,
-    RESULTS_SPLIT_PATH, RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH)
+    RESULTS_SPLIT_PATH, RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH,
+    DATASET_FEAT_PER_TSLICE_PATH, RESULTS_FEAT_PER_TSTEP_PATH)
     
 CLF_TRAIN_TEST_SPLIT_PATH=os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, 'classifier_train_test_split')
+RNN_TRAIN_TEST_SPLIT_PATH=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, 'classifier_train_test_split')
+
 
 rule evaluate_proba_deterioration:
     input:
         script=os.path.join(os.path.abspath('../'), "src", "evaluate_proba_deterioration_over_time.py")
 
     params:
-        clf_models_dir=RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH,
-        clf_train_test_split_dir=CLF_TRAIN_TEST_SPLIT_PATH,
+        shallow_clf_models_dir=RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH,
+        rnn_models_dir=os.path.join(RESULTS_FEAT_PER_TSTEP_PATH, 'rnn'),
+        shallow_clf_train_test_split_dir=CLF_TRAIN_TEST_SPLIT_PATH,
+        rnn_train_test_split_dir=RNN_TRAIN_TEST_SPLIT_PATH,
         preproc_data_dir=DATASET_SITE_PATH,
         output_dir=os.path.join(RESULTS_SPLIT_PATH, 'proba_deterioration_over_time')
         
@@ -35,8 +40,10 @@ rule evaluate_proba_deterioration:
     shell:
         '''
         python -u {input.script}\
-        --clf_models_dir {params.clf_models_dir}\
-        --clf_train_test_split_dir {params.clf_train_test_split_dir}\
+        --shallow_clf_models_dir {params.shallow_clf_models_dir}\
+        --shallow_clf_train_test_split_dir {params.shallow_clf_train_test_split_dir}\
+        --rnn_models_dir {params.rnn_models_dir}\
+        --rnn_train_test_split_dir {params.rnn_train_test_split_dir}\
         --preproc_data_dir {params.preproc_data_dir}\
         --outcome_column_name {{OUTCOME_COL_NAME}}\
         --output_dir {params.output_dir}\

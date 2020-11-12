@@ -141,11 +141,12 @@ def collapse_np(ts_df, data_dict, collapse_range_features, range_pairs, tstops_d
 
     time_cols = parse_time_cols(data_dict)
     time_cols = remove_col_names_from_list_if_not_in_df(time_cols, ts_df)
-
+    
     if len(time_cols) == 0:
         raise ValueError("Expected at least one variable with role='time'")
     elif len(time_cols) > 1:
-        raise ValueError("More than one time variable found. Expected exactly one.")
+#         raise ValueError("More than one time variable found. Expected exactly one.")
+          print("More than one time variable found. Choosing %s"%time_cols[-1])
     time_col = time_cols[-1]
 
     # Obtain fenceposts based on where any key differs

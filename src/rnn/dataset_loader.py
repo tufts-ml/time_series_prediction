@@ -159,7 +159,7 @@ class TidySequentialDataCSVLoader(object):
         batchy : 1D array, size n_seqs 
         '''
         seq_ids = self.seq_ids_per_batch[batch_id]
-        batch_x = np.zeros((seq_ids.size, self.max_seq_len, self.x_PF.shape[1]), dtype=np.float64)
+        batch_x = np.zeros((seq_ids.size, self.max_seq_len, self.x_PF.shape[1]), dtype=np.float32)
         batch_y = np.zeros(seq_ids.size, dtype=np.int64)
         for ii, n in enumerate(seq_ids):
             start = self.seq_fp[n]

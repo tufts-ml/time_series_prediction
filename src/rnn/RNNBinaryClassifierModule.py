@@ -46,7 +46,7 @@ class RNNBinaryClassifierModule(nn.Module):
         self.output = nn.Linear(n_hiddens, 2)
 
         # Setup to use double-precision floats (like np.float64)
-        self.double()
+        self.float()
 
     def score(self, X, y, sample_weight=None):
         correct_predictions = 0

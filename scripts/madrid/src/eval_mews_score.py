@@ -184,10 +184,6 @@ if __name__ == '__main__':
         y_tr = y_train[tr_inds].copy()
         x_va = x_train[va_inds]
         y_va = y_train[va_inds]
-        
-        # Use a linear classifier to classify based on scores and choose the best score as thresold
-        #tmp_clf = ThresholdClassifier(linear_clf)
-        #tmp_clf.fit(x_tr, y_tr)
 
         for gg, thr in enumerate(thr_grid):
             #tmp_clf = tmp_clf.set_params(threshold=thr)

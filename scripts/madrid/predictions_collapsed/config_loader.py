@@ -52,6 +52,9 @@ update_os_environ_vars()
 RESULTS_TOP_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["RESULTS_TOP_PATH_LIST"])))
 update_os_environ_vars()
 
+RESULTS_SITE_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["RESULTS_SITE_PATH_LIST"])))
+update_os_environ_vars()
+
 RESULTS_SPLIT_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["RESULTS_SPLIT_PATH_LIST"])))
 update_os_environ_vars()
 
@@ -72,4 +75,12 @@ update_os_environ_vars()
 
 RESULTS_FEAT_PER_TSTEP_PATH = os.path.join(*list(map(os.path.expandvars,
                                                      D_CONFIG["RESULTS_FEAT_PER_TIMESTEP_PATH_LIST"])))
+update_os_environ_vars()
+
+COLLAPSED_FEAT_PER_TIMESLICE_CLF_MODELS_PATH = os.path.join(*list(map(os.path.expandvars,
+                                                     D_CONFIG["COLLAPSED_FEAT_PER_TIMESLICE_CLF_MODELS_PATH_LIST"])))
+update_os_environ_vars()
+
+FEAT_PER_TIMESLICE_CLF_MODELS_PATH = os.path.join(*list(map(os.path.expandvars,
+                                                     D_CONFIG["FEAT_PER_TIMESLICE_CLF_MODELS_PATH_LIST"])))
 update_os_environ_vars()

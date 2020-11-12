@@ -9,6 +9,7 @@ import copy
 from progressbar import ProgressBar
 import warnings
 import sys
+import seaborn as sns
 
 warnings.filterwarnings("error")
 
@@ -199,7 +200,8 @@ if __name__ == '__main__':
         vitals_tdiff_df.loc[vital, 'tdiff_95%'] = np.percentile(tdiff_list[vital_ind], 95)
         vitals_tdiff_df.loc[vital, 'tdiff_max'] = max(tdiff_list[vital_ind])
     print(vitals_tdiff_df)
-
+    
+    from IPython import embed; embed()
 
     print('#######################################')
     print('Getting train, val, test split statistics')

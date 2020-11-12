@@ -16,7 +16,8 @@ from config_loader import (
     DATASET_SITE_PATH, DATASET_SPLIT_PATH,
     DATASET_FEAT_PER_TSLICE_PATH, DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, 
     PROJECT_REPO_DIR, PROJECT_CONDA_ENV_YAML,
-    RESULTS_SPLIT_PATH, RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH)
+    RESULTS_SPLIT_PATH, RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH,
+    COLLAPSED_FEAT_PER_TIMESLICE_CLF_MODELS_PATH)
     
 evaluate_tslice_hours_list=D_CONFIG['EVALUATE_TIMESLICE_LIST']
 random_seed_list=D_CONFIG['CLF_RANDOM_SEED_LIST']
@@ -27,7 +28,7 @@ rule evaluate_performance:
         script=os.path.join(os.path.abspath('../'), "src", "evaluate_lr_rf_mews_pertslice_performance.py")
 
     params:
-        clf_models_dir=RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH,
+        clf_models_dir=COLLAPSED_FEAT_PER_TIMESLICE_CLF_MODELS_PATH,
         clf_train_test_split_dir=CLF_TRAIN_TEST_SPLIT_PATH,
         evaluation_tslices=evaluate_tslice_hours_list,
         collapsed_tslice_folder=DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH,
