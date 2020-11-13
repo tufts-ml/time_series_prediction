@@ -110,3 +110,7 @@ venv.bak/
 *.csv
 *.png
 *.html
+*.mat
+*.zip
+*.pdf
+*.m
