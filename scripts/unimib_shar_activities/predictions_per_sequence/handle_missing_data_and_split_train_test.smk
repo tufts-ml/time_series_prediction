@@ -11,21 +11,21 @@ sys.path.append('../predictions_collapsed/')
 from config_loader import (
     D_CONFIG,
     DATASET_STD_PATH, DATASET_SPLIT_PATH,
-    PROJECT_REPO_DIR, PROJECT_CONDA_ENV_YAML)
+    PROJECT_REPO_DIR, PROJECT_CONDA_ENV_YAML, DATASET_SPLIT_FEAT_PER_TSTEP_PATH)
 
 print("Building collapsed dataset")
 print("--------------------------")
 print("Train/test dataset will go to folder:")
-print(DATASET_SPLIT_PATH)
+print(DATASET_SPLIT_FEAT_PER_TSTEP_PATH)
 
 # Default environment variables
 # Can override with local env variables
 rule all:
     input:
-        x_train_csv=os.path.join(DATASET_SPLIT_PATH, 'x_train.csv'),
-        x_test_csv=os.path.join(DATASET_SPLIT_PATH, 'x_test.csv'),
-        y_train_csv=os.path.join(DATASET_SPLIT_PATH, 'y_train.csv'),
-        y_test_csv=os.path.join(DATASET_SPLIT_PATH, 'y_test.csv')
+        x_train_csv=os.path.join(DATASET_SPLIT_FEAT_PER_TSTEP_PATH, 'x_train.csv'),
+        x_test_csv=os.path.join(DATASET_SPLIT_FEAT_PER_TSTEP_PATH, 'x_test.csv'),
+        y_train_csv=os.path.join(DATASET_SPLIT_FEAT_PER_TSTEP_PATH, 'y_train.csv'),
+        y_test_csv=os.path.join(DATASET_SPLIT_FEAT_PER_TSTEP_PATH, 'y_test.csv')
 
 
 rule merge_static_highfreq_features:
@@ -63,12 +63,12 @@ rule split_into_train_and_test:
         collapsedy_json=os.path.join(DATASET_STD_PATH, 'Spec_OutcomesPerSequence.json')
 
     output:
-        x_dict=os.path.join(DATASET_SPLIT_PATH, 'x_dict.json'),
-        y_dict=os.path.join(DATASET_SPLIT_PATH, 'y_dict.json'),
-        x_train_csv=os.path.join(DATASET_SPLIT_PATH, 'x_train.csv'),
-        x_test_csv=os.path.join(DATASET_SPLIT_PATH, 'x_test.csv'),
-        y_train_csv=os.path.join(DATASET_SPLIT_PATH, 'y_train.csv'),
-        y_test_csv=os.path.join(DATASET_SPLIT_PATH, 'y_test.csv')
+        x_dict=os.path.join(DATASET_SPLIT_FEAT_PER_TSTEP_PATH, 'x_dict.json'),
+        y_dict=os.path.join(DATASET_SPLIT_FEAT_PER_TSTEP_PATH, 'y_dict.json'),
+        x_train_csv=os.path.join(DATASET_SPLIT_FEAT_PER_TSTEP_PATH, 'x_train.csv'),
+        x_test_csv=os.path.join(DATASET_SPLIT_FEAT_PER_TSTEP_PATH, 'x_test.csv'),
+        y_train_csv=os.path.join(DATASET_SPLIT_FEAT_PER_TSTEP_PATH, 'y_train.csv'),
+        y_test_csv=os.path.join(DATASET_SPLIT_FEAT_PER_TSTEP_PATH, 'y_test.csv')
 
     conda:
         PROJECT_CONDA_ENV_YAML

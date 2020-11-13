@@ -31,6 +31,9 @@ update_os_environ_vars()
 DATASET_SPLIT_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["SPLIT_PATH_LIST_FEAT_PER_SEQUENCE"])))
 update_os_environ_vars()
 
+DATASET_SPLIT_FEAT_PER_TSTEP_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["SPLIT_PATH_LIST_FEAT_PER_TIMESTEP"])))
+update_os_environ_vars()
+
 RESULTS_TOP_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["RESULTS_TOP_PATH_LIST"])))
 update_os_environ_vars()
 
