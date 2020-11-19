@@ -108,6 +108,7 @@ class classification_dataset(labeled_dataset):
         if unsupervised:
             return ynew
         for c in range(self.classes()):
+#             from IPython import embed; embed()
             ynew[np.squeeze(y) == c, c] = 1
         return ynew
 

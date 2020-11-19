@@ -92,12 +92,12 @@ class half_moons(dataset, real_dataset, classification_dataset):
     
 class custom_dataset(dataset, real_dataset, classification_dataset):
     def __init__(self, data_dict, **kwargs):
-        dataset.__init__(self, **kwargs)
         self._name = 'custom'
         self._noutputs = 2
         self._labels = [str(i) for i in range(2)]
         self._data_dict = data_dict
-        self._shape = (1, 1, 9)
+        self._shape = (1, self._data_dict['train'][0].shape[-2], self._data_dict['train'][0].shape[-1])
+        dataset.__init__(self, **kwargs)
 
     def fetch_data(self, download_dir=None):
         self.data = dict(train=self._data_dict['train'], valid=self._data_dict['valid'], test=self._data_dict['test'])

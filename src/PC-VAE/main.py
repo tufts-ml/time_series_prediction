@@ -30,8 +30,9 @@ import glob
 from numpy.random import RandomState
 from pcvae.datasets.toy import toy_line, custom_dataset
 from pcvae.models.hmm import HMM
-from pcvae.datasets.base import dataset, real_dataset, classification_dataset
+from pcvae.datasets.base import dataset, real_dataset, classification_dataset, make_dataset
 from sklearn.model_selection import train_test_split
+from pcvae.util.optimizers import get_optimizer
 
 def main():
     parser = argparse.ArgumentParser(description='PyTorch RNN with variable-length numeric sequences wrapper')
@@ -98,22 +99,49 @@ def main():
 #                                   1/(y_train==1).sum()]).double()
     
     # scale features
-#     X_train = abs_scaler_3d(X_train)
-#     X_test = abs_scaler_3d(X_test)
+    X_train, min_per_feat, max_per_feat = abs_scaler_3d(X_train)
+    X_val, min_per_feat, max_per_feat = abs_scaler_3d(X_val, min_per_feat, max_per_feat)
+    X_test, min_per_feat, max_per_feat = abs_scaler_3d(X_test, min_per_feat, max_per_feat)
+    
+    
+    X_train = np.expand_dims(X_train, 1)
+    X_val = np.expand_dims(X_val, 1)
+    X_test = np.expand_dims(X_test, 1)
     
     # standardize data for PC-HMM
     key_list = ['train', 'valid', 'test']
-    data_dict = dict.fromkeys(keys_list)
+    data_dict = dict.fromkeys(key_list)
     data_dict['train'] = (X_train, y_train)
-    data_dict['valid'] = (X_valid, y_valid)
+    data_dict['valid'] = (X_val, y_val)
     data_dict['test'] = (X_test, y_test)
+    
     
     ## might need to expand X_train dims
     ## make y categorical
     ## check toy.py half moons class for hint
+    n_states = 10
+    optimizer = get_optimizer('adam', lr = args.lr)
+    model = HMM(
+            states=n_states,                                     
+            lam=1000,                                      
+            prior_weight=0.01,
+            observation_dist='MultivariateNormalTriL',
+            observation_initializer=dict(loc=rs.randn(n_states, F), 
+                scale_tril=np.stack([2 * np.eye(F) for i in range(n_states)])),
+            initial_state_alpha=1.,
+            initial_state_initializer=None,
+            transition_alpha=1.,
+            transition_initializer=None, optimizer=optimizer)
     
-    from IPython import embed; embed()
+    data = custom_dataset(data_dict=data_dict)
+    model.build(data) 
+    model.fit(data, steps_per_epoch=50, epochs=10, batch_size=args.batch_size)
     
+    
+    # save the loss plots of the model
+    save_file = os.path.join(args.output_dir, args.output_filename_prefix, '.csv')
+    save_loss_plots(model, save_file, data_dict)
+        
     
 
 def standard_scaler_3d(X):
@@ -135,24 +163,53 @@ def standard_scaler_3d(X):
             X[:,:,i] = (X[:,:,i]-mean_across_NT)/std_across_NT
     return X
 
-def abs_scaler_3d(X):
+def abs_scaler_3d(X, min_per_feat=None, max_per_feat=None):
     # input : X (N, T, F)
     # ouput : scaled_X (N, T, F)
     N, T, F = X.shape
     # zscore across subjects and time points for each feature
+    if min_per_feat is None:
+        min_per_feat = np.zeros(F)
+        max_per_feat = np.zeros(F)
+        
+        for i in range(F):
+            min_per_feat[i] = X[:,:,i].min()
+            max_per_feat[i] = X[:,:,i].max()
+    
     for i in range(F):
-        max_across_NT = X[:,:,i].max()
-        min_across_NT = X[:,:,i].min()  
+        min_across_NT = min_per_feat[i]
+        max_across_NT = max_per_feat[i]
         den = max_across_NT - min_across_NT
         X[:,:,i] = (X[:,:,i]-min_across_NT)/den
-    return X
+    return X, min_per_feat, max_per_feat
 
 
 # def standardize_data_for_pchmm(X_train, y_train, X_test, y_test):
+def convert_to_categorical(y):
+    C = len(np.unique(y))
+    N = len(y)
+    y_cat = np.zeros((N, C))
+    y_cat[:, 0] = (y==0)*1.0
+    y_cat[:, 1] = (y==1)*1.0
     
+    return y_cat
 
-
-
+def save_loss_plots(model, save_file, data_dict):
+    model_hist = model.history.history
+    epochs = range(len(model_hist['loss']))
+    hmm_model_loss = model_hist['hmm_model_loss']
+    predictor_loss = model_hist['predictor_loss']
+    model_hist['epochs'] = epochs
+    model_hist['n_train'] = len(data_dict['train'][1])
+    model_hist['n_valid'] = len(data_dict['valid'][1])
+    model_hist['n_test'] = len(data_dict['test'][1])
+    model_hist_df = pd.DataFrame(model_hist)
+    
+    from IPython import embed; embed()
+    # save to file
+    model_hist_df.to_csv(save_file, index=False)
+    print('Training plots saved to %s'%save_file)
+    
 if __name__ == '__main__':
     main()
     

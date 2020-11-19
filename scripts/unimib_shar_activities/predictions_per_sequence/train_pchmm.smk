@@ -20,11 +20,11 @@ from config_loader import (
     RESULTS_FEAT_PER_TSTEP_PATH)
 sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src'))
 
-RESULTS_FEAT_PER_TSTEP_PATH = os.path.join(RESULTS_FEAT_PER_TSTEP_PATH, 'rnn')
+RESULTS_FEAT_PER_TSTEP_PATH = os.path.join(RESULTS_FEAT_PER_TSTEP_PATH, 'pchmm')
 print("Results will be saved in : %s"%RESULTS_FEAT_PER_TSTEP_PATH)
 rule train_and_evaluate_classifier_many_hyperparams:
     input:
-        [os.path.join(RESULTS_FEAT_PER_TSTEP_PATH,"pchmm-lr={lr}-seed={seed}.json").format(lr=lr, seed=seed) for lr in config['lr'] for seed in config['seed']]
+        [os.path.join(RESULTS_FEAT_PER_TSTEP_PATH,"pchmm-lr={lr}-seed={seed}-batch_size={batch_size}.csv").format(lr=lr, seed=seed, batch_size=batch_size) for lr in config['lr'] for seed in config['seed'] for batch_size in config['batch_size']]
 
 rule train_and_evaluate_classifier:
     input:
@@ -38,10 +38,10 @@ rule train_and_evaluate_classifier:
 
     params:
         output_dir=RESULTS_FEAT_PER_TSTEP_PATH,
-        fn_prefix="pchmm-lr={lr}-seed={seed}"
+        fn_prefix="pchmm-lr={lr}-seed={seed}-batch_size={batch_size}"
     
     output:
-        os.path.join(RESULTS_FEAT_PER_TSTEP_PATH, "pchmm-lr={lr}-seed={seed}.json")
+        os.path.join(RESULTS_FEAT_PER_TSTEP_PATH, "pchmm-lr={lr}-seed={seed}-batch_size={batch_size}.csv")
         
     conda:
         PROJECT_CONDA_ENV_YAML
@@ -58,6 +58,7 @@ rule train_and_evaluate_classifier:
             --validation_size 0.15 \
             --lr {wildcards.lr} \
             --seed {wildcards.seed} \
+            --batch_size {wildcards.batch_size} \
             --output_filename_prefix {params.fn_prefix} \
         '''.replace("{{OUTCOME_COL_NAME}}", D_CONFIG["OUTCOME_COL_NAME"])\
            .replace("{{SPLIT_KEY_COL_NAMES}}", D_CONFIG["SPLIT_KEY_COL_NAMES"])
