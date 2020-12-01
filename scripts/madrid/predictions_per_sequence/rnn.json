@@ -2,8 +2,8 @@
     "hidden_layers": [2],
     "hidden_units": [128],
     "lr": [0.001],
-    "batch_size": [6000],
-    "dropout": [0.3], 
+    "batch_size": [7000],
+    "dropout": [0.2], 
     "weight_decay": [0],
     "param_init_seed" : [1111]
 }

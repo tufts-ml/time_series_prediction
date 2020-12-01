@@ -21,15 +21,15 @@ CLF_TRAIN_TEST_SPLIT_PATH=os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, '
 rule evaluate_mews_score:
     input:
         script=os.path.join(os.path.abspath('../'), 'src', 'eval_mews_score.py'),
-        mews_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'mews_train.csv'),
-        mews_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'mews_test.csv'),
-        y_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_train.csv'),
-        y_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_test.csv'),
+        mews_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'mews_train.csv.gz'),
+        mews_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'mews_test.csv.gz'),
+        y_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_train.csv.gz'),
+        y_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_test.csv.gz'),
         mews_dict_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'mews_dict.json'),
         y_dict_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_dict.json')
     
     params:
-        output_dir=RESULTS_SPLIT_PATH,
+        output_dir=RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH,
         random_seed=int(random_seed_list[0])
         
 
@@ -52,7 +52,7 @@ rule evaluate_mews_score:
             --key_cols_to_group_when_splitting {{SPLIT_KEY_COL_NAMES}} \
             --random_seed {params.random_seed}\
             --scoring roc_auc \
-            --threshold_scoring balanced_accuracy \
+            --threshold_scoring balanced_accuracy_score \
             --validation_size 0.15\
             --n_splits 3\
         '''.replace("{{OUTCOME_COL_NAME}}", D_CONFIG["OUTCOME_COL_NAME"])\

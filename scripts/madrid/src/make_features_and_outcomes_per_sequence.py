@@ -41,17 +41,17 @@ if __name__ == '__main__':
     features_df.sort_values(by=id_cols+[time_col], inplace=True)
     outcomes_df.sort_values(by=id_cols, inplace=True)
     
-    features_csv_filename = os.path.join(args.output_dir, 'features.csv')
+    features_csv_filename = os.path.join(args.output_dir, 'features.csv.gz')
     features_data_dict_filename = os.path.join(args.output_dir, 'features_dict.json')
     print('Saving features to :\n%s \n%s'%(features_csv_filename, features_data_dict_filename))
-    features_df.to_csv(features_csv_filename, index=False) 
+    features_df.to_csv(features_csv_filename, index=False, compression='gzip') 
     with open(features_data_dict_filename, 'w') as f:
         json.dump(features_data_dict, f, indent=4)
     
-    outcomes_csv_filename = os.path.join(args.output_dir, 'outcomes.csv')
+    outcomes_csv_filename = os.path.join(args.output_dir, 'outcomes.csv.gz')
     outcomes_data_dict_filename = os.path.join(args.output_dir, 'outcomes_dict.json')
     print('Saving outcomes to :\n%s \n%s'%(outcomes_csv_filename, outcomes_data_dict_filename))
-    outcomes_df.to_csv(outcomes_csv_filename, index=False)
+    outcomes_df.to_csv(outcomes_csv_filename, index=False, compression='gzip')
     with open(outcomes_data_dict_filename, 'w') as f:
         json.dump(outcomes_data_dict, f, indent=4)    
     

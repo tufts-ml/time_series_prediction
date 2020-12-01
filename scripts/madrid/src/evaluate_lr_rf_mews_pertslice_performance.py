@@ -61,7 +61,7 @@ if __name__ == '__main__':
     
     ## get the test patient id's
     # get the test set's csv and dict
-    y_test_df = pd.read_csv(os.path.join(args.clf_train_test_split_dir, 'y_test.csv'))
+    y_test_df = pd.read_csv(os.path.join(args.clf_train_test_split_dir, 'y_test.csv.gz'))
     y_test_dict_file = os.path.join(args.clf_train_test_split_dir, 'y_dict.json')
     
     # import the y dict to get the id cols
@@ -85,11 +85,11 @@ if __name__ == '__main__':
         tslice_folder = tslice_folders + tslice
         collapsed_tslice_folder = collapsed_tslice_folders + tslice
         # get test set collapsed labs and vitals
-        collapsed_vitals_df = pd.read_csv(os.path.join(collapsed_tslice_folder, 'CollapsedVitalsPerSequence.csv'))
-        collapsed_labs_df = pd.read_csv(os.path.join(collapsed_tslice_folder, 'CollapsedLabsPerSequence.csv'))
-        mews_df = pd.read_csv(os.path.join(collapsed_tslice_folder, 'MewsScoresPerSequence.csv'))
+        collapsed_vitals_df = pd.read_csv(os.path.join(collapsed_tslice_folder, 'CollapsedVitalsPerSequence.csv.gz'))
+        collapsed_labs_df = pd.read_csv(os.path.join(collapsed_tslice_folder, 'CollapsedLabsPerSequence.csv.gz'))
+        mews_df = pd.read_csv(os.path.join(collapsed_tslice_folder, 'MewsScoresPerSequence.csv.gz'))
         outcomes_df = pd.read_csv(os.path.join(tslice_folder,
-                                               'clinical_deterioration_outcomes_filtered_%s_hours.csv'%tslice))
+                                               'clinical_deterioration_outcomes_filtered_%s_hours.csv.gz'%tslice))
         collapsed_vitals_data_dict = load_data_dict_json(os.path.join(collapsed_tslice_folder, 'Spec_CollapsedVitalsPerSequence.json'))
         collapsed_labs_data_dict = load_data_dict_json(os.path.join(collapsed_tslice_folder, 'Spec_CollapsedLabsPerSequence.json'))
         mews_data_dict = load_data_dict_json(os.path.join(collapsed_tslice_folder, 'Spec_MewsScoresPerSequence.json'))
@@ -155,7 +155,7 @@ if __name__ == '__main__':
                 row_dict['average_precision'] = np.percentile(avg_precision_np, prctile)
 
                 perf_df = perf_df.append(row_dict, ignore_index=True)        
-    
+                
     perf_csv = os.path.join(args.output_dir, 'lr_rf_mews_pertslice_performance.csv')
     print('Saving lr, rf, mews per-tslice performance to %s'%perf_csv)
     perf_df.to_csv(perf_csv, index=False)

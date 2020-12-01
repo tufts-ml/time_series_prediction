@@ -667,12 +667,12 @@ if __name__ == '__main__':
     perf_df = perf_df.set_index('split_name')
     csv_path = os.path.join(fig_dir, 'performance_df.csv')
     perf_df.to_csv(csv_path)
-    print("Wrote to: %s" % csv_path)
+    print("Wrote performance metrics to: %s" % csv_path)
 
 
     # Write HTML report
     # ------------------
-    os.chdir(fig_dir)
+#     os.chdir(fig_dir)
     doc, tag, text = Doc().tagtext()
     pd.set_option('precision', 4)
     with tag('html'):
@@ -787,5 +787,5 @@ if __name__ == '__main__':
                 with tag('div', klass="col-sm-1 sidenav"):
                     text("")
 
-    with open('report.html', 'w') as f:
+    with open(os.path.join(args.output_dir, 'report.html'), 'w') as f:
         f.write(doc.getvalue())

@@ -110,7 +110,10 @@ if __name__ == '__main__':
     labs_df_with_stay_lengths = labs_df_with_stay_lengths.loc[labs_keep_inds, :].copy().reset_index(drop=True)
     vitals_df_with_stay_lengths = vitals_df_with_stay_lengths[vitals_df_with_stay_lengths.stay_length>=min_stay_length]
     labs_df_with_stay_lengths = labs_df_with_stay_lengths[labs_df_with_stay_lengths.stay_length>=min_stay_length]
-
+    
+    labs_df_with_stay_lengths[labs_feature_cols] = labs_df_with_stay_lengths[labs_feature_cols].astype(np.float32)
+    vitals_df_with_stay_lengths[vitals_feature_cols] = vitals_df_with_stay_lengths[vitals_feature_cols].astype(np.float32)
+    
     # outer join the labs and vitals to cover same number of stays for vitals and labs
     labs_vitals_merged_df = pd.merge(vitals_df_with_stay_lengths, labs_df_with_stay_lengths, on = id_cols + ['hours_since_admission', 'timestamp'], how='outer')
     filtered_labs_df = labs_vitals_merged_df[id_cols + ['timestamp', 'hours_since_admission'] + labs_feature_cols].copy()
@@ -124,20 +127,20 @@ if __name__ == '__main__':
     filtered_labs_df.sort_values(by=id_cols+['timestamp'], inplace=True)
 
     # save to csv
-    vitals_csv_path = os.path.join(args.output_dir, 'vitals_before_icu_filtered_{tslice}_hours.csv'.format(
+    vitals_csv_path = os.path.join(args.output_dir, 'vitals_before_icu_filtered_{tslice}_hours.csv.gz'.format(
         tslice=args.tslice))
-    labs_csv_path = os.path.join(args.output_dir, 'labs_before_icu_filtered_{tslice}_hours.csv'.format(
+    labs_csv_path = os.path.join(args.output_dir, 'labs_before_icu_filtered_{tslice}_hours.csv.gz'.format(
         tslice=args.tslice))    
-    dem_csv_path = os.path.join(args.output_dir, 'demographics_before_icu_filtered_{tslice}_hours.csv'.format(
+    dem_csv_path = os.path.join(args.output_dir, 'demographics_before_icu_filtered_{tslice}_hours.csv.gz'.format(
         tslice=args.tslice))    
-    y_csv_path = os.path.join(args.output_dir, 'clinical_deterioration_outcomes_filtered_{tslice}_hours.csv'.format(
+    y_csv_path = os.path.join(args.output_dir, 'clinical_deterioration_outcomes_filtered_{tslice}_hours.csv.gz'.format(
         tslice=args.tslice))
-    tstops_csv_path = os.path.join(args.output_dir, 'tstops_filtered_{tslice}_hours.csv'.format(
+    tstops_csv_path = os.path.join(args.output_dir, 'tstops_filtered_{tslice}_hours.csv.gz'.format(
         tslice=args.tslice))
-    filtered_vitals_df.to_csv(vitals_csv_path, index=False)
-    filtered_labs_df.to_csv(labs_csv_path, index=False)
-    filtered_demographics_df.to_csv(dem_csv_path, index=False)
-    filtered_outcomes_df.to_csv(y_csv_path, index=False)
-    filtered_tstops_df.to_csv(tstops_csv_path, index=False)
+    filtered_vitals_df.to_csv(vitals_csv_path, index=False, compression='gzip')
+    filtered_labs_df.to_csv(labs_csv_path, index=False, compression='gzip')
+    filtered_demographics_df.to_csv(dem_csv_path, index=False, compression='gzip')
+    filtered_outcomes_df.to_csv(y_csv_path, index=False, compression='gzip')
+    filtered_tstops_df.to_csv(tstops_csv_path, index=False, compression='gzip')
 
     print('Done! Wrote to CSV file:\n%s\n%s\n%s\n%s' % (vitals_csv_path, labs_csv_path, dem_csv_path, y_csv_path))

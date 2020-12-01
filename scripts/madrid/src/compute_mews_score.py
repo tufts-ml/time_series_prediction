@@ -143,10 +143,17 @@ if __name__ == '__main__':
         data_output = '{}_transformed.csv'.format(file_name)
     elif args.output[-4:] == '.csv':
         data_output = args.output
+    elif args.output[-7:] == '.csv.gz':
+        data_output = args.output
     else:
         data_output = '{}.csv'.format(args.output)
-    mews_scores_df.to_csv(data_output, index=False)
-    print("Wrote to output CSV:\n%s" % (data_output))
+
+    if data_output[-3:] == '.gz':
+        mews_scores_df.to_csv(data_output, index=False, compression="gzip")
+        print("Wrote to output compressed CSV:\n%s" % (data_output))
+    else:
+        mews_scores_df.to_csv(data_output, index=False)
+        print("Wrote to output CSV:\n%s" % (data_output))
 
     # save data dictionary to file
     if args.data_dict_output is None:

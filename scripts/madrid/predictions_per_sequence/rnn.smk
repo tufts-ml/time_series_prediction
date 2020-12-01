@@ -64,10 +64,9 @@ rule train_and_evaluate_classifier:
             --hidden_layers {wildcards.hidden_layers} \
             --hidden_units {wildcards.hidden_units} \
             --lr {wildcards.lr} \
-            --batch_size 6000 \
+            --batch_size 7000 \
             --dropout {wildcards.dropout} \
             --weight_decay {wildcards.weight_decay} \
             --output_filename_prefix {params.fn_prefix} \
-            --pretrained_model_dir {params.pretrained_model_dir} \
         '''.replace("{{OUTCOME_COL_NAME}}", D_CONFIG["OUTCOME_COL_NAME"])\
            .replace("{{SPLIT_KEY_COL_NAMES}}", D_CONFIG["SPLIT_KEY_COL_NAMES"])

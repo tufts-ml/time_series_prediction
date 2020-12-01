@@ -255,8 +255,9 @@ if __name__ == '__main__':
     perf_df = pd.DataFrame(row_dict_list)
     perf_df = perf_df.set_index('split_name')
     #print('saving to %s'%(os.path.join(fig_dir, 'performance_df_random_seed={random_seed}.csv'.format(random_seed=str(args.random_seed)))))
-    perf_df.to_csv(os.path.join(fig_dir, 'mews_performance_df.csv'))
+    perf_df.to_csv(os.path.join(args.output_dir, 'mews_performance_df.csv'))
+    print('Saved mews performance to %s'%(os.path.join(args.output_dir, 'mews_performance_df.csv')))
     best_thr_df = pd.DataFrame({'best_thr':best_thr}, index=[0])
-    best_thr_df.to_csv(os.path.join(fig_dir, 'mews_best_threshold.csv'), index=False)
+    best_thr_df.to_csv(os.path.join(args.output_dir, 'mews_best_threshold.csv'), index=False)
 
 

@@ -115,10 +115,17 @@ def main():
         data_output = '{}_transformed.csv'.format(file_name)
     elif args.output[-4:] == '.csv':
         data_output = args.output
+    elif args.output[-7:] == '.csv.gz':
+        data_output = args.output
     else:
         data_output = '{}.csv'.format(args.output)
-    ts_df.to_csv(data_output, index=False)
-    print("Wrote to output CSV:\n%s" % (data_output))
+        
+    if data_output[-3:] == '.gz':
+        ts_df.to_csv(data_output, index=False, compression='gzip')
+        print("Wrote to output compressed CSV:\n%s" % (data_output))
+    else:
+        ts_df.to_csv(data_output, index=False)
+        print("Wrote to output CSV:\n%s" % (data_output))
     
     # save data dictionary to file
     if args.data_dict_output is None:
@@ -163,14 +170,15 @@ def collapse_np(ts_df, data_dict, collapse_range_features, range_pairs, tstops_d
 
     # Start timer
     total_time = 0
-    timestamp_arr = np.asarray(ts_df[time_col].values.copy(), dtype=np.float64)
+    #ts_df[feature_cols] = ts_df[feature_cols].astype(np.float32)
+    timestamp_arr = np.asarray(ts_df[time_col].values.copy(), dtype=np.float32)
     features_arr = ts_df[feature_cols].values
     
     if tstops_df is None:
         ts_with_max_tstop_df = ts_df[id_cols + [time_col]].groupby(id_cols, as_index=False).max().rename(columns={time_col:'max_tstop'})
-        tstops_arr = np.asarray(pd.merge(ts_df, ts_with_max_tstop_df, on=id_cols, how='left')['max_tstop'], dtype=np.float64)
+        tstops_arr = np.asarray(pd.merge(ts_df, ts_with_max_tstop_df, on=id_cols, how='left')['max_tstop'], dtype=np.float32)
     else:
-        tstops_arr = np.asarray(pd.merge(ts_df, tstops_df, on=id_cols, how='left')['tstop'], dtype=np.float64)
+        tstops_arr = np.asarray(pd.merge(ts_df, tstops_df, on=id_cols, how='left')['tstop'], dtype=np.float32)
     
     for op_ind, op in enumerate(collapse_range_features.split(' ')):
         print('Collapsing with func %s'%op)
@@ -182,7 +190,7 @@ def collapse_np(ts_df, data_dict, collapse_range_features, range_pairs, tstops_d
             # initialize collapsed dataframe for the current summary function
             n_rows = len(fp) - 1
             n_feats = len(feature_cols)
-            collapsed_feat_arr = np.zeros([n_rows, n_feats])
+            collapsed_feat_arr = np.zeros([n_rows, n_feats], dtype=np.float32)
 
             is_str_lo_and_hi = isinstance(low, str) and isinstance(high, str)
             do_case_percentage = is_str_lo_and_hi and (
@@ -232,7 +240,7 @@ def collapse_np(ts_df, data_dict, collapse_range_features, range_pairs, tstops_d
             if op_ind==0:
                 print('Percentage of empty slices in %s to %s is %.2f'%(
                     low, high, (empty_arrays/n_rows)*100))
-            list_of_collapsed_feat_arr.append(collapsed_feat_arr)
+            list_of_collapsed_feat_arr.append(collapsed_feat_arr.astype(np.float32))
             list_of_collapsed_feat_names.extend([x+'_'+op+'_'+str(low)+'_to_'+str(high) for x in feature_cols])
         
         t2 = time.time()

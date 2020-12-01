@@ -69,8 +69,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
     
     # get the train test features
-    x_train_csv=os.path.join(args.train_test_split_dir, 'x_train.csv')
-    x_test_csv=os.path.join(args.train_test_split_dir, 'x_test.csv')
+    x_train_csv=os.path.join(args.train_test_split_dir, 'x_train.csv.gz')
+    x_test_csv=os.path.join(args.train_test_split_dir, 'x_test.csv.gz')
     x_dict_json=os.path.join(args.train_test_split_dir, 'x_dict.json')
     
     # impute values by carry forward and then pop mean on train and test sets separately
@@ -106,10 +106,10 @@ if __name__ == '__main__':
     new_data_dict = update_data_dict_with_mask_features(x_data_dict)
     
     print('Saving imputed data to :\n%s \n%s'%(x_train_csv, x_test_csv))
-    x_train_df.to_csv(x_train_csv, index=False) 
-    x_test_df.to_csv(x_test_csv, index=False)
+    x_train_df.to_csv(x_train_csv, index=False, compression='gzip') 
+    x_test_df.to_csv(x_test_csv, index=False, compression='gzip')
     
     #save the new data dict
     print('Saving data dict with masking features to : \n%s'%x_dict_json)
     with open(x_dict_json, 'w') as f:
-        json.dump(new_data_dict, f, indent=4)   
+        json.dump(new_data_dict, f, indent=4)

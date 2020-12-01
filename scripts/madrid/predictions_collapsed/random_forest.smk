@@ -24,10 +24,10 @@ CLF_TRAIN_TEST_SPLIT_PATH=os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, '
 rule train_and_evaluate_classifier:
     input:
         script=os.path.join(PROJECT_REPO_DIR, 'src', 'eval_classifier.py'),
-        x_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_train.csv'),
-        x_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_test.csv'),
-        y_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_train.csv'),
-        y_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_test.csv'),
+        x_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_train.csv.gz'),
+        x_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_test.csv.gz'),
+        y_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_train.csv.gz'),
+        y_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_test.csv.gz'),
         x_dict_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_dict.json'),
         y_dict_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_dict.json')
 
@@ -36,7 +36,7 @@ rule train_and_evaluate_classifier:
         random_seed=int(random_seed_list[0])
 
     output:
-        output_html=os.path.join(RESULTS_SPLIT_PATH, "report.html")
+        output_html=os.path.join(RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH, "report.html")
 
     conda:
         PROJECT_CONDA_ENV_YAML
@@ -56,8 +56,8 @@ rule train_and_evaluate_classifier:
             --key_cols_to_group_when_splitting {{SPLIT_KEY_COL_NAMES}} \
             --random_seed {params.random_seed}\
             --n_splits 2 \
-            --scoring roc_auc \
-            --threshold_scoring balanced_accuracy \
+            --scoring roc_auc_score \
+            --threshold_scoring balanced_accuracy_score \
             --class_weight balanced \
         '''.replace("{{OUTCOME_COL_NAME}}", D_CONFIG["OUTCOME_COL_NAME"])\
            .replace("{{SPLIT_KEY_COL_NAMES}}", D_CONFIG["SPLIT_KEY_COL_NAMES"])

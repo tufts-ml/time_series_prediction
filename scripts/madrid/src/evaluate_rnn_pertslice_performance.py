@@ -31,7 +31,7 @@ import ast
 from filter_admissions_by_tslice import get_preprocessed_data
 import random
 from impute_missing_values import get_time_since_last_observed_features
-from train_rnn_on_patient_stay_slice_sequences import normalize_data
+from train_rnn_on_patient_stay_slice_sequences import normalize_data, get_sequence_lengths
 
 
 if __name__ == '__main__':
@@ -59,7 +59,7 @@ if __name__ == '__main__':
     
     ## get the test patient id's
     # get the test set's csv and dict
-    y_test_df = pd.read_csv(os.path.join(args.clf_train_test_split_dir, 'y_test.csv'))
+    y_test_df = pd.read_csv(os.path.join(args.clf_train_test_split_dir, 'y_test.csv.gz'))
     y_test_dict_file = os.path.join(args.clf_train_test_split_dir, 'y_dict.json')
     
     # get the x test feature columns
@@ -85,7 +85,7 @@ if __name__ == '__main__':
     # random_seed_list = args.random_seed_list.split(' ')
     # perf_df = pd.DataFrame()
     
-#    clf_models_dir = os.path.join(args.clf_models_dir, 'current_best_model')
+#     clf_models_dir = os.path.join(args.clf_models_dir, 'current_best_model')
     clf_models_dir=args.clf_models_dir
 
     # predict on each tslice
@@ -97,11 +97,11 @@ if __name__ == '__main__':
     for p, tslice in enumerate(tslices_list):
         tslice_folder = tslice_folders + tslice
         # get test set labs and vitals
-        vitals_df = pd.read_csv(os.path.join(tslice_folder, 'vitals_before_icu_filtered_%s_hours.csv'%tslice))
-        labs_df = pd.read_csv(os.path.join(tslice_folder, 'labs_before_icu_filtered_%s_hours.csv'%tslice))
-        demographics_df = pd.read_csv(os.path.join(tslice_folder, 'demographics_before_icu_filtered_%s_hours.csv'%tslice))
+        vitals_df = pd.read_csv(os.path.join(tslice_folder, 'vitals_before_icu_filtered_%s_hours.csv.gz'%tslice))
+        labs_df = pd.read_csv(os.path.join(tslice_folder, 'labs_before_icu_filtered_%s_hours.csv.gz'%tslice))
+        demographics_df = pd.read_csv(os.path.join(tslice_folder, 'demographics_before_icu_filtered_%s_hours.csv.gz'%tslice))
         outcomes_df = pd.read_csv(os.path.join(tslice_folder,
-                                               'clinical_deterioration_outcomes_filtered_%s_hours.csv'%tslice))
+                                               'clinical_deterioration_outcomes_filtered_%s_hours.csv.gz'%tslice))
         test_vitals_df = pd.merge(vitals_df, y_test_ids_df, on=id_cols)
         test_labs_df = pd.merge(labs_df, y_test_ids_df, on=id_cols)
         test_demographics_df = pd.merge(demographics_df, y_test_ids_df, on=id_cols)
@@ -147,17 +147,21 @@ if __name__ == '__main__':
         # predict on test data
         x_test, y_test = test_vitals.get_batch_data(batch_id=0)
         
-        F = x_test.shape[2]
+        N,T,F = x_test.shape
+        seq_lens_N = get_sequence_lengths(x_test, pad_val=0)
         # impute features with training set means
+        print('Imputing and normalizing test data using estaimtes from training set...')
         per_feature_means = np.load(os.path.join(clf_models_dir, 'per_feature_means.npy'))
+        per_feature_mins = np.load(os.path.join(clf_models_dir, 'per_feature_mins.npy'))
+        per_feature_maxs = np.load(os.path.join(clf_models_dir, 'per_feature_maxs.npy'))
         for f in range(F):
-            nan_inds = np.isnan(x_test[:,:,f])
-            x_test[:,:,f][nan_inds] = per_feature_means[f]
-            
+            for n in range(N):
+                nan_inds = np.isnan(x_test[n,:seq_lens_N[n],f])
+                x_test[n,:seq_lens_N[n],f][nan_inds] = per_feature_means[f]
+                den = (per_feature_maxs[f]-per_feature_mins[f])
+                if den>0:
+                    x_test[n,:seq_lens_N[n],f] = (x_test[n,:seq_lens_N[n],f] - per_feature_mins[f])/den
         
-        per_feature_scaling = np.load(os.path.join(clf_models_dir, 'per_feature_scaling.npy'))
-        for f in range(F):
-            x_test[:,:,f] = x_test[:,:,f]/per_feature_scaling[f]
         
         # load classifier
         if p==0:
@@ -174,6 +178,7 @@ if __name__ == '__main__':
                             f_history=os.path.join(clf_models_dir,
                                                    best_model_prefix+'history.json'))
             print('Evaluating with saved model : %s'%(os.path.join(clf_models_dir, best_model_prefix)))
+            from IPython import embed; embed()
 
         print('Evaluating rnn on tslice=%s'%(tslice))
         roc_auc_np = np.zeros(len(random_seed_list))

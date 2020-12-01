@@ -4,7 +4,7 @@
     "SPLIT_KEY_COL_NAMES": "patient_id",
     "OUTCOME_COL_NAME": "clinical_deterioration_outcome",
     "SPLIT_SUBPATH": "split-by=patient_id",
-    "SITE_NAME": "HIL",
+    "SITE_NAME": "HUF",
     "DATASET_TOP_PATH_LIST": ["$HOME", "datasets", "$DATASET_VERSION"],
     "DATASET_SITE_PATH_LIST": ["$HOME", "datasets", "$DATASET_VERSION","$SITE_NAME"],
     "DATASET_SPLIT_PATH_LIST" : ["$DATASET_SITE_PATH", "$SPLIT_SUBPATH"],
@@ -27,5 +27,5 @@
     "RESULTS_FEAT_PER_SEQUENCE_PATH_LIST": ["$RESULTS_SPLIT_PATH", "features_per_sequence"],
     "RESULTS_FEAT_PER_TIMESTEP_PATH_LIST": ["$RESULTS_SPLIT_PATH", "features_per_timestep"],
     "COLLAPSED_FEAT_PER_TIMESLICE_CLF_MODELS_PATH_LIST" : ["$RESULTS_TOP_PATH", "HUF", "$SPLIT_SUBPATH", "collapsed_features_per_timeslice"],
-    "FEAT_PER_TIMESLICE_CLF_MODELS_PATH_LIST" : ["$RESULTS_TOP_PATH", "HIL", "$SPLIT_SUBPATH", "features_per_timestep"]
+    "FEAT_PER_TIMESLICE_CLF_MODELS_PATH_LIST" : ["$RESULTS_TOP_PATH", "HUF", "$SPLIT_SUBPATH", "features_per_timestep"]
 }

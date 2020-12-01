@@ -11,6 +11,18 @@ PROJECT_REPO_DIR = os.path.abspath(
 sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src'))
 from feature_transformation import (parse_id_cols, remove_col_names_from_list_if_not_in_df, parse_time_col, parse_feature_cols)
 
+def read_csv_with_float32_dtypes(filename):
+    # Sample 100 rows of data to determine dtypes.
+    df_test = pd.read_csv(filename, nrows=100)
+
+    float_cols = [c for c in df_test if df_test[c].dtype == "float64"]
+    float32_cols = {c: np.float32 for c in float_cols}
+
+    df = pd.read_csv(filename, dtype=float32_cols)
+    
+    return df
+
+
 def merge_data_dicts(data_dicts_list):
     # get a single consolidated data dict for all features and another for outcomes
     # combine all the labs, demographics and vitals jsons into a single json
@@ -81,27 +93,48 @@ if __name__ == '__main__':
     outcomes_df_all_slices_list = list()
     mews_df_all_slices_list = list()
     for tslice in args.tslice_list.split(' '):
+        print('Appending tslice=%s...'%tslice)
         curr_tslice_folder = args.tslice_folder+tslice
         curr_collapsed_tslice_folder = args.collapsed_tslice_folder+tslice
-        collapsed_labs_df = pd.read_csv(os.path.join(curr_collapsed_tslice_folder, 'CollapsedLabsPerSequence.csv'))
-        collapsed_vitals_df = pd.read_csv(os.path.join(curr_collapsed_tslice_folder, 'CollapsedVitalsPerSequence.csv'))
-        demographics_df = pd.read_csv(os.path.join(curr_tslice_folder, 'demographics_before_icu_filtered_%s_hours.csv'%tslice))
-        mews_df = pd.read_csv(os.path.join(curr_collapsed_tslice_folder, 'MewsScoresPerSequence.csv'))
+        print('Loading collapsed labs...')
+        collapsed_labs_df = read_csv_with_float32_dtypes(os.path.join(curr_collapsed_tslice_folder, 'CollapsedLabsPerSequence.csv.gz'))
+
+        print('Loading collapsed vitals...')
+        collapsed_vitals_df = read_csv_with_float32_dtypes(os.path.join(curr_collapsed_tslice_folder, 'CollapsedVitalsPerSequence.csv.gz'))
+
+        print('Merging collapsed labs and vitals...')
         collapsed_vitals_labs_df = pd.merge(collapsed_vitals_df, collapsed_labs_df, on=id_cols, how='inner')
+        
+        print('Freeing some memory...')
+        del collapsed_labs_df, collapsed_vitals_df
+        
+        print('Merging demographics...')
+        demographics_df = read_csv_with_float32_dtypes(os.path.join(curr_tslice_folder, 'demographics_before_icu_filtered_%s_hours.csv.gz'%tslice))
 
         # merge the collapsed feaatures and static features in each tslice
         features_df = pd.merge(collapsed_vitals_labs_df, demographics_df, on=id_cols, how='inner')
-        outcomes_df = pd.read_csv(os.path.join(curr_tslice_folder, 'clinical_deterioration_outcomes_filtered_%s_hours.csv'%tslice))
+        del demographics_df
+
+        from IPython import embed; embed()        
+        mews_df = read_csv_with_float32_dtypes(os.path.join(curr_collapsed_tslice_folder, 'MewsScoresPerSequence.csv.gz'))
+        outcomes_df = pd.read_csv(os.path.join(curr_tslice_folder, 'clinical_deterioration_outcomes_filtered_%s_hours.csv.gz'%tslice))
         feature_cols = features_df.columns
         outcome_cols = outcomes_df.columns
         mews_cols = mews_df.columns
-        
+        #del collapsed_vitals_labs_df, collapsed_vitals_df, collapsed_labs_df, demographics_df
+
+        '''
+        # convert to float 32 due to memory constraints
+        features_df[feature_cols] = features_df[feature_cols].astype(np.float32)
+        outcomes_df[outcome_cols] = outcomes_df[outcome_cols].astype(np.float32)
+        mews_df[mews_cols] = mews_df.mews_cols.astype(np.float32)
+        w'''
         # append fearures from all tslices
         features_df_all_slices_list.append(features_df.values)
         outcomes_df_all_slices_list.append(outcomes_df.values)
         mews_df_all_slices_list.append(mews_df.values)
         del collapsed_vitals_labs_df
-    
+
     features_df_all_slices = pd.DataFrame(np.concatenate(features_df_all_slices_list), columns=feature_cols)
     outcomes_df_all_slices = pd.DataFrame(np.concatenate(outcomes_df_all_slices_list), columns=outcome_cols)
     mews_df_all_slices = pd.DataFrame(np.concatenate(mews_df_all_slices_list), columns=mews_cols)
@@ -138,17 +171,17 @@ if __name__ == '__main__':
     features_df_all_slices = features_df_all_slices.astype(feature_type_dict)
     
     # save to disk
-    features_csv = os.path.join(args.output_dir, 'features.csv')
-    outcomes_csv = os.path.join(args.output_dir, 'outcomes.csv')
-    mews_csv = os.path.join(args.output_dir, 'mews.csv')
+    features_csv = os.path.join(args.output_dir, 'features.csv.gz')
+    outcomes_csv = os.path.join(args.output_dir, 'outcomes.csv.gz')
+    mews_csv = os.path.join(args.output_dir, 'mews.csv.gz')
     features_json = os.path.join(args.output_dir, 'Spec_features.json')
     outcomes_json = os.path.join(args.output_dir, 'Spec_outcomes.json')
     mews_json = os.path.join(args.output_dir, 'Spec_mews.json')
     
     print('saving features and outcomes to :\n%s\n%s\n%s'%(features_csv, outcomes_csv, mews_csv))
-    features_df_all_slices.to_csv(features_csv, index=False)
-    outcomes_df_all_slices.to_csv(outcomes_csv, index=False)
-    mews_df_all_slices.to_csv(mews_csv, index=False)
+    features_df_all_slices.to_csv(features_csv, index=False, compression='gzip')
+    outcomes_df_all_slices.to_csv(outcomes_csv, index=False, compression='gzip')
+    mews_df_all_slices.to_csv(mews_csv, index=False, compression='gzip')
 
     print('saving features and outcomes dict to :\n%s\n%s\n%s'%(features_json, outcomes_json, mews_json))
     with open(features_json, "w") as outfile_feats:

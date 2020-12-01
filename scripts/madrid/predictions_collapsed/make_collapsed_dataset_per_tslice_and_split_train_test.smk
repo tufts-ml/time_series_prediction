@@ -61,18 +61,18 @@ CLF_TRAIN_TEST_SPLIT_PATH=os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, '
 
 
 # collapse files
-filtered_pertslice_csvs=[os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}","{feature}_before_icu_filtered_{tslice}_hours.csv").format(feature=feature, tslice=str(tslice)) for tslice in evaluate_tslice_hours_list for feature in ['vitals', 'labs']]
+filtered_pertslice_csvs=[os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}","{feature}_before_icu_filtered_{tslice}_hours.csv.gz").format(feature=feature, tslice=str(tslice)) for tslice in evaluate_tslice_hours_list for feature in ['vitals', 'labs']]
 
-collapsed_pertslice_csvs=[os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}","Collapsed{feature}PerSequence.csv").format(feature=feature, tslice=str(tslice)) for tslice in evaluate_tslice_hours_list for feature in ['Vitals', 'Labs']]
+collapsed_pertslice_csvs=[os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}","Collapsed{feature}PerSequence.csv.gz").format(feature=feature, tslice=str(tslice)) for tslice in evaluate_tslice_hours_list for feature in ['Vitals', 'Labs']]
 collapsed_pertslice_jsons=[os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}","Spec_Collapsed{feature}PerSequence.json").format(feature=feature, tslice=str(tslice)) for tslice in evaluate_tslice_hours_list for feature in ['Vitals', 'Labs']]
 
 # mews files
-mews_pertslice_csvs=[os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}","MewsScoresPerSequence.csv").replace("{tslice}", str(tslice)) for tslice in evaluate_tslice_hours_list]
+mews_pertslice_csvs=[os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}","MewsScoresPerSequence.csv.gz").replace("{tslice}", str(tslice)) for tslice in evaluate_tslice_hours_list]
 mews_pertslice_jsons=[os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}","Spec_MewsScoresPerSequence.json").replace("{tslice}", str(tslice)) for tslice in evaluate_tslice_hours_list]
 
 # train-test split files
 train_test_split_jsons=[os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "{file}_dict.json").replace("{file}",i) for i in ["x", "y", "mews"]]
-train_test_split_csvs=[os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "{file}_{split}.csv").format(file=i, split=j) for i in ["x", "y", "mews"] for j in ["train", "test"]]
+train_test_split_csvs=[os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "{file}_{split}.csv.gz").format(file=i, split=j) for i in ["x", "y", "mews"] for j in ["train", "test"]]
 
 rule filter_admissions_by_tslice_many_tslices:
     input:
@@ -92,11 +92,7 @@ rule all:
     input:
         filtered_pertslice_csvs,
         collapsed_pertslice_csvs,
-        collapsed_pertslice_jsons,
-        mews_pertslice_csvs,
-        mews_pertslice_jsons,
-        train_test_split_jsons,
-        train_test_split_csvs
+        collapsed_pertslice_jsons
 
 rule filter_admissions_by_tslice:
     input:
@@ -107,10 +103,11 @@ rule filter_admissions_by_tslice:
         output_dir=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}")
     
     output:
-        filtered_demographics_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "demographics_before_icu_filtered_{tslice}_hours.csv"),
-        filtered_vitals_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "vitals_before_icu_filtered_{tslice}_hours.csv"),
-        filtered_labs_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "labs_before_icu_filtered_{tslice}_hours.csv"),
-        filtered_y_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "clinical_deterioration_outcomes_filtered_{tslice}_hours.csv")
+        filtered_demographics_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "demographics_before_icu_filtered_{tslice}_hours.csv.gz"),
+        filtered_vitals_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "vitals_before_icu_filtered_{tslice}_hours.csv.gz"),
+        filtered_labs_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "labs_before_icu_filtered_{tslice}_hours.csv.gz"),
+        filtered_y_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "clinical_deterioration_outcomes_filtered_{tslice}_hours.csv.gz"),
+        tstops_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "tstops_filtered_{tslice}_hours.csv.gz")
     
     shell:
         '''
@@ -123,16 +120,16 @@ rule filter_admissions_by_tslice:
 rule collapse_features:
     input:
         script=os.path.join(PROJECT_REPO_DIR, 'src', 'feature_transformation.py'),
-        vitals_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "vitals_before_icu_filtered_{tslice}_hours.csv"),
+        vitals_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "vitals_before_icu_filtered_{tslice}_hours.csv.gz"),
         vitals_spec_json=os.path.join(DATASET_SITE_PATH, 'Spec-Vitals.json'),
-        labs_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "labs_before_icu_filtered_{tslice}_hours.csv"),
+        labs_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "labs_before_icu_filtered_{tslice}_hours.csv.gz"),
         labs_spec_json=os.path.join(DATASET_SITE_PATH, 'Spec-Labs.json'),
-        tstop_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "tstops_filtered_{tslice}_hours.csv")
+        tstop_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "tstops_filtered_{tslice}_hours.csv.gz")
 
     output:
-        collapsed_vitals_pertslice_csv=os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "CollapsedVitalsPerSequence.csv"),
+        collapsed_vitals_pertslice_csv=os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "CollapsedVitalsPerSequence.csv.gz"),
         collapsed_vitals_pertslice_json=os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "Spec_CollapsedVitalsPerSequence.json"),
-        collapsed_labs_pertslice_csv=os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "CollapsedLabsPerSequence.csv"),
+        collapsed_labs_pertslice_csv=os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "CollapsedLabsPerSequence.csv.gz"),
         collapsed_labs_pertslice_json=os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "Spec_CollapsedLabsPerSequence.json")
 
     conda:
@@ -156,22 +153,22 @@ rule collapse_features:
             --output "{output.collapsed_labs_pertslice_csv}" \
             --data_dict_output "{output.collapsed_labs_pertslice_json}" \
             --tstops {input.tstop_csv}\
-            --collapse_range_features "std hours_since_measured present slope median min max" \
-            --range_pairs "[('50%','100%'), ('0%','100%'), ('T-16h','T-0h'), ('T-24h','T-0h')]" \
+            --collapse_range_features "std median min max" \
+            --range_pairs "[('0%','100%')]" \
             --collapse \
         '''
 
 rule compute_mews_score:
     input:
         script=os.path.join(os.path.abspath('../'), 'src', 'compute_mews_score.py'),
-        x_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "vitals_before_icu_filtered_{tslice}_hours.csv"),
+        x_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "vitals_before_icu_filtered_{tslice}_hours.csv.gz"),
         x_spec_json=os.path.join(DATASET_SITE_PATH, 'Spec-Vitals.json')
     
     params:
         output_dir=DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH
 
     output:
-        mews_pertstep_csv=os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "MewsScoresPerSequence.csv"),
+        mews_pertstep_csv=os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "MewsScoresPerSequence.csv.gz"),
         mews_pertstep_json=os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "Spec_MewsScoresPerSequence.json")
 
     conda:
@@ -198,8 +195,8 @@ rule merge_collapsed_features_all_tslices:
         output_dir=CLF_TRAIN_TEST_SPLIT_PATH
     
     output:
-        features_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "features.csv"),
-        outcomes_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "outcomes.csv")
+        features_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "features.csv.gz"),
+        outcomes_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "outcomes.csv.gz")
 
     conda:
         PROJECT_CONDA_ENV_YAML
@@ -218,9 +215,9 @@ rule merge_collapsed_features_all_tslices:
 rule split_into_train_and_test:
     input:
         script=os.path.join(PROJECT_REPO_DIR, 'src', 'split_dataset.py'),
-        features_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "features.csv"),
-        outcomes_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "outcomes.csv"),
-        mews_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "mews.csv"),
+        features_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "features.csv.gz"),
+        outcomes_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "outcomes.csv.gz"),
+        mews_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "mews.csv.gz"),
         features_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "Spec_features.json"),
         outcomes_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "Spec_outcomes.json"),
         mews_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "Spec_mews.json")
@@ -229,14 +226,14 @@ rule split_into_train_and_test:
         train_test_split_dir=CLF_TRAIN_TEST_SPLIT_PATH
  
     output:  
-        x_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_train.csv'),
-        x_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_test.csv'),
-        y_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_train.csv'),
-        y_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_test.csv'),
+        x_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_train.csv.gz'),
+        x_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_test.csv.gz'),
+        y_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_train.csv.gz'),
+        y_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_test.csv.gz'),
         x_dict_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_dict.json'),
         y_dict_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_dict.json'),
-        mews_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'mews_train.csv'),
-        mews_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'mews_test.csv'),
+        mews_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'mews_train.csv.gz'),
+        mews_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'mews_test.csv.gz'),
         mews_dict_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'mews_dict.json')
 
     conda:
