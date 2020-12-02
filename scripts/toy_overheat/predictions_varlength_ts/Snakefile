@@ -8,6 +8,12 @@ Split 1-D features into train and test
 
 Split 2-D features into train and test
 >> snakemake --cores 1 split_2d_features_into_train_and_test
+
+Split features with transient overheat into train and test
+>> snakemake --cores 1 split_cnn_features_into_train_and_test
+
+Split features with global overheat into train and test
+>> snakemake --cores 1 split_rnn_features_into_train_and_test
 '''
 
 # Default environment variables

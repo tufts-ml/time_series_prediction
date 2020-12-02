@@ -85,7 +85,7 @@ def generate_data_sequences_given_state_sequences(
             
             data_DTN[:, cur_bin_mask_T, n] = np.random.normal(mean_KD[state], stddev_KD[state], size=C).T
             
-            # Label sequence as positive if atleast 60% of the time is spent in state A
+            # Label sequence as positive if atleast 50% of the time is spent in state A
             if (state == 0)&(C>np.floor(0.5*T)):
                 y_N[n]=1
             

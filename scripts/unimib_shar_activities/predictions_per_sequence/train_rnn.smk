@@ -24,7 +24,7 @@ RESULTS_FEAT_PER_TSTEP_PATH = os.path.join(RESULTS_FEAT_PER_TSTEP_PATH, 'rnn')
 
 rule train_and_evaluate_classifier_many_hyperparams:
     input:
-        [os.path.join(RESULTS_FEAT_PER_TSTEP_PATH,"hiddens={hidden_units}-layers={hidden_layers}-lr={lr}-dropout={dropout}-weight_decay={weight_decay}.json").format(hidden_units=hidden_units, hidden_layers=hidden_layers, lr=lr, dropout=dropout, weight_decay=weight_decay) for hidden_units in config['hidden_units'] for lr in config['lr'] for hidden_layers in config['hidden_layers'] for dropout in config['dropout'] for weight_decay in config['weight_decay']]
+        [os.path.join(RESULTS_FEAT_PER_TSTEP_PATH,"hiddens={hidden_units}-layers={hidden_layers}-lr={lr}-dropout={dropout}-weight_decay={weight_decay}-batch_size={batch_size}.json").format(hidden_units=hidden_units, hidden_layers=hidden_layers, lr=lr, dropout=dropout, weight_decay=weight_decay, batch_size=batch_size) for hidden_units in config['hidden_units'] for lr in config['lr'] for hidden_layers in config['hidden_layers'] for dropout in config['dropout'] for weight_decay in config['weight_decay'] for batch_size in config['batch_size']]
 
 rule train_and_evaluate_classifier:
     input:
@@ -38,10 +38,10 @@ rule train_and_evaluate_classifier:
 
     params:
         output_dir=RESULTS_FEAT_PER_TSTEP_PATH,
-        fn_prefix="hiddens={hidden_units}-layers={hidden_layers}-lr={lr}-dropout={dropout}-weight_decay={weight_decay}"
+        fn_prefix="hiddens={hidden_units}-layers={hidden_layers}-lr={lr}-dropout={dropout}-weight_decay={weight_decay}-batch_size={batch_size}"
     
     output:
-        os.path.join(RESULTS_FEAT_PER_TSTEP_PATH, "hiddens={hidden_units}-layers={hidden_layers}-lr={lr}-dropout={dropout}-weight_decay={weight_decay}.json")
+        os.path.join(RESULTS_FEAT_PER_TSTEP_PATH, "hiddens={hidden_units}-layers={hidden_layers}-lr={lr}-dropout={dropout}-weight_decay={weight_decay}-batch_size={batch_size}.json")
         
     conda:
         PROJECT_CONDA_ENV_YAML
@@ -59,9 +59,8 @@ rule train_and_evaluate_classifier:
             --hidden_layers {wildcards.hidden_layers} \
             --hidden_units {wildcards.hidden_units} \
             --lr {wildcards.lr} \
-            --batch_size 1000 \
+            --batch_size {wildcards.batch_size} \
             --dropout {wildcards.dropout} \
             --weight_decay {wildcards.weight_decay} \
             --output_filename_prefix {params.fn_prefix} \
-        '''.replace("{{OUTCOME_COL_NAME}}", D_CONFIG["OUTCOME_COL_NAME"])\
-           .replace("{{SPLIT_KEY_COL_NAMES}}", D_CONFIG["SPLIT_KEY_COL_NAMES"])
+        '''.replace("{{OUTCOME_COL_NAME}}", D_CONFIG["OUTCOME_COL_NAME"])

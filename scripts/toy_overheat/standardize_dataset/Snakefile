@@ -3,7 +3,8 @@ Reproducible workflow for building toy dataset
 
 Usage
 -----
-$ snakemake --cores 1 all
+$ snakemake --cores 1 build_spec_json_from_csv
+
 '''
 
 import json
