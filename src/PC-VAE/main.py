@@ -9,10 +9,10 @@ from sklearn.metrics import (roc_curve, accuracy_score, log_loss,
                              roc_auc_score, make_scorer)
 from yattag import Doc
 import matplotlib.pyplot as plt
-DEFAULT_PROJECT_REPO = os.path.sep.join(__file__.split(os.path.sep)[:-2])
-PROJECT_REPO_DIR = os.path.abspath(
-    os.environ.get('PROJECT_REPO_DIR', DEFAULT_PROJECT_REPO))
-
+# DEFAULT_PROJECT_REPO = os.path.sep.join(__file__.split(os.path.sep)[:-2])
+# PROJECT_REPO_DIR = os.path.abspath(
+#     os.environ.get('PROJECT_REPO_DIR', DEFAULT_PROJECT_REPO))
+PROJECT_REPO_DIR = os.path.abspath(os.path.join(__file__, '../../../'))
 sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src', 'rnn'))
 sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src', 'PC-VAE'))
 
@@ -35,7 +35,7 @@ from sklearn.model_selection import train_test_split
 from pcvae.util.optimizers import get_optimizer
 
 def main():
-    parser = argparse.ArgumentParser(description='PyTorch RNN with variable-length numeric sequences wrapper')
+    parser = argparse.ArgumentParser(description='pchmm fitting')
     parser.add_argument('--outcome_col_name', type=str, required=True)
     parser.add_argument('--train_csv_files', type=str, required=True)
     parser.add_argument('--test_csv_files', type=str, required=True)
@@ -92,17 +92,7 @@ def main():
     print('number of time points : %s\nnumber of features : %s\n'%(T,F))
     
     # split train into train and validation
-    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=args.validation_size, random_state=42)
-    
-    # set class weights as 1/(number of samples in class) for each class to handle class imbalance
-#     class_weights = torch.tensor([1/(y_train==0).sum(),
-#                                   1/(y_train==1).sum()]).double()
-    
-    # scale features
-    X_train, min_per_feat, max_per_feat = abs_scaler_3d(X_train)
-    X_val, min_per_feat, max_per_feat = abs_scaler_3d(X_val, min_per_feat, max_per_feat)
-    X_test, min_per_feat, max_per_feat = abs_scaler_3d(X_test, min_per_feat, max_per_feat)
-    
+    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=args.validation_size, random_state=213)
     
     X_train = np.expand_dims(X_train, 1)
     X_val = np.expand_dims(X_val, 1)
@@ -115,31 +105,60 @@ def main():
     data_dict['valid'] = (X_val, y_val)
     data_dict['test'] = (X_test, y_test)
     
-    
-    ## might need to expand X_train dims
-    ## make y categorical
-    ## check toy.py half moons class for hint
+    # train model
     n_states = 10
+    spacing = 5
     optimizer = get_optimizer('adam', lr = args.lr)
+    init_means = np.zeros((n_states, F))
+    init_means[:, 0] = np.arange(0, n_states*spacing, spacing)
+    init_means[0, :] = [0, 0.5]
+    init_means[1, :] = [0, -0.5]
+    init_means[2, :] = [15, 0.5]
+    init_means[3, :] = [15, -0.5]
+    init_means[4, :] = [7.5, 0]
+#     init_covs = np.stack([np.zeros((F,F)) for i in range(n_states)])
+    init_covs = np.stack([np.zeros(F) for i in range(n_states)])
+    init_covs[0,:] = [-0.6, -0.9]
+    init_covs[1,:] = [-0.6, -0.9]
+    init_covs[2,:] = [-0.6, -0.9]
+    init_covs[3,:] = [-0.6, -0.9]
+    
+    init_state_probas = 0.124*np.ones(n_states)
+    init_state_probas[0] = 0.002
+    init_state_probas[3] = 0.002
+
     model = HMM(
             states=n_states,                                     
-            lam=1000,                                      
+            lam=10000,                                      
             prior_weight=0.01,
-            observation_dist='MultivariateNormalTriL',
-            observation_initializer=dict(loc=rs.randn(n_states, F), 
-                scale_tril=np.stack([2 * np.eye(F) for i in range(n_states)])),
+            observation_dist='MultivariateNormalDiag',
+            observation_initializer=dict(loc=init_means, 
+                scale_diag=init_covs),
             initial_state_alpha=1.,
-            initial_state_initializer=None,
+            initial_state_initializer=np.log(init_state_probas),
             transition_alpha=1.,
             transition_initializer=None, optimizer=optimizer)
     
     data = custom_dataset(data_dict=data_dict)
     model.build(data) 
-    model.fit(data, steps_per_epoch=50, epochs=10, batch_size=args.batch_size)
     
+#     from IPython import embed; embed()
+    model.fit(data, steps_per_epoch=50, epochs=100, batch_size=args.batch_size)
+    
+    # get the parameters of the fit distribution
+    x,y = data.train().numpy()
+    mu_all = model.hmm_model(x).observation_distribution.distribution.mean().numpy()
+    cov_all = model.hmm_model(x).observation_distribution.distribution.covariance().numpy()
+    eta_all = np.vstack(model._predictor.get_weights())
+    mu_params_file = os.path.join(args.output_dir, args.output_filename_prefix+'-fit-mu.npy')
+    cov_params_file = os.path.join(args.output_dir, args.output_filename_prefix+'-fit-cov.npy')
+    eta_params_file = os.path.join(args.output_dir, args.output_filename_prefix+'-fit-eta.npy')
+    np.save(mu_params_file, mu_all)
+    np.save(cov_params_file, cov_all)
+    np.save(eta_params_file, eta_all)
     
     # save the loss plots of the model
-    save_file = os.path.join(args.output_dir, args.output_filename_prefix, '.csv')
+    save_file = os.path.join(args.output_dir, args.output_filename_prefix+'.csv')
     save_loss_plots(model, save_file, data_dict)
         
     
@@ -205,10 +224,10 @@ def save_loss_plots(model, save_file, data_dict):
     model_hist['n_test'] = len(data_dict['test'][1])
     model_hist_df = pd.DataFrame(model_hist)
     
-    from IPython import embed; embed()
     # save to file
     model_hist_df.to_csv(save_file, index=False)
     print('Training plots saved to %s'%save_file)
+    
     
 if __name__ == '__main__':
     main()

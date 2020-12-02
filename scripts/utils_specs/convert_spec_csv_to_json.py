@@ -20,7 +20,7 @@ if __name__ == '__main__':
 
     with open(args.sheet_template_json, 'r') as f:
         sheet_template = json.load(f)
-
+    
     for gid, sheet_name, csv_filename in zip(
             config['spec_gid_list'],
             config['spec_sheet_name_list'],
