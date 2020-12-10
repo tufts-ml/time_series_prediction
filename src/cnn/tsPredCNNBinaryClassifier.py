@@ -39,13 +39,10 @@ class tsPredCNNBinaryClassifier(nn.Module):
                 paddings[i], True
             ))
         layers.append(flatten())
-        for i in range(len(linear_layers)):
-            if i == 0:
-                layers.append(nn.Linear(channels[len(channels) - 1], linear_layers[0]))
-            else:
-                layers.append(nn.Linear(linear_layers[i - 1], linear_layers[i]))
-            if i == len(linear_layers) - 1:
-                layers.append(nn.BatchNorm1d(linear_layers[i]))
+        for i in range(len(linear_layers) - 1):
+            layers.append(nn.Linear(linear_layers[i], linear_layers[i + 1]))
+            if i != len(linear_layers) - 2:
+                layers.append(nn.BatchNorm1d(linear_layers[i + 1]))
                 layers.append(nn.ReLU())
 
         self.layers = nn.Sequential(*layers)
