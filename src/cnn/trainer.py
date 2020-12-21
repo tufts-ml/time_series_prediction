@@ -24,24 +24,26 @@ def train_test_model(config_path):
         setting['data_folder'] + 'y_test.csv',
         setting['seq_id'],
         setting['x_columns'],
-        setting['y_column']
+        setting['y_column'],
+        ts_steps=setting['ts_steps']
     )
     
     train_dl = DataLoader(
         train_ds, batch_size = setting['bs'], 
-        shuffle=True, num_workers=4)
+        shuffle=True, num_workers=1)
     val_dl = DataLoader(
         val_ds, batch_size = setting['bs'] * 4, 
-        shuffle=True, num_workers=4)
+        shuffle=True, num_workers=1)
     test_dl = DataLoader(
         test_ds, batch_size = setting['bs'] * 4, 
-        shuffle=False, num_workers=4)
+        shuffle=False, num_workers=1)
     
     model = tsPredCNNBinaryClassifier(
         setting['channels'], 
         setting['kernels'], 
         setting['strides'], 
         setting['paddings'], 
+        setting['pools'],
         setting['linear_layers']).to(dev)
     
     loss_func = nn.BCELoss()
