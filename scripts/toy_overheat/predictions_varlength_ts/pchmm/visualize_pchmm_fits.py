@@ -56,23 +56,23 @@ if __name__ == '__main__':
         
     #go through all the saved loss plots
     all_fits_csvs = glob.glob(os.path.join(args.fits_dir, "pchmm-*.csv"))
-    
+
     losses_per_fit_list = []
     auc_per_fit_list = []
     for fit_csv in all_fits_csvs:
         fit_df = pd.read_csv(fit_csv)
-        losses_per_fit_list.append(fit_df['predictor_loss'].to_numpy()[-1])
+        losses_per_fit_list.append(fit_df['loss'].to_numpy()[-1])
         auc_per_fit_list.append(fit_df['predictor_AUC'].to_numpy()[-1])
     
     
-#     best_fit_ind = np.argmin(losses_per_fit_list)
+#     best_fit_ind = np.argmax(auc_per_fit_list)
     best_fit_ind = np.argmin(losses_per_fit_list)
     best_fit_csv = all_fits_csvs[best_fit_ind]
     
-    # get the mus and covariances of the best fit
+    #get the mus and covariances of the best fit
     best_fit_mu = best_fit_csv.replace(".csv", "-fit-mu.npy")
     best_fit_cov = best_fit_csv.replace(".csv", "-fit-cov.npy")
-    
+    best_fit_eta = best_fit_csv.replace(".csv", "-fit-eta.npy")
     
     fit_df = pd.read_csv(best_fit_csv)
     
@@ -82,10 +82,14 @@ if __name__ == '__main__':
     fit_df.plot(x='epochs', y=['predictor_AUC', 'predictor_accuracy'], ax=axs[1])
     f.savefig('loss_plots.png')
     
-#     from IPython import embed; embed()
-    
+#     best_fit_mu = glob.glob(os.path.join(args.fits_dir, "pchmm-*fit-mu.npy"))[0]
+#     best_fit_cov = glob.glob(os.path.join(args.fits_dir, "pchmm-*fit-cov.npy"))[0]
+#     best_fit_eta = glob.glob(os.path.join(args.fits_dir, "pchmm-*fit-eta.npy"))[0]
     mu_all = np.load(best_fit_mu)
     cov_all = np.load(best_fit_cov)
+    eta_all = np.load(best_fit_eta)
+    
+#     from IPython import embed; embed()
     
     features_df = pd.read_csv(os.path.join(args.data_dir, "features_2d_per_tstep.csv"))
     outcomes_df = pd.read_csv(os.path.join(args.data_dir, "outcomes_per_seq.csv"))

@@ -105,17 +105,6 @@ def main():
     class_weights = torch.tensor([1/(y_train==0).sum(),
                                   1/(y_train==1).sum()]).double()
     
-    # normalize features for train
-    print('Normalizing data using estimates from training set...')
-    seq_lens_train_N = get_sequence_lengths(X_train, pad_val = 0)
-    per_feature_means, per_feature_mins, per_feature_maxs = get_per_feature_estimates_from_padded_sequences(X_train, seq_lens_train_N)
-    X_train = normalize_data(X_train, seq_lens_train_N, per_feature_mins, per_feature_maxs)
-    
-    # get the training set estimates and normalize test features
-    seq_lens_test_N = get_sequence_lengths(X_test, pad_val = 0)
-    X_test = normalize_data(X_test, seq_lens_test_N, per_feature_mins, per_feature_maxs)
-    
-#     from IPython import embed; embed()
     print('Number of training sequences : %s'%N)
     print('Number of test sequences : %s'%X_test.shape[0])
     print('Ratio positive in train : %.2f'%((y_train==1).sum()/len(y_train)))
@@ -135,17 +124,18 @@ def main():
         
         
     print('RNN parameters : '+ output_filename_prefix)
+    
     rnn = RNNBinaryClassifier(
-              max_epochs=100,
+              max_epochs=20,
               batch_size=args.batch_size,
               device=device,
               lr=args.lr,
               callbacks=[
               EpochScoring('roc_auc', lower_is_better=False, on_train=True, name='aucroc_score_train'),
               EpochScoring('roc_auc', lower_is_better=False, on_train=False, name='aucroc_score_valid'),
-              EarlyStopping(monitor='aucroc_score_valid', patience=30, threshold=0.002, threshold_mode='rel',
+              EarlyStopping(monitor='aucroc_score_valid', patience=5, threshold=0.002, threshold_mode='rel',
                                              lower_is_better=False),
-              LRScheduler(policy=ReduceLROnPlateau, mode='max', monitor='aucroc_score_valid', patience=10),
+#               LRScheduler(policy=ReduceLROnPlateau, mode='max', monitor='aucroc_score_valid', patience=10),
                   compute_grad_norm,
               GradientNormClipping(gradient_clip_value=0.5, gradient_clip_norm_type=2),
               Checkpoint(monitor='aucroc_score_valid', f_history=os.path.join(args.output_dir, output_filename_prefix+'.json')),
@@ -163,6 +153,7 @@ def main():
               optimizer__weight_decay=args.weight_decay
                          ) 
     
+    
     clf = rnn.fit(X_train, y_train)
     y_pred_proba = clf.predict_proba(X_train)
     y_pred_proba_neg, y_pred_proba_pos = zip(*y_pred_proba)
@@ -173,8 +164,13 @@ def main():
     y_pred_proba_neg, y_pred_proba_pos = zip(*y_pred_proba)
     auroc_test_final = roc_auc_score(y_test, y_pred_proba_pos)
     print('AUROC with LSTM (Test) : %.2f'%auroc_test_final)
-
-
+    
+    # save the performance on test set
+    test_perf_df = pd.DataFrame(columns={'test_auc'})
+    test_perf_df = test_perf_df.append({'test_auc': auroc_test_final}, ignore_index=True)
+    test_perf_csv = os.path.join(args.output_dir, output_filename_prefix+'.csv')
+    test_perf_df.to_csv(test_perf_csv, index=False)
+    
 
 def convert_proba_to_binary(probabilites):
     return [0 if probs[0] > probs[1] else 1 for probs in probabilites]

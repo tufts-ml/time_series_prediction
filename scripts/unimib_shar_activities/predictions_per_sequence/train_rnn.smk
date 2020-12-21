@@ -1,7 +1,10 @@
 '''
-Train full sequence classifier on Madrid transfer to ICU task
+Train full sequence classifier on unimib shar activities
 
-Usage: 
+Usage:
+
+$ snakemake --snakefile train_rnn.smk --profile ../../../profiles/hugheslab_cluster/ train_and_evaluate_classifier_many_hyperparams 
+
 $ snakemake --cores 1 --snakefile train_rnn.smk
 
 To run with multiple random seeds (prespecified in a config file)
@@ -17,7 +20,7 @@ from config_loader import (
     D_CONFIG,
     DATASET_SPLIT_PATH,
     PROJECT_REPO_DIR, PROJECT_CONDA_ENV_YAML,
-    RESULTS_FEAT_PER_TSTEP_PATH)
+    RESULTS_FEAT_PER_TSTEP_PATH, DATASET_SPLIT_FEAT_PER_TSTEP_PATH)
 sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src'))
 
 RESULTS_FEAT_PER_TSTEP_PATH = os.path.join(RESULTS_FEAT_PER_TSTEP_PATH, 'rnn')
@@ -29,12 +32,12 @@ rule train_and_evaluate_classifier_many_hyperparams:
 rule train_and_evaluate_classifier:
     input:
         script=os.path.join(PROJECT_REPO_DIR, 'src', 'rnn', 'main_mimic.py'),
-        x_train_csv=os.path.join(DATASET_SPLIT_PATH, 'x_train.csv'),
-        x_test_csv=os.path.join(DATASET_SPLIT_PATH, 'x_test.csv'),
-        y_train_csv=os.path.join(DATASET_SPLIT_PATH, 'y_train.csv'),
-        y_test_csv=os.path.join(DATASET_SPLIT_PATH, 'y_test.csv'),
-        x_dict_json=os.path.join(DATASET_SPLIT_PATH, 'x_dict.json'),
-        y_dict_json=os.path.join(DATASET_SPLIT_PATH, 'y_dict.json')
+        x_train_csv=os.path.join(DATASET_SPLIT_FEAT_PER_TSTEP_PATH, 'x_train.csv'),
+        x_test_csv=os.path.join(DATASET_SPLIT_FEAT_PER_TSTEP_PATH, 'x_test.csv'),
+        y_train_csv=os.path.join(DATASET_SPLIT_FEAT_PER_TSTEP_PATH, 'y_train.csv'),
+        y_test_csv=os.path.join(DATASET_SPLIT_FEAT_PER_TSTEP_PATH, 'y_test.csv'),
+        x_dict_json=os.path.join(DATASET_SPLIT_FEAT_PER_TSTEP_PATH, 'x_dict.json'),
+        y_dict_json=os.path.join(DATASET_SPLIT_FEAT_PER_TSTEP_PATH, 'y_dict.json')
 
     params:
         output_dir=RESULTS_FEAT_PER_TSTEP_PATH,

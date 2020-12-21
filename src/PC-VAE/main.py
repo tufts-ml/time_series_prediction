@@ -106,26 +106,29 @@ def main():
     data_dict['test'] = (X_test, y_test)
     
     # train model
-    n_states = 10
+    n_states = 12
     spacing = 5
     optimizer = get_optimizer('adam', lr = args.lr)
     init_means = np.zeros((n_states, F))
     init_means[:, 0] = np.arange(0, n_states*spacing, spacing)
-    init_means[0, :] = [0, 0.5]
-    init_means[1, :] = [0, -0.5]
-    init_means[2, :] = [15, 0.5]
-    init_means[3, :] = [15, -0.5]
-    init_means[4, :] = [7.5, 0]
+    init_means[0, :] = [0, 1]
+    init_means[10, :] = [0, -1]
+    init_means[3, :] = [15, 1]
+    init_means[11, :] = [15, -1]
+#     init_means[4, :] = [7.5, 0]
+#     init_means[11:, 0] = 50
 #     init_covs = np.stack([np.zeros((F,F)) for i in range(n_states)])
     init_covs = np.stack([np.zeros(F) for i in range(n_states)])
-    init_covs[0,:] = [-0.6, -0.9]
-    init_covs[1,:] = [-0.6, -0.9]
-    init_covs[2,:] = [-0.6, -0.9]
-    init_covs[3,:] = [-0.6, -0.9]
+    init_covs[0,:] = [-0.45, -0.75]
+    init_covs[10,:] = [-0.45, -0.75]
+    init_covs[3,:] = [-0.45, -0.75]
+    init_covs[11,:] = [-0.45, -0.75]
     
     init_state_probas = 0.124*np.ones(n_states)
-    init_state_probas[0] = 0.002
-    init_state_probas[3] = 0.002
+    init_state_probas[0] = 0.006
+    init_state_probas[3] = 0.006
+    init_state_probas[10] = 0.006
+    init_state_probas[11] = 0.006
 
     model = HMM(
             states=n_states,                                     
@@ -139,11 +142,22 @@ def main():
             transition_alpha=1.,
             transition_initializer=None, optimizer=optimizer)
     
+    
     data = custom_dataset(data_dict=data_dict)
     model.build(data) 
     
-#     from IPython import embed; embed()
-    model.fit(data, steps_per_epoch=50, epochs=100, batch_size=args.batch_size)
+    
+    # set the regression coefficients of the model
+    eta_weights = np.zeros((n_states, 2))
+    eta_weights[1:11, :] = [1, -1]
+    eta_weights[0, :] = [-100, 100]
+    eta_weights[-1, :] = [-100, 100]
+    pos_ratio = y_train.sum()/len(y_train)
+    eta_bias = np.array([1-pos_ratio, pos_ratio])
+    eta_all = [eta_weights, eta_bias]
+    
+    model._predictor.set_weights(eta_all)
+    model.fit(data, steps_per_epoch=50, epochs=200, batch_size=args.batch_size)
     
     # get the parameters of the fit distribution
     x,y = data.train().numpy()
@@ -157,50 +171,11 @@ def main():
     np.save(cov_params_file, cov_all)
     np.save(eta_params_file, eta_all)
     
+#     from IPython import embed; embed()
     # save the loss plots of the model
     save_file = os.path.join(args.output_dir, args.output_filename_prefix+'.csv')
     save_loss_plots(model, save_file, data_dict)
-        
     
-
-def standard_scaler_3d(X):
-    # input : X (N, T, F)
-    # ouput : scaled_X (N, T, F)
-    N, T, F = X.shape
-    if T==1:
-        scalers = {}
-        for i in range(X.shape[1]):
-            scalers[i] = StandardScaler()
-            X[:, i, :] = scalers[i].fit_transform(X[:, i, :])
-    else:
-        # zscore across subjects and time points for each feature
-        for i in range(F):
-            mean_across_NT = X[:,:,i].mean()
-            std_across_NT = X[:,:,i].std()            
-            if std_across_NT<0.0001: # handling precision
-                std_across_NT = 0.0001
-            X[:,:,i] = (X[:,:,i]-mean_across_NT)/std_across_NT
-    return X
-
-def abs_scaler_3d(X, min_per_feat=None, max_per_feat=None):
-    # input : X (N, T, F)
-    # ouput : scaled_X (N, T, F)
-    N, T, F = X.shape
-    # zscore across subjects and time points for each feature
-    if min_per_feat is None:
-        min_per_feat = np.zeros(F)
-        max_per_feat = np.zeros(F)
-        
-        for i in range(F):
-            min_per_feat[i] = X[:,:,i].min()
-            max_per_feat[i] = X[:,:,i].max()
-    
-    for i in range(F):
-        min_across_NT = min_per_feat[i]
-        max_across_NT = max_per_feat[i]
-        den = max_across_NT - min_across_NT
-        X[:,:,i] = (X[:,:,i]-min_across_NT)/den
-    return X, min_per_feat, max_per_feat
 
 
 # def standardize_data_for_pchmm(X_train, y_train, X_test, y_test):
@@ -231,4 +206,32 @@ def save_loss_plots(model, save_file, data_dict):
     
 if __name__ == '__main__':
     main()
+    
+    '''
+    Debugging code
+    
+    # get 10 positive and 10 negative sequences
+    pos_inds = np.where(y[:,1]==1)[0]
+    neg_inds = np.where(y[:,0]==1)[0]
+    
+    n=10
+    x_pos = x[pos_inds[:n]]
+    y_pos = y[pos_inds[:n]]
+    x_neg = x[neg_inds[:n]]
+    y_neg = y[neg_inds[:n]]
+    
+    # get their belief states of the positive and negative sequences
+    z_pos = model.hmm_model.predict(x_pos)
+    z_neg = model.hmm_model.predict(x_neg)
+    
+    # print the average belief states across time
+    z_pos.mean(axis=1)
+    z_neg.mean(axis=1)
+    
+    # print the predicted probabilities of class 0 and class 1
+    y_pred_pos = model._predictor(z_pos).distribution.logits.numpy()
+    y_pred_neg = model._predictor(z_neg).distribution.logits.numpy()
+    
+    
+    ''' 
     

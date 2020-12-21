@@ -124,14 +124,14 @@ if __name__ == "__main__":
                       (0.0, 1.0, 0.0)]
 
 #     mean_OK = -5
-    mean_overheat = 1
+    mean_overheat = 3
 
     stddev_KD = np.ones((n_states, D))
     stddev_KD[2] = 0.3
 
     mean_KD = np.zeros((n_states, D))
-    mean_KD[0, 0] = -0.5
-    mean_KD[1, 0] = 0.5
+    mean_KD[0, 0] = 0
+    mean_KD[1, 0] = 1
     mean_KD[2, 0] = mean_overheat
 
     # define how long to hold a state
@@ -197,18 +197,25 @@ if __name__ == "__main__":
     print('Number of negative sequences : %s'%(len(inds_label_0)))
     print('Number of positive sequences : %s'%(len(inds_label_1)))
     
-    fontsize = 12
-    f,axs = plt.subplots(2,1)
+    # plot example sequence
+    fontsize = 10
+    
+    inds_list = [inds_label_0, inds_label_1]
+    y_labels = ['y=0', 'y=1']
+    
+    for i in range(len(y_labels)):
+        f,axs = plt.subplots(2,1, sharex=True, figsize=(15, 5))
+        axs[0].plot(range(Tmax), state_sequences_TN[:, inds_list[i][0]], '.')
+        axs[0].set_ylabel('State', fontsize = fontsize)
+        axs[0].set_title('State Sequence for %s'%y_labels[i])
+        axs[0].set_yticks(np.arange(3))
+        axs[0].set_ylim([-.5, 2.5])
+        axs[1].plot(range(Tmax), data_DTN[:,:,inds_list[i][0]].T)
+        axs[1].set_xlim([0, Tmax])
+        axs[1].set_ylim([-10, 10])
+        axs[1].set_xlabel('Time', fontsize = fontsize)
+        axs[1].set_ylabel('Temperature (deg C)', fontsize = fontsize)
+        axs[1].set_title('Generated Sequence for %s'%y_labels[i])
 
-    # plot time series sequence of example with label 0
-    axs[0].plot(range(Tmax), data_DTN[:,:,inds_label_0[0]].T, '-.')
-    axs[0].set_ylim([-8,8])
-    axs[0].set_ylabel('Temperature (deg C)', fontsize = fontsize)
-
-    # plot time series sequence of example with label 0
-    axs[1].plot(range(Tmax), data_DTN[:,:,inds_label_1[0]].T, '-.')
-    axs[1].set_ylim([-8,8])
-    axs[1].set_ylabel('Temperature (deg C)', fontsize=fontsize)
-    axs[1].set_xlabel('Timestep (t)', fontsize = fontsize)
-   
-    f.savefig(os.path.join(args.output_dir, 'rnn_example_pos_and_neg_sequences.png'))
+        f.savefig(os.path.join(args.output_dir, 'rnn_example_%s_sequence.png'%y_labels[i]))
+    

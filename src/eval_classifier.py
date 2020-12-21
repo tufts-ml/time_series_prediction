@@ -1,8 +1,6 @@
 '''
 Train and evaluate binary classifier
-
 Produce a human-readable HTML report with performance plots and metrics
-
 Usage
 -----
 ```
@@ -12,22 +10,17 @@ python eval_classifier.py {classifier_name} \
     {data_kwargs} \
     {protocol_kwargs}
 ```
-
 For detailed help message:
 ```
 python eval_classifier.py {classifier_name} --help
 ```
-
 Examples
 --------
-
 TODO
 ----
 * Save classifiers in reproducible format on disk (ONNX??)
 * Add reporting for calibration (and perhaps adjustment to improve calibration)
-
 '''
-
 import argparse
 import ast
 import json
@@ -197,6 +190,7 @@ if __name__ == '__main__':
             return x
 
     # Import data
+    print('Reading train-test data...')
     feature_cols = []
     outcome_cols = []
     info_per_feature_col = dict()
@@ -383,7 +377,7 @@ if __name__ == '__main__':
     hyper_searcher = GridSearchCV(
         prediction_pipeline, pipeline_param_grid_dict,
         scoring=scoring_dict, cv=splitter, refit=False,
-        return_train_score=True, verbose=5)
+        return_train_score=True, verbose=5, n_jobs=-1)
     hyper_searcher.fit(x_train, y_train, groups=key_train)
 
     # Pretty tables for results of hyper_searcher search
@@ -667,12 +661,12 @@ if __name__ == '__main__':
     perf_df = perf_df.set_index('split_name')
     csv_path = os.path.join(fig_dir, 'performance_df.csv')
     perf_df.to_csv(csv_path)
-    print("Wrote to: %s" % csv_path)
+    print("Wrote performance metrics to: %s" % csv_path)
 
 
     # Write HTML report
     # ------------------
-    os.chdir(fig_dir)
+#     os.chdir(fig_dir)
     doc, tag, text = Doc().tagtext()
     pd.set_option('precision', 4)
     with tag('html'):
@@ -787,5 +781,5 @@ if __name__ == '__main__':
                 with tag('div', klass="col-sm-1 sidenav"):
                     text("")
 
-    with open('report.html', 'w') as f:
+    with open(os.path.join(args.output_dir, 'report.html'), 'w') as f:
         f.write(doc.getvalue())

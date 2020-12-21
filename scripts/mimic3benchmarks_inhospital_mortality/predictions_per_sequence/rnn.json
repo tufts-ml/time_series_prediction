@@ -1,0 +1,9 @@
+{
+    "hidden_layers": [1, 2],
+    "hidden_units": [32, 128],
+    "lr": [0.001],
+    "batch_size": [128, 512],
+    "dropout": [0, 0.3], 
+    "weight_decay": [0, 1e-6]
+}
+

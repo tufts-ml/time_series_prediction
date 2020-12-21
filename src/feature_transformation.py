@@ -88,7 +88,7 @@ def main():
     ts_df = pd.read_csv(args.input)
     print('done reading csv...')
     data_dict = None
-
+    
     # transform data
     if args.tstops is None:
         print('collapsing entire history of data..')

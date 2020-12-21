@@ -9,7 +9,8 @@ PROJECT_REPO_DIR = os.path.abspath(
     os.environ.get('PROJECT_REPO_DIR', DEFAULT_PROJECT_REPO))
 sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src'))
 from utils import merge_data_dicts, load_data_dict_json
-from feature_transformation import (parse_id_cols, remove_col_names_from_list_if_not_in_df, parse_time_cols, parse_feature_cols)
+from feature_transformation import (parse_id_cols, remove_col_names_from_list_if_not_in_df, parse_time_cols, 
+                                    parse_feature_cols, get_fenceposts)
 
 
 if __name__ == '__main__':

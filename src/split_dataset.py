@@ -51,6 +51,47 @@ def split_dataframe_by_keys(data_df=None, size=0, random_state=0, cols_to_group=
         test_df = data_df.iloc[b].copy()
     return train_df, test_df
 
+def normalize_df(df, feature_cols, scaling='minmax', train_df=None):
+    ''' Normalizes the dataframe if needed. Useful to normalize train and test sets separately after splitting dataset'''
+    if train_df is None:
+        train_df = df.copy()
+    
+    
+    scaling_dict_list = []
+    normalized_df = df.copy()
+    
+    if scaling=='zscore':
+        for col in feature_cols:
+            den_scaling = train_df[col].std()
+            num_scaling = train_df[col].mean()
+            
+            if den_scaling==0:
+                den_scaling = 1
+            
+            # scale the data
+            normalized_df[col] = (df[col]-num_scaling)/den_scaling
+            
+            # store the normalization estimates in a list and save them for later evaluation
+            scaling_dict_list.append({'feature':col, 'numerator_scaling':num_scaling, 
+                                      'denominator_scaling':den_scaling})
+            
+    elif scaling=='minmax':
+        for col in feature_cols:
+            den_scaling = train_df[col].max()-train_df[col].min()
+            num_scaling = train_df[col].min()
+            
+            if den_scaling==0:
+                den_scaling = 1  
+                
+            # scale the data
+            normalized_df[col] = (df[col]-num_scaling)/den_scaling
+            
+            # store the normalization estimates in a list and save them for later evaluation
+            scaling_dict_list.append({'feature':col, 'numerator_scaling':num_scaling, 
+                                      'denominator_scaling':den_scaling})
+        
+    scaling_df = pd.DataFrame(scaling_dict_list) 
+    return normalized_df, scaling_df
 
 if __name__ == '__main__':
     # Parse command line arguments
@@ -64,24 +105,30 @@ if __name__ == '__main__':
     parser.add_argument('--output_data_dict_filename', required=False, type=str, default=None)
     parser.add_argument('--group_cols', nargs='*', default=[None])
     parser.add_argument('--random_state', required=False, type=int, default=20190206)
+    parser.add_argument('--normalize', required=False, type=str, default="False")
     args = parser.parse_args()
     
     print('Creating train-test splits for %s'%args.input)
     # Import data
     df = pd.read_csv(args.input)
     data_dict = json.load(open(args.data_dict))
+    
+    # parse data dict fields
+    try:
+        fields = data_dict['fields']
+    except KeyError:
+        fields = data_dict['schema']['fields']
 
     # Split dataset
     if len(args.group_cols) == 0 or args.group_cols[0] is not None:
         group_cols = args.group_cols
     elif args.group_cols[0] is None:
-        try:
-            fields = data_dict['fields']
-        except KeyError:
-            fields = data_dict['schema']['fields']
         group_cols = [c['name'] for c in fields
                       if c['role'] in ('id', 'key') and c['name'] in df.columns]
-        
+    
+    feature_cols = [c['name'] for c in fields 
+                    if c['role'].lower() in ('feature', 'covariate', 'measurement') and c['name'] in df.columns]
+    
     train_df, test_df = split_dataframe_by_keys(
         df, cols_to_group=group_cols, size=args.test_size, random_state=args.random_state)
     
@@ -95,9 +142,18 @@ if __name__ == '__main__':
         if args.output_data_dict_filename is not None:
             args.output_data_dict_filename = os.path.join(fdir_train_test, args.output_data_dict_filename)    
     
+    if args.normalize=="True":
+        print('normalizing train and test sets')
+        normalized_train_df, scaling_df = normalize_df(train_df, feature_cols, scaling='minmax')
+        normalized_test_df, scaling_df = normalize_df(test_df, feature_cols, scaling='minmax', train_df=train_df)
+        
+    else:
+        normalized_train_df = train_df.copy()
+        normalized_test_df = test_df.copy()
+    
     print('saving train test files to :\n%s\n%s'%(args.train_csv_filename, args.test_csv_filename))
-    train_df.to_csv(args.train_csv_filename, index=False)
-    test_df.to_csv(args.test_csv_filename, index=False)
+    normalized_train_df.to_csv(args.train_csv_filename, index=False)
+    normalized_test_df.to_csv(args.test_csv_filename, index=False)
     
     if args.output_data_dict_filename is not None:
         with open(args.output_data_dict_filename, 'w') as f:

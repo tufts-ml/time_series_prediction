@@ -133,8 +133,8 @@ if __name__ == "__main__":
     
     # make probability of initializing and transitioning to state 0 and state 3 v.v. low
     init_proba_K = 5*np.ones(n_states)
-    init_proba_K[0] = 1
-    init_proba_K[3] = 1
+    init_proba_K[0] = 2
+    init_proba_K[3] = 2
     init_proba_K = softmax(init_proba_K)
     
 #     trans_proba_KK = rs.dirichlet((50*np.ones(n_states)), n_states)
@@ -149,9 +149,8 @@ if __name__ == "__main__":
     cov_KDD = np.stack([np.eye(D) for i in range(n_states)])
 
     # define how long to hold a state
-    duration = 5
+    duration = 1
     
-#     from IPython import embed; embed()
     # set random seed to regenerate the same data for reproducability
     np.random.seed(args.seed)
     
@@ -214,17 +213,17 @@ if __name__ == "__main__":
     print('Number of positive sequences : %s'%(len(inds_label_1)))
     
     fontsize = 8
-    f,axs = plt.subplots(1,1, figsize=(15, 15))
+    f,axs = plt.subplots(1,1, figsize=(15, 5))
 
     # plot time series sequence of example with label 0
-    n_plot_seqs = 50
+#     n_plot_seqs = 50
 #     axs[0].plot(range(Tmax), data_DTN[0,:,inds_label_0[:n_plot_seqs]].T, '-.')
-    axs.scatter(data_DTN[0, :, inds_label_0[:n_plot_seqs]], data_DTN[1, :, inds_label_0[:n_plot_seqs]], 
+    axs.scatter(data_DTN[0, :, inds_label_0], data_DTN[1, :, inds_label_0], 
                 marker='x', s=2, c='b', label='y=0')
-    axs.scatter(data_DTN[0, :, inds_label_1[:n_plot_seqs]], data_DTN[1, :, inds_label_1[:n_plot_seqs]], 
+    axs.scatter(data_DTN[0, :, inds_label_1], data_DTN[1, :, inds_label_1], 
                 marker='o', s=2, c='r', label='y=1')
     
-    axs.set_ylim([-8,8])
+    axs.set_ylim([-4,4])
     axs.set_xlim([-spacing,n_states*spacing+spacing])
     axs.set_ylabel('Temperature_1 (deg C)', fontsize=fontsize)
     axs.set_xlabel('Temperature_0 (deg C)', fontsize = fontsize)

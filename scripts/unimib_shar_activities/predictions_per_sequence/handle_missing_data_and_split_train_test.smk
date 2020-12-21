@@ -1,10 +1,12 @@
 '''
-Produce a collapsed feature representation for this toy dataset
+Produce a collapsed feature representation for human activities
 and produce train/test CSV files
 
 Usage
 -----
-snakemake --cores 1 all
+snakemake --cores 1 --snakefile handle_missing_data_and_split_train_test.smk merge_static_highfreq_features
+
+snakemake --cores 1 --snakefile handle_missing_data_and_split_train_test.smk split_into_train_and_test
 '''
 
 sys.path.append('../predictions_collapsed/')
@@ -84,6 +86,7 @@ rule split_into_train_and_test:
                 --train_csv_filename {{output.x_train_csv}} \
                 --test_csv_filename {{output.x_test_csv}} \
                 --output_data_dict_filename {{output.x_dict}} \
+                --normalize True \
 
             python -u {{input.script}} \
                 --input {{input.collapsedy_csv}} \

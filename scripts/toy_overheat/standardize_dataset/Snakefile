@@ -5,6 +5,13 @@ Usage
 -----
 $ snakemake --cores 1 build_spec_json_from_csv
 
+
+snakemake --cores 1 build_csv_dataset_for_cnn
+
+snakemake --cores 1 build_csv_dataset_for_rnn
+
+snakemake --cores 1 build_csv_dataset_for_pchmm
+
 '''
 
 import json
@@ -129,7 +136,7 @@ rule build_csv_dataset_for_pchmm:
         python -u {input.script} \
             --output_dir {params.output_dir} \
             --Nmax 1000 \
-            --Tmax 200 \
+            --Tmax 50 \
             --n_states 10 \
         '''
 

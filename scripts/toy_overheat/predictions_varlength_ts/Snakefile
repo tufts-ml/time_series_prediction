@@ -143,6 +143,7 @@ rule split_rnn_features_into_train_and_test:
             --train_csv_filename {output.x_train_csv} \
             --test_csv_filename {output.x_test_csv} \
             --output_data_dict_filename {output.x_json} \
+            --normalize True \
         && python -u {input.script} \
             --input {input.y_csv} \
             --data_dict {input.y_json} \
@@ -184,6 +185,7 @@ rule split_cnn_features_into_train_and_test:
             --train_csv_filename {output.x_train_csv} \
             --test_csv_filename {output.x_test_csv} \
             --output_data_dict_filename {output.x_json} \
+            --normalize True \
         && python -u {input.script} \
             --input {input.y_csv} \
             --data_dict {input.y_json} \

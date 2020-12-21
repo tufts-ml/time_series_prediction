@@ -1,5 +1,5 @@
 '''
-Train full sequence classifier on Toy overheat with transient dynamics
+Train full sequence classifier on Toy overheat with global dynamics
 
 Usage: 
 
