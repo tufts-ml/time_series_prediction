@@ -57,7 +57,6 @@ rule train_and_evaluate_classifier:
 
     shell:
         '''
-        mkdir -p {params.output_dir} && \
         python -u {input.script} \
             --outcome_col_name {{OUTCOME_COL_NAME}} \
             --output_dir {params.output_dir} \

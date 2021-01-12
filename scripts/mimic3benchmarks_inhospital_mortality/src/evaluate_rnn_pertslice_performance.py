@@ -148,10 +148,10 @@ if __name__ == '__main__':
         if p==0:
             rnn = RNNBinaryClassifier(module__rnn_type='GRU',
                               module__n_layers=1,
-                              module__n_hiddens=32,
+                              module__n_hiddens=128,
                               module__n_inputs=x_test.shape[-1])
             rnn.initialize()
-            best_model_prefix = 'hiddens=32-layers=1-lr=0.001-dropout=0.1-weight_decay=1e-06-batch_size=512'
+            best_model_prefix = 'hiddens=128-layers=1-lr=0.001-dropout=0.1-weight_decay=1e-06-batch_size=512'
             rnn.load_params(f_params=os.path.join(clf_models_dir,
                                                   best_model_prefix+'params.pt'),
                             f_optimizer=os.path.join(clf_models_dir,

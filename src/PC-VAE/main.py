@@ -33,6 +33,8 @@ from pcvae.models.hmm import HMM
 from pcvae.datasets.base import dataset, real_dataset, classification_dataset, make_dataset
 from sklearn.model_selection import train_test_split
 from pcvae.util.optimizers import get_optimizer
+from sklearn.linear_model import LogisticRegression
+import tensorflow as tf
 
 def main():
     parser = argparse.ArgumentParser(description='pchmm fitting')
@@ -111,18 +113,29 @@ def main():
     optimizer = get_optimizer('adam', lr = args.lr)
     init_means = np.zeros((n_states, F))
     init_means[:, 0] = np.arange(0, n_states*spacing, spacing)
-    init_means[0, :] = [0, 1]
-    init_means[10, :] = [0, -1]
-    init_means[3, :] = [15, 1]
-    init_means[11, :] = [15, -1]
-#     init_means[4, :] = [7.5, 0]
-#     init_means[11:, 0] = 50
+    init_means[0, :] = [0, .75]
+    init_means[10, :] = [0, -.75]
+    init_means[3, :] = [15, .75]
+    init_means[11, :] = [15, -.75]
+    
+#     # scaled lower triangular covariance
 #     init_covs = np.stack([np.zeros((F,F)) for i in range(n_states)])
+#     init_covs[0,:] = [[0.1, 0], 
+#                       [0, -0.75]]
+#     init_covs[10,:] = [[0.1, 0],
+#                        [0,  -0.75]]
+#     init_covs[3,:] = [[0.1, 0],
+#                       [0,  -0.75]]
+#     init_covs[11,:] = [[0.1, 0], 
+#                        [0,  -0.75]]
+    
+    
+#    diagonal covariance 
     init_covs = np.stack([np.zeros(F) for i in range(n_states)])
-    init_covs[0,:] = [-0.45, -0.75]
-    init_covs[10,:] = [-0.45, -0.75]
-    init_covs[3,:] = [-0.45, -0.75]
-    init_covs[11,:] = [-0.45, -0.75]
+    init_covs[0,:] = [0.1, -0.75]
+    init_covs[10,:] = [0.1, -0.75]
+    init_covs[3,:] = [0.1, -0.75]
+    init_covs[11,:] = [0.1, -0.75]
     
     init_state_probas = 0.124*np.ones(n_states)
     init_state_probas[0] = 0.006
@@ -132,7 +145,7 @@ def main():
 
     model = HMM(
             states=n_states,                                     
-            lam=10000,                                      
+            lam=100,                                      
             prior_weight=0.01,
             observation_dist='MultivariateNormalDiag',
             observation_initializer=dict(loc=init_means, 
@@ -140,30 +153,75 @@ def main():
             initial_state_alpha=1.,
             initial_state_initializer=np.log(init_state_probas),
             transition_alpha=1.,
-            transition_initializer=None, optimizer=optimizer)
+            transition_initializer=None, optimizer=optimizer, debug=True)
     
     
     data = custom_dataset(data_dict=data_dict)
     model.build(data) 
     
-    
     # set the regression coefficients of the model
     eta_weights = np.zeros((n_states, 2))
-    eta_weights[1:11, :] = [1, -1]
-    eta_weights[0, :] = [-100, 100]
-    eta_weights[-1, :] = [-100, 100]
-    pos_ratio = y_train.sum()/len(y_train)
-    eta_bias = np.array([1-pos_ratio, pos_ratio])
-    eta_all = [eta_weights, eta_bias]
+#     eta_weights[1:11, :] = [1, -1]
+#     eta_weights[0, :] = [-100, 100]
+#     eta_weights[-1, :] = [-100, 100]
+#     pos_ratio = y_train.sum()/len(y_train)
+#     eta_bias = np.array([1-pos_ratio, pos_ratio])
+#     init_etas = [eta_weights, eta_bias]
     
-    model._predictor.set_weights(eta_all)
-    model.fit(data, steps_per_epoch=50, epochs=200, batch_size=args.batch_size)
+#     model._predictor.set_weights(init_etas)
+#     from IPython import embed; embed()
+    
+    # set the initial etas as the weights from logistic regression classifier with average beliefs as features 
+    x,y = data.train().numpy()
+    
+    pos_inds = np.where(y[:,1]==1)[0]
+    neg_inds = np.where(y[:,0]==1)[0]
+    
+    x_pos = x[pos_inds]
+    y_pos = y[pos_inds]
+    x_neg = x[neg_inds]
+    y_neg = y[neg_inds]
+    
+    # get their belief states of the positive and negative sequences
+    z_pos = model.hmm_model.predict(x_pos)
+    z_neg = model.hmm_model.predict(x_neg)
+    
+    # print the average belief states across time
+    beliefs_pos = z_pos.mean(axis=1)
+    beliefs_neg = z_neg.mean(axis=1)
+    
+    # perform logistic regression with belief states as features for these positive and negative samples
+    print('Performing Logistic Regression on initial belief states to get the initial eta coefficients...')
+    logistic = LogisticRegression(solver='lbfgs', random_state = 42)
+    penalty = ['l2']
+    C = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e2, 1e3, 1e4, 1e5]
+    hyperparameters = dict(C=C, penalty=penalty)
+    classifier = GridSearchCV(logistic, hyperparameters, cv=5, verbose=10, scoring = 'roc_auc')
+    
+    X_tr = np.vstack([beliefs_pos, beliefs_neg])
+    y_tr = np.vstack([y_pos, y_neg])
+    cv = classifier.fit(X_tr, y_tr[:,1])
+    
+    # get the logistic regression coefficients. These are the optimal eta coefficients.
+    lr_weights = cv.best_estimator_.coef_
+    
+    # set the K logistic regression weights as K x 2 eta coefficients
+    opt_eta_weights = np.vstack([np.zeros_like(lr_weights), lr_weights]).T
+    
+    # set the intercept of the eta coefficients
+    opt_eta_intercept = np.asarray([0, cv.best_estimator_.intercept_[0]])
+    init_etas = [opt_eta_weights, opt_eta_intercept]
+    model._predictor.set_weights(init_etas)
+    
+    model.fit(data, steps_per_epoch=1, epochs=100, batch_size=args.batch_size, lr=args.lr,
+              initial_weights=model.model.get_weights())
     
     # get the parameters of the fit distribution
-    x,y = data.train().numpy()
+#     x,y = data.train().numpy()
     mu_all = model.hmm_model(x).observation_distribution.distribution.mean().numpy()
     cov_all = model.hmm_model(x).observation_distribution.distribution.covariance().numpy()
     eta_all = np.vstack(model._predictor.get_weights())
+    
     mu_params_file = os.path.join(args.output_dir, args.output_filename_prefix+'-fit-mu.npy')
     cov_params_file = os.path.join(args.output_dir, args.output_filename_prefix+'-fit-cov.npy')
     eta_params_file = os.path.join(args.output_dir, args.output_filename_prefix+'-fit-eta.npy')
@@ -171,12 +229,9 @@ def main():
     np.save(cov_params_file, cov_all)
     np.save(eta_params_file, eta_all)
     
-#     from IPython import embed; embed()
     # save the loss plots of the model
     save_file = os.path.join(args.output_dir, args.output_filename_prefix+'.csv')
     save_loss_plots(model, save_file, data_dict)
-    
-
 
 # def standardize_data_for_pchmm(X_train, y_train, X_test, y_test):
 def convert_to_categorical(y):
@@ -210,28 +265,106 @@ if __name__ == '__main__':
     '''
     Debugging code
     
+    from sklearn.linear_model import LogisticRegression
     # get 10 positive and 10 negative sequences
     pos_inds = np.where(y[:,1]==1)[0]
     neg_inds = np.where(y[:,0]==1)[0]
     
-    n=10
-    x_pos = x[pos_inds[:n]]
-    y_pos = y[pos_inds[:n]]
-    x_neg = x[neg_inds[:n]]
-    y_neg = y[neg_inds[:n]]
+    x_pos = x[pos_inds]
+    y_pos = y[pos_inds]
+    x_neg = x[neg_inds]
+    y_neg = y[neg_inds]
     
     # get their belief states of the positive and negative sequences
     z_pos = model.hmm_model.predict(x_pos)
     z_neg = model.hmm_model.predict(x_neg)
     
     # print the average belief states across time
-    z_pos.mean(axis=1)
-    z_neg.mean(axis=1)
+    beliefs_pos = z_pos.mean(axis=1)
+    beliefs_neg = z_neg.mean(axis=1)
+    
+    # perform logistic regression with belief states as features for these positive and negative samples
+    
+    logistic = LogisticRegression(solver='lbfgs', random_state = 42)
+    
+    
+    penalty = ['l2']
+    C = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e2, 1e3, 1e4]
+    hyperparameters = dict(C=C, penalty=penalty)
+    classifier = GridSearchCV(logistic, hyperparameters, cv=5, verbose=10, scoring = 'roc_auc')
+    
+    X_tr = np.vstack([beliefs_pos, beliefs_neg])
+    y_tr = np.vstack([y_pos, y_neg])
+    cv = classifier.fit(X_tr, y_tr[:,1])
+    
+    # get the logistic regression coefficients. These are the optimal eta coefficients.
+    lr_weights = cv.best_estimator_.coef_
+    
+    # plot the log probas from of a few negative and positive samples using the logistic regression estimates 
+    n=50
+    x_pos = x[pos_inds[:n]]
+    y_pos = y[pos_inds[:n]]
+    x_neg = x[neg_inds[:n]]
+    y_neg = y[neg_inds[:n]]
+
+    # get their belief states of the positive and negative sequences
+    z_pos = model.hmm_model.predict(x_pos)
+    z_neg = model.hmm_model.predict(x_neg)
+
+    # print the average belief states across time
+    beliefs_pos = z_pos.mean(axis=1)
+    beliefs_neg = z_neg.mean(axis=1)
+    
+    X_eval = np.vstack([beliefs_pos, beliefs_neg])
+    predict_probas = cv.predict_log_proba(X_eval)
+    predict_probas_pos = predict_probas[:n, 1]
+    predict_probas_neg = predict_probas[n:, 1]
+    
+    f, axs = plt.subplots(1,1, figsize=(5, 5))
+    axs.plot(np.zeros_like(predict_probas_neg), predict_probas_neg, '.')
+    axs.plot(np.ones_like(predict_probas_pos), predict_probas_pos, '.')
+    axs.set_ylabel('log p(y=1)')
+    axs.set_xticks([0, 1])
+    axs.set_xticklabels(['50 negative samples', '50 positive samples'])
+    f.savefig('predicted_proba_viz_post_lr.png')
+    
+    # plot some negative sequences that have a high log p(y=1)
+    outcast_inds = np.where(predict_probas_neg>-3)
+    x_neg_outcasts = x_neg(outcast_inds)
+    f, ax = plt.subplots(figsize=(15, 5))
+    ax.scatter(x_neg_outcasts[:, :, :, 0], x_neg_outcasts[:, :, :, 1], s=2, marker='x')
+    ax.set_xlim([-5, 50])
+    ax.set_ylim([-5, 5])
+    fontsize=10
+    ax.set_ylabel('Temperature_1 (deg C)', fontsize=fontsize)
+    ax.set_xlabel('Temperature_0 (deg C)', fontsize = fontsize)
+    ax.set_title('negative sequences with log p(y=1)>-3')
+    f.savefig('x_outcasts.png')
+    
+    ###### Converting logistic regression weights to etas
+    # set the lr weights as initial etas
+    opt_eta_weights = np.vstack([np.zeros_like(lr_weights), lr_weights]).T
+    init_etas[0] = opt_eta_weights
+    model._predictor.set_weights(init_etas)
     
     # print the predicted probabilities of class 0 and class 1
     y_pred_pos = model._predictor(z_pos).distribution.logits.numpy()
     y_pred_neg = model._predictor(z_neg).distribution.logits.numpy()
     
+    # the 2 lines above is the same as 
+    y_pred_pos = np.matmul(beliefs_pos, opt_eta_weights)+opt_eta_intercept
+    y_pred_neg = np.matmul(beliefs_neg, opt_eta_weights)+opt_eta_intercept
     
+    
+    # plot the log p(y=1) for the negative and positive samples
+    y1_pos = expit(y_pred_pos[:,1])
+    y1_neg = expit(y_pred_neg[:,1])
+    f, axs = plt.subplots(1,1, figsize=(5, 5))
+    axs.plot(np.zeros_like(y1_neg), y1_neg, '.')
+    axs.plot(np.ones_like(y1_pos), y1_pos, '.')
+    axs.set_ylabel('p(y=1)')
+    axs.set_xticks([0, 1])
+    axs.set_xticklabels(['50 negative samples', '50 positive samples'])
+    f.savefig('predicted_proba_viz.png')
     ''' 
     

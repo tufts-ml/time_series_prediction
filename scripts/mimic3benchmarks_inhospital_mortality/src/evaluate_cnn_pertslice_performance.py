@@ -176,7 +176,7 @@ if __name__ == '__main__':
         
         for prctile in prctile_vals:
             row_dict = dict()
-            row_dict['model'] = 'cnn'
+            row_dict['model'] = 'CNN'
             row_dict['percentile'] = prctile
             row_dict['tslice'] = tslice
             row_dict['roc_auc'] = np.percentile(roc_auc_np, prctile)

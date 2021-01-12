@@ -9,6 +9,7 @@ from ..util.util import as_tuple
 from tensorflow.keras.layers import Lambda, Dense
 import numpy as np
 from ..third_party.convar import ConvolutionalAutoregressiveNetwork
+import tensorflow as tf
 
 '''
 Functions for computing between-distribution losses
@@ -16,16 +17,24 @@ Functions for computing between-distribution losses
 
 def nll(weight=1., noise=0., include_base_dist_loss=False, prior_weight=False):
     def loglik(x, p_x):
+        # handling missing observations
         mask = tf.reduce_sum(x, axis=tf.range(1, tf.rank(x)))
+        
+        # setting nan values to 0
         x = tf.where(tf.math.is_nan(x), tf.zeros_like(x), x)
-        x = x + noise * tf.random.normal(tf.shape(x))
+        x = x + noise * tf.random.normal(tf.shape(x)) #ignore
+        
+        # predictor loss multiplied by lambda
         llik = -weight * p_x.log_prob(x)
+        
+        
         if isinstance(p_x, tfd.TransformedDistribution) and include_base_dist_loss:
             llik = llik - weight * p_x.distribution.log_prob(x)
         llik = tf.where(tf.math.is_nan(mask * llik), tf.zeros_like(llik), llik)
         if prior_weight:
             llik = llik + prior_weight * p_x.prior_loss()
         return llik 
+    
     return loglik
 
 def minent(weight=0.):

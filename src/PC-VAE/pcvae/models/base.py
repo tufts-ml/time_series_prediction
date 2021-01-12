@@ -143,7 +143,7 @@ class BaseVAE(object):
         if show_model:
             self.model.summary()
         if initial_weights is not None:
-            self.model.load_weights(initial_weights)
+            self.model.set_weights(initial_weights)
 
         # Details of history tracking
         steps_per_epoch = data.steps_per_epoch if steps_per_epoch is None else steps_per_epoch

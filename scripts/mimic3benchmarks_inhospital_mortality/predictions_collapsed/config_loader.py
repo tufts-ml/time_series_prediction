@@ -12,7 +12,7 @@ def update_os_environ_vars():
 # Default environment variables
 # Can override with local env variables
 PROJECT_REPO_DIR = os.environ.get("PROJECT_REPO_DIR", os.path.abspath("../../../"))
-PROJECT_CONDA_ENV_YAML = os.path.join(PROJECT_REPO_DIR, "ts_pred.yml")
+PROJECT_CONDA_ENV_YAML = os.path.join(PROJECT_REPO_DIR, "tspred_env_2.yml")
 
 DATASET_SCRIPTS_ROOT = os.path.join(PROJECT_REPO_DIR, 'scripts', 'mimic3benchmarks_inhospital_mortality')
 
@@ -37,6 +37,9 @@ update_os_environ_vars()
 DATASET_SPLIT_FEAT_PER_TSLICE_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["SPLIT_PATH_LIST_FEAT_PER_TIMESLICE"])))
 update_os_environ_vars()
 
+DATASET_SPLIT_COLLAPSED_FEAT_PER_SEQUENCE_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["SPLIT_PATH_LIST_COLLAPSED_FEAT_PER_SEQUENCE"])))
+update_os_environ_vars()
+
 DATASET_SPLIT_COLLAPSED_FEAT_PER_TSLICE_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["SPLIT_PATH_LIST_COLLAPSED_FEAT_PER_TIMESLICE"])))
 update_os_environ_vars()
 
@@ -53,4 +56,6 @@ RESULTS_FEAT_PER_TSLICE_PATH = os.path.join(*list(map(os.path.expandvars, D_CONF
 update_os_environ_vars()
 
 RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["RESULTS_PATH_LIST_COLLAPSED_FEAT_PER_TSLICE"])))
+
+RESULTS_COLLAPSED_FEAT_PER_SEQUENCE_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["RESULTS_PATH_LIST_COLLAPSED_FEAT_PER_SEQUENCE"])))
 update_os_environ_vars()

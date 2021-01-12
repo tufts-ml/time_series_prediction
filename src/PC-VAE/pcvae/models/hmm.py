@@ -9,7 +9,7 @@ from ..util.distributions import *
 from ..util.optimizers import get_optimizer
 from ..networks.networks import get_decoder_network, get_encoder_network, get_predictor_network, get_bridge_network
 from ..util.hmm_layer import HMMLayer
-
+import tensorflow as tf
 
 class HMM(BaseVAE):
     def __init__(self, input_shape=None, label_shape=None, lam=1, recon_weight=1,
@@ -94,7 +94,7 @@ class HMM(BaseVAE):
         # Create the distribution object
         independent_transform = tfd.Independent if independent else lambda x: x
         convert_fn = tfd.Distribution.sample if sample else tfd.Distribution.mean
-
+        
         def distribution_lambda(tensors_in):
             if preconstrained:
                 return independent_transform(distribution(preconstrained=True,
@@ -109,12 +109,14 @@ class HMM(BaseVAE):
 
     def build_predictor(self):
         # Create a model to predict labels from encoded space
+        
+        # look at the networks folder in network.py for indication of where the time step aggregation takes place
         input = Input((self.steps, self.states), name='predictor_input')
         x = input
         output_dist = self.to_distribution(x, self.predictor_dist, self.label_shape, self.predictor_network, True,
                                            sample=False, name='prediction')
         self._predictor = Model(inputs=input, outputs=output_dist, name='predictor')
-
+        
     def build_hmm_model(self):
         # Model inputs
         input_x = Input(self.input_shape, name='model_input')

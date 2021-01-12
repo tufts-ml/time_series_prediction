@@ -15,7 +15,7 @@ TOY_OVERHEAT_VERSION = os.environ.get('TOY_OVERHEAT_VERSION', 'v20200515')
 PROJECT_REPO_DIR = os.environ.get("PROJECT_REPO_DIR", os.path.abspath("../../../../"))
 PROJECT_CONDA_ENV_YAML = os.path.join(PROJECT_REPO_DIR, "ts_pred.yml")
 
-RESULTS_FEAT_PER_TSTEP_PATH = "/tmp/results/toy_overheat/pchmm/"
+RESULTS_FEAT_PER_TSTEP_PATH = "/cluster/tufts/hugheslab/prath01/results/toy_overheat/"
 
 DATASET_STD_PATH = os.path.join(PROJECT_REPO_DIR, 'datasets', 'toy_overheat', TOY_OVERHEAT_VERSION)
 DATASET_SPLIT_PATH = os.path.join(PROJECT_REPO_DIR, 'datasets', 'toy_overheat', TOY_OVERHEAT_VERSION, 'train_test_split_dir')

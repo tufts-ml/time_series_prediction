@@ -21,7 +21,7 @@ if __name__ == '__main__':
     
     
     # load all performance csv into a single dataframe
-    perf_csvs = glob.glob(os.path.join(args.performance_csv_dir,'**','*pertslice_performance.csv'), recursive=True)
+    perf_csvs = glob.glob(os.path.join(args.performance_csv_dir,'**','*nn_pertslice_performance.csv'), recursive=True)
     perf_df = pd.DataFrame()
     for perf_csv in perf_csvs:
         curr_perf_df = pd.read_csv(perf_csv)
@@ -29,6 +29,7 @@ if __name__ == '__main__':
     # plot performance as a function of hours from admission, % data observed and hours from deterioration 
     tslices_list=perf_df.tslice.unique()
     
+    from IPython import embed; embed()
     print('Saving plots to : \n%s'%(args.output_dir))
     neg_tslices_list = [i for i in tslices_list if '-' in i]
     perc_tslices_list = [i for i in tslices_list if '%' in i]
@@ -61,7 +62,7 @@ if __name__ == '__main__':
                 axs.set_xlabel('Hours Until Deterioration', fontsize=fontsize)
                 fig_aka='perf_%s_neg_hours.pdf'%perf_measure
             elif x==perc_tslices_list:
-                axs.set_xlabel('% Data Recorded', fontsize=fontsize)
+                axs.set_xlabel('% Data Observed', fontsize=fontsize)
                 fig_aka='perf_%s_perc_hours.pdf'%perf_measure
             elif x==pos_tslices_list:
                 axs.set_xlabel('Hours From Admission', fontsize=fontsize)
@@ -70,7 +71,7 @@ if __name__ == '__main__':
             if perf_measure == 'roc_auc':
                 axs.set_ylim([0.48, 1])
             elif perf_measure == 'average_precision':
-                axs.set_ylim([0, 0.6])
+                axs.set_ylim([0, 1])
 
             axs.set_ylabel(perf_measure, fontsize=fontsize)
             axs.legend(fontsize=fontsize-2, loc='upper left')

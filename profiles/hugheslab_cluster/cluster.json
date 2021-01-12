@@ -1,11 +1,11 @@
 {
     "__default__" :
     {
-        "time" : "04:00:00",
+        "time" : "20:00:00",
         "cores" : "8",
         "partition" : "batch",
         "priority" : "normal",
-        "memory" : "4G",
+        "memory" : "60G",
         
     }
 }

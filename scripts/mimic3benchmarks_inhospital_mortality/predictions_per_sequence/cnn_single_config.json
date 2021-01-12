@@ -1,6 +1,6 @@
 {
     "n_conv_layers": [1],
-    "n_filters" : [27],
+    "n_filters" : [72],
     "kernel_size" : [3],
     "stride" : [2],
     "pool_size" : [4],

@@ -13,7 +13,7 @@ from config_loader import (
     DATASET_SPLIT_FEAT_PER_TSLICE_PATH,
     RESULTS_FEAT_PER_TSLICE_PATH, 
     DATASET_SPLIT_COLLAPSED_FEAT_PER_TSLICE_PATH,
-    RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH)
+    RESULTS_COLLAPSED_FEAT_PER_SEQUENCE_PATH)
 
 evaluate_tslice_hours_list=D_CONFIG['EVALUATE_TIMESLICE_LIST']
 random_seed_list=D_CONFIG['CLF_RANDOM_SEED_LIST']
@@ -24,14 +24,14 @@ rule evaluate_performance:
         script=os.path.join(os.path.abspath('../'), "src", "evaluate_lr_rf_pertslice_performance.py")
 
     params:
-        clf_models_dir=RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH,
+        clf_models_dir=RESULTS_COLLAPSED_FEAT_PER_SEQUENCE_PATH,
         clf_train_test_split_dir=CLF_TRAIN_TEST_SPLIT_PATH,
         evaluation_tslices=evaluate_tslice_hours_list,
         collapsed_tslice_folder=DATASET_SPLIT_COLLAPSED_FEAT_PER_TSLICE_PATH,
         tslice_folder=DATASET_SPLIT_FEAT_PER_TSLICE_PATH,
         preproc_data_dir=DATASET_SPLIT_PATH,
         random_seed_list=random_seed_list,
-        output_dir=os.path.join(RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH, 'classifier_per_tslice_performance')
+        output_dir=os.path.join(RESULTS_COLLAPSED_FEAT_PER_SEQUENCE_PATH, 'classifier_per_tslice_performance')
         
     conda:
         PROJECT_CONDA_ENV_YAML

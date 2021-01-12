@@ -27,8 +27,6 @@ def visualize2D(data_DTN=None, y_N=None, mu_all=None, cov_all=None, levels=3,
     ax.scatter(data_DTN[0, :, inds_label_1], data_DTN[1, :, inds_label_1], 
                 marker='o', s=2, c='r', label='y=1')
     
-    ax.set_ylim([-8,8])
-    ax.set_xlim([-5,55])
     fontsize=10
     ax.set_ylabel('Temperature_1 (deg C)', fontsize=fontsize)
     ax.set_xlabel('Temperature_0 (deg C)', fontsize = fontsize)
@@ -40,12 +38,18 @@ def visualize2D(data_DTN=None, y_N=None, mu_all=None, cov_all=None, levels=3,
     for i, (mu, cov) in enumerate(zip(mu_all, cov_all)):
         xg = np.linspace(*((max(mu[0] - 5 * cov[0,0], ax.get_xlim()[0]), min(mu[0] + 5 * cov[0,0], ax.get_xlim()[1])) + (1000,)))
         yg = np.linspace(*((max(mu[1] - 5 * cov[1,1], ax.get_ylim()[0]), min(mu[1] + 5 * cov[1,1], ax.get_ylim()[1])) + (1000,)))
+#         xg = np.linspace(mu[0] - 4*cov[0,0], mu[0] + 4*cov[0, 0], 3000)
+#         yg = np.linspace(mu[1] - 6*cov[1,1], mu[1] + 6*cov[1, 1], 3000)
         Xg, Yg = np.meshgrid(xg, yg)
         Zg = mvn.pdf(
             np.stack([Xg.flatten(), Yg.flatten()]).T, mean=mu, cov=cov
         ).reshape(Xg.shape)
+        
+#         r = np.sqrt(np.sum(np.square(x_N2), axis=1))
+#         levels = np.percentile(Zg, [50, 95, 99])
         ax.contour(Xg, Yg, Zg, levels=levels, colors='black', linewidths=3)
-
+        
+#         from IPython import embed; embed()
     f.savefig('pchmm_fits.png')
 
 if __name__ == '__main__':
@@ -61,8 +65,8 @@ if __name__ == '__main__':
     auc_per_fit_list = []
     for fit_csv in all_fits_csvs:
         fit_df = pd.read_csv(fit_csv)
-        losses_per_fit_list.append(fit_df['loss'].to_numpy()[-1])
-        auc_per_fit_list.append(fit_df['predictor_AUC'].to_numpy()[-1])
+        losses_per_fit_list.append(fit_df['val_loss'].to_numpy()[-1])
+        auc_per_fit_list.append(fit_df['val_predictor_AUC'].to_numpy()[-1])
     
     
 #     best_fit_ind = np.argmax(auc_per_fit_list)
@@ -77,14 +81,16 @@ if __name__ == '__main__':
     fit_df = pd.read_csv(best_fit_csv)
     
     # plot the loss plots
-    f, axs = plt.subplots(2,1)
-    fit_df.plot(x='epochs', y=['hmm_model_loss', 'predictor_loss', 'loss'], ax=axs[0])
-    fit_df.plot(x='epochs', y=['predictor_AUC', 'predictor_accuracy'], ax=axs[1])
+    f, axs = plt.subplots(2,1, figsize = (8, 5))
+    fit_df.plot(x='epochs', y=['predictor_loss', 'loss', 
+                               'val_predictor_loss', 'val_loss'], ax=axs[0])
+    fit_df.plot(x='epochs', y=['predictor_AUC', 'val_predictor_AUC'], ax=axs[1])
+    axs[1].set_ylim([0.5, 1])
     f.savefig('loss_plots.png')
     
-#     best_fit_mu = glob.glob(os.path.join(args.fits_dir, "pchmm-*fit-mu.npy"))[0]
-#     best_fit_cov = glob.glob(os.path.join(args.fits_dir, "pchmm-*fit-cov.npy"))[0]
-#     best_fit_eta = glob.glob(os.path.join(args.fits_dir, "pchmm-*fit-eta.npy"))[0]
+#     best_fit_mu = glob.glob(os.path.join(args.fits_dir, "pchmm-lr=100*fit-mu.npy"))[0]
+#     best_fit_cov = glob.glob(os.path.join(args.fits_dir, "pchmm-lr=100*fit-cov.npy"))[0]
+#     best_fit_eta = glob.glob(os.path.join(args.fits_dir, "pchmm-lr=100*fit-eta.npy"))[0]
     mu_all = np.load(best_fit_mu)
     cov_all = np.load(best_fit_cov)
     eta_all = np.load(best_fit_eta)
@@ -116,5 +122,5 @@ if __name__ == '__main__':
     visualize2D(data_DTN=data_DTN, y_N=y_N, mu_all=mu_all, cov_all=cov_all, levels=3, 
                 colorlist=['salmon', 'blue'], markerlist=['$x$', '$o$'], alpha=0.3)
     
-    from IPython import embed; embed()
+#     from IPython import embed; embed()
         

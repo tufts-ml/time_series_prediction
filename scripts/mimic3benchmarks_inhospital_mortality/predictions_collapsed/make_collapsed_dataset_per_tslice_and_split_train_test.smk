@@ -7,14 +7,16 @@ Usage
 snakemake --cores 1 all
 
 # filter admissions by tslice
-snakemake --cores 1 --snakefile make_collapsed_dataset_per_sequence_and_split_train_test.smk filter_admissions_by_tslice_many_tslices
+snakemake --cores 1 --snakefile make_collapsed_dataset_per_tslice_and_split_train_test.smk filter_admissions_by_tslice_many_tslices
 
-# collapse sequence features
-snakemake --cores 1 --snakefile make_collapsed_dataset_per_sequence_and_split_train_test.smk collapse_features
+# collapse tslice features
+snakemake --cores 1 --snakefile make_collapsed_dataset_per_tslice_and_split_train_test.smk collapse_features_many_tslices
 
+# merge the collapsed features for training tslices mentioned in config file
+snakemake --cores 1 --snakefile make_collapsed_dataset_per_tslice_and_split_train_test.smk merge_collapsed_features_all_tslices
 
 # split into train test
-snakemake --cores 1 --snakefile make_collapsed_dataset_per_sequence_and_split_train_test.smk split_into_train_and_test
+snakemake --cores 1 --snakefile make_collapsed_dataset_per_tslice_and_split_train_test.smk split_into_train_and_test
 
 '''
 
@@ -24,10 +26,11 @@ from config_loader import (
     DATASET_STD_PATH, DATASET_SPLIT_PATH,
     PROJECT_REPO_DIR, PROJECT_CONDA_ENV_YAML, 
     DATASET_SPLIT_FEAT_PER_TSLICE_PATH,
-    DATASET_SPLIT_COLLAPSED_FEAT_PER_SEQUENCE_PATH,
-    RESULTS_COLLAPSED_FEAT_PER_SEQUENCE_PATH)
+    RESULTS_FEAT_PER_TSLICE_PATH, 
+    DATASET_SPLIT_COLLAPSED_FEAT_PER_TSLICE_PATH,
+    RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH)
 
-CLF_TRAIN_TEST_SPLIT_PATH = os.path.join(DATASET_SPLIT_COLLAPSED_FEAT_PER_SEQUENCE_PATH, 'classifier_train_test_split_dir')
+CLF_TRAIN_TEST_SPLIT_PATH = os.path.join(DATASET_SPLIT_COLLAPSED_FEAT_PER_TSLICE_PATH, 'classifier_train_test_split_dir')
 
 print("Building collapsed dataset")
 print("--------------------------")
@@ -41,10 +44,19 @@ evaluate_tslice_hours_list=D_CONFIG['EVALUATE_TIMESLICE_LIST']
 # filtered sequences
 filtered_pertslice_csvs=[os.path.join(DATASET_SPLIT_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}","features_before_death_filtered_{tslice}_hours.csv").format(tslice=str(tslice)) for tslice in evaluate_tslice_hours_list]
 
+# collapsed files 
+
+collapsed_pertslice_csvs=[os.path.join(DATASET_SPLIT_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}","CollapsedFeaturesPerSequence.csv").format(tslice=str(tslice)) for tslice in evaluate_tslice_hours_list]
+collapsed_pertslice_jsons=[os.path.join(DATASET_SPLIT_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}","Spec_CollapsedFeaturesPerSequence.json").format(tslice=str(tslice)) for tslice in evaluate_tslice_hours_list]
 
 rule filter_admissions_by_tslice_many_tslices:
     input:
         filtered_pertslice_csvs
+
+rule collapse_features_many_tslices:
+    input:
+        collapsed_pertslice_csvs,
+        collapsed_pertslice_jsons
 
 rule filter_admissions_by_tslice:
     input:
@@ -66,17 +78,17 @@ rule filter_admissions_by_tslice:
                 --output_dir {params.output_dir} \
         '''
 
+
 rule collapse_features:
     input:
         script=os.path.join(PROJECT_REPO_DIR, 'src', 'feature_transformation.py'),
-        features_csv=os.path.join(DATASET_STD_PATH, 'features_per_tstep.csv'),
-        features_spec_json=os.path.join(DATASET_STD_PATH, 'Spec_FeaturesPerTimestep.json')
+        features_csv=os.path.join(DATASET_SPLIT_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "features_before_death_filtered_{tslice}_hours.csv"),
+        features_spec_json=os.path.join(DATASET_STD_PATH, 'Spec_FeaturesPerTimestep.json'),
+        tstop_csv=os.path.join(DATASET_SPLIT_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "tstops_filtered_{tslice}_hours.csv")
 
     output:
-        collapsed_features_pertslice_csv=os.path.join(DATASET_SPLIT_COLLAPSED_FEAT_PER_SEQUENCE_PATH,
-        "CollapsedFeaturesPerSequence.csv"),
-        collapsed_features_pertslice_json=os.path.join(DATASET_SPLIT_COLLAPSED_FEAT_PER_SEQUENCE_PATH,
-        "Spec_CollapsedFeaturesPerSequence.json"),
+        collapsed_features_pertslice_csv=os.path.join(DATASET_SPLIT_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "CollapsedFeaturesPerSequence.csv"),
+        collapsed_features_pertslice_json=os.path.join(DATASET_SPLIT_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "Spec_CollapsedFeaturesPerSequence.json"),
 
     conda:
         PROJECT_CONDA_ENV_YAML
@@ -88,18 +100,48 @@ rule collapse_features:
             --data_dict {input.features_spec_json} \
             --output "{output.collapsed_features_pertslice_csv}" \
             --data_dict_output "{output.collapsed_features_pertslice_json}" \
+            --tstops {input.tstop_csv} \
             --collapse_range_features "std hours_since_measured present slope median min max" \
             --range_pairs "[('50%','100%'), ('0%','100%'), ('T-16h','T-0h'), ('T-24h','T-0h')]" \
             --collapse \
+        '''
+        
+rule merge_collapsed_features_all_tslices:
+    input:
+        script=os.path.join(os.path.abspath('../'), 'src', 'merge_features_all_tslices.py')
+    
+    params:
+        collapsed_tslice_folder=os.path.join(DATASET_SPLIT_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE="),
+        tslice_folder=os.path.join(DATASET_SPLIT_FEAT_PER_TSLICE_PATH, "TSLICE="),
+        tslice_list=train_tslice_hours_list,
+        preproc_data_dir = DATASET_STD_PATH,
+        output_dir=CLF_TRAIN_TEST_SPLIT_PATH
+    
+    output:
+        features_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "features.csv"),
+        outcomes_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "outcomes.csv")
+
+    conda:
+        PROJECT_CONDA_ENV_YAML
+
+    shell:
+        '''
+        mkdir -p {{params.output_dir}} && \
+        python -u {input.script} \
+            --collapsed_tslice_folder {params.collapsed_tslice_folder} \
+            --tslice_folder {params.tslice_folder} \
+            --preproc_data_dir {params.preproc_data_dir} \
+            --tslice_list "{params.tslice_list}" \
+            --output_dir {params.output_dir}\
         '''
 
 rule split_into_train_and_test:
     input:
         script=os.path.join(PROJECT_REPO_DIR, 'src', 'split_dataset.py'),
-        features_csv=os.path.join(DATASET_SPLIT_COLLAPSED_FEAT_PER_SEQUENCE_PATH, "CollapsedFeaturesPerSequence.csv"),
-        outcomes_csv=os.path.join(DATASET_STD_PATH, "outcomes_per_seq.csv"),
-        features_json=os.path.join(DATASET_SPLIT_COLLAPSED_FEAT_PER_SEQUENCE_PATH, "Spec_CollapsedFeaturesPerSequence.json"),
-        outcomes_json=os.path.join(DATASET_STD_PATH, "Spec_OutcomesPerSequence.json"),
+        features_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "features.csv"),
+        outcomes_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "outcomes.csv"),
+        features_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "Spec_features.json"),
+        outcomes_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "Spec_outcomes.json"),
 
     params:
         train_test_split_dir=CLF_TRAIN_TEST_SPLIT_PATH

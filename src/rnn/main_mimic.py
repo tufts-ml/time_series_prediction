@@ -126,7 +126,7 @@ def main():
     print('RNN parameters : '+ output_filename_prefix)
     
     rnn = RNNBinaryClassifier(
-              max_epochs=20,
+              max_epochs=50,
               batch_size=args.batch_size,
               device=device,
               lr=args.lr,
