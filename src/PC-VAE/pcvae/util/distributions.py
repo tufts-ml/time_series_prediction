@@ -5,37 +5,29 @@ from tensorflow_probability.python.distributions import kullback_leibler
 from tensorflow_probability import layers as tfpl
 import tensorflow as tf
 import warnings
-from ..util.util import as_tuple
+# from ..util.util import as_tuple
 from tensorflow.keras.layers import Lambda, Dense
 import numpy as np
-from ..third_party.convar import ConvolutionalAutoregressiveNetwork
+# from ..third_party.convar import ConvolutionalAutoregressiveNetwork
 import tensorflow as tf
 
 '''
 Functions for computing between-distribution losses
 '''
-
 def nll(weight=1., noise=0., include_base_dist_loss=False, prior_weight=False):
     def loglik(x, p_x):
-        # handling missing observations
-        mask = tf.reduce_sum(x, axis=tf.range(1, tf.rank(x)))
-        
-        # setting nan values to 0
-        x = tf.where(tf.math.is_nan(x), tf.zeros_like(x), x)
-        x = x + noise * tf.random.normal(tf.shape(x)) #ignore
-        
-        # predictor loss multiplied by lambda
+#         mask = tf.reduce_sum(x, axis=tf.range(1, tf.rank(x)))
+#         x = tf.where(tf.math.is_nan(x), tf.zeros_like(x), x)
+#         x = x + noise * tf.random.normal(tf.shape(x))
         llik = -weight * p_x.log_prob(x)
-        
-        
         if isinstance(p_x, tfd.TransformedDistribution) and include_base_dist_loss:
             llik = llik - weight * p_x.distribution.log_prob(x)
-        llik = tf.where(tf.math.is_nan(mask * llik), tf.zeros_like(llik), llik)
+#         llik = tf.where(tf.math.is_nan(llik), tf.zeros_like(llik), llik)
         if prior_weight:
             llik = llik + prior_weight * p_x.prior_loss()
-        return llik 
-    
+        return llik
     return loglik
+
 
 def minent(weight=0.):
     return lambda p_x: K.mean(weight * p_x.entropy())
@@ -76,8 +68,58 @@ unconstrained parameterizations and to have defined and unique parameterizations
 
 class Normal(tfd.Normal):
     def __init__(self, loc, scale):
+        super(Normal, self).__init__(loc=loc,
+scale=tf.math.softplus(scale + 1.) + 1e-5)
         tfd.Normal.__init__(self, loc=loc, scale=tf.math.softplus(scale + 1.) + 1e-5)
 
+class NormalWithMissing(tfd.Normal):
+    def __init__(self, loc, scale):
+        super(NormalWithMissing, self).__init__(loc=loc, scale=tf.math.softplus(scale + 1.) + 1e-5)
+#         tfd.Normal.__init__(self, loc=loc, scale=tf.math.softplus(scale + 1.) + 1e-5)        
+    
+    def log_prob(self, x):
+        scale = tf.convert_to_tensor(self.scale)
+        
+        log_normalization = tf.constant(
+            0.5 * np.log(2. * np.pi), dtype=self.dtype) + tf.math.log(scale)
+        
+        # create mask
+        mask = tf.cast(~tf.math.is_nan(x), dtype=self.dtype)
+        
+        # replace nans in data with 0 
+        x = tf.where(tf.math.is_nan(x), tf.zeros_like(x), x)
+        
+        log_unnormalized = -0.5 * tf.math.squared_difference(
+            x / scale, self.loc / scale)
+        
+        # compute log probability 
+        log_probs = log_unnormalized - log_normalization
+        
+        # return 0 in locations where the observations are missing 
+        return mask*log_probs
+    
+    def prob(self, x):
+        scale = tf.convert_to_tensor(self.scale)
+        
+        log_normalization = tf.constant(
+            0.5 * np.log(2. * np.pi), dtype=self.dtype) + tf.math.log(scale)
+        
+        # create mask
+        mask = tf.cast(~tf.math.is_nan(x), dtype=self.dtype)
+        
+        # replace nans in data with 0 
+        x = tf.where(tf.math.is_nan(x), tf.zeros_like(x), x)
+        
+        log_unnormalized = -0.5 * tf.math.squared_difference(
+            x / scale, self.loc / scale)
+        
+        # compute log probability 
+        probs = tf.exp(log_unnormalized - log_normalization) 
+        
+        return mask*probs
+    
+
+    
 class FixedNormal(tfd.Normal):
     def __init__(self, loc):
         tfd.Normal.__init__(self, loc=loc, scale=1e-5)
@@ -624,7 +666,7 @@ def get_tfd_distribution(dist, components=1, aligned=False, **kwargs):
         return dist
     dist_dict = dict(MultivariateNormalTriL=MultivariateNormalTriL, MultivariateNormalDiag=MultivariateNormalDiag,
                      Categorical=Categorical, Multinomial=Multinomial, Bernoulli=Bernoulli, NoiseNormal=NoiseNormal, NoiseZCA=NoiseZCA,
-                     Normal=Normal, StandardNormal=StandardNormal, StudentT=StudentT, NoiseStudentT=NoiseStudentT, NormalTanH=NormalTanH, StudentTTanH=StudentTTanH,
+                     Normal=Normal, StandardNormal=StandardNormal, StudentT=StudentT, NoiseStudentT=NoiseStudentT, NormalTanH=NormalTanH, StudentTTanH=StudentTTanH, NormalWithMissing=NormalWithMissing,
                      ConstrainedMultivariateStudentT=ConstrainedMultivariateStudentT, ConstrainedMultivariateNormal=ConstrainedMultivariateNormal,
                      ConstrainedNormal=ConstrainedNormal, ConstrainedStudentT=ConstrainedStudentT, ConstrainedNormalMixtureWithUniform=ConstrainedNormalMixtureWithUniform)
     mixture_dist_dict = dict(GaussianMixture=GaussianMixture, GaussianMixtureDiag=GaussianMixtureDiag,

@@ -151,6 +151,7 @@ class BaseVAE(object):
         # Finally actually train the damn model
         vd = data.valid().numpy()
         vd = tf.data.Dataset.from_tensor_slices((vd, vd)).batch(np.sum(data.batch_size).astype(int))
+        
         training_engine = self.model.fit if use_fit_generator else self.model.fit
         training_generator = data.optimize(labeled_only)
         self.history = training_engine(training_generator, validation_data=vd,

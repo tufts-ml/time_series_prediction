@@ -92,6 +92,14 @@ def main():
     _,T,F = X_train.shape
     
     print('number of time points : %s\nnumber of features : %s\n'%(T,F))
+        
+    # add missing values to the train and test data at random
+    n_missing_tr = 900
+    n_missing_te = 100
+    miss_inds_tr = np.random.choice(X_train.size, n_missing_tr, replace=False)
+    miss_inds_te = np.random.choice(X_test.size, n_missing_te, replace=False)
+    X_train.ravel()[miss_inds_tr] = np.nan
+    X_test.ravel()[miss_inds_te] = np.nan
     
     # split train into train and validation
     X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=args.validation_size, random_state=213)
@@ -107,6 +115,7 @@ def main():
     data_dict['valid'] = (X_val, y_val)
     data_dict['test'] = (X_test, y_test)
     
+    
     # train model
     n_states = 12
     spacing = 5
@@ -117,6 +126,7 @@ def main():
     init_means[10, :] = [0, -.75]
     init_means[3, :] = [15, .75]
     init_means[11, :] = [15, -.75]
+    
     
 #     # scaled lower triangular covariance
 #     init_covs = np.stack([np.zeros((F,F)) for i in range(n_states)])
@@ -130,7 +140,7 @@ def main():
 #                        [0,  -0.75]]
     
     
-#    diagonal covariance 
+#    diagonal covariance for multivariate diagonal
     init_covs = np.stack([np.zeros(F) for i in range(n_states)])
     init_covs[0,:] = [0.1, -0.75]
     init_covs[10,:] = [0.1, -0.75]
@@ -147,29 +157,21 @@ def main():
             states=n_states,                                     
             lam=100,                                      
             prior_weight=0.01,
-            observation_dist='MultivariateNormalDiag',
+            observation_dist='NormalWithMissing',
             observation_initializer=dict(loc=init_means, 
-                scale_diag=init_covs),
+                scale=init_covs),
             initial_state_alpha=1.,
             initial_state_initializer=np.log(init_state_probas),
             transition_alpha=1.,
-            transition_initializer=None, optimizer=optimizer, debug=True)
+            transition_initializer=None, optimizer=optimizer)
     
     
     data = custom_dataset(data_dict=data_dict)
+    data.batch_size = args.batch_size
     model.build(data) 
     
     # set the regression coefficients of the model
-    eta_weights = np.zeros((n_states, 2))
-#     eta_weights[1:11, :] = [1, -1]
-#     eta_weights[0, :] = [-100, 100]
-#     eta_weights[-1, :] = [-100, 100]
-#     pos_ratio = y_train.sum()/len(y_train)
-#     eta_bias = np.array([1-pos_ratio, pos_ratio])
-#     init_etas = [eta_weights, eta_bias]
-    
-#     model._predictor.set_weights(init_etas)
-#     from IPython import embed; embed()
+    eta_weights = np.zeros((n_states, 2))  
     
     # set the initial etas as the weights from logistic regression classifier with average beliefs as features 
     x,y = data.train().numpy()
@@ -189,6 +191,7 @@ def main():
     # print the average belief states across time
     beliefs_pos = z_pos.mean(axis=1)
     beliefs_neg = z_neg.mean(axis=1)
+    
     
     # perform logistic regression with belief states as features for these positive and negative samples
     print('Performing Logistic Regression on initial belief states to get the initial eta coefficients...')
@@ -213,13 +216,18 @@ def main():
     init_etas = [opt_eta_weights, opt_eta_intercept]
     model._predictor.set_weights(init_etas)
     
+#     from IPython import embed; embed()
     model.fit(data, steps_per_epoch=1, epochs=100, batch_size=args.batch_size, lr=args.lr,
               initial_weights=model.model.get_weights())
     
     # get the parameters of the fit distribution
 #     x,y = data.train().numpy()
     mu_all = model.hmm_model(x).observation_distribution.distribution.mean().numpy()
-    cov_all = model.hmm_model(x).observation_distribution.distribution.covariance().numpy()
+    try:
+        cov_all = model.hmm_model(x).observation_distribution.distribution.covariance().numpy()
+    except:
+        cov_all = model.hmm_model(x).observation_distribution.distribution.scale.numpy()
+        
     eta_all = np.vstack(model._predictor.get_weights())
     
     mu_params_file = os.path.join(args.output_dir, args.output_filename_prefix+'-fit-mu.npy')

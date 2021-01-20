@@ -64,13 +64,13 @@ class HMMLayer(tfp.layers.DistributionLambda):
     def get_initializer(self, initializer, name=None):
         # Check if a tensor, function or keras initializer name was given for a parameter
         try:
-          if name in initializer.keys():
-            initializer = initializer[name]
-          else:
-            initializer = None
+            if name in initializer.keys():
+                initializer = initializer[name]
+            else:
+                initializer = None
         except:
-          pass
-
+            pass
+        
         if initializer is None:
             return 'normal'
         try:
@@ -80,7 +80,8 @@ class HMMLayer(tfp.layers.DistributionLambda):
             return init
         except:
             return initializer
-
+        
+        
 
     def build(self, input_shape):
         # Set number of timesteps in chain
@@ -111,14 +112,15 @@ class HMMLayer(tfp.layers.DistributionLambda):
                                                           trainable=True)
             self.observation_params.append(param)
             self.observation_param_names.append(name)
-
+        
     def get_distribution(self, inputs):
         # Make the HMM distribution
         inputs = tf.squeeze(inputs, axis=[1])
         initial_distribution = IndexedCategorical(logits=self.initial_distribution_param)
-        transition_distibution = IndexedCategorical(logits=self.transition_distribution_param)
+        transition_distribution = IndexedCategorical(logits=self.transition_distribution_param)
         observation_distribution = self.observation_distribution(**dict(zip(self.observation_param_names, self.observation_params)))
+        
         observation_distribution = tfd.Independent(observation_distribution)
-        return HiddenMarkovModel(initial_distribution, transition_distibution, observation_distribution, self.steps, inputs,
+        return HiddenMarkovModel(initial_distribution, transition_distribution, observation_distribution, self.steps, inputs,
                                  initial_state_alpha=self.initial_state_alpha, transition_alpha=self.transition_alpha,
                                  observation_prior_loss=self.observation_prior_loss)

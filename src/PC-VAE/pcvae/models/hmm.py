@@ -137,9 +137,10 @@ class HMM(BaseVAE):
         self.model = Model(inputs=[input_x, input_y], outputs=[hmm, prediction],
                            name='training_model')
 
-        self.model.compile(optimizer=self.optimizer, loss=[nll(prior_weight=self.prior_weight), nll(self.lam)],
-                           run_eagerly=self.debug,
+        self.model.compile(optimizer=self.optimizer, loss=[nll(prior_weight=self.prior_weight),
+                                                           nll(self.lam)], run_eagerly=self.debug, 
                            metrics=[[None], self.metric], experimental_run_tf_function=True)
+
 
     def build(self, data=None):
         self.setup(data)

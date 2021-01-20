@@ -126,18 +126,18 @@ def main():
     print('RNN parameters : '+ output_filename_prefix)
     
     rnn = RNNBinaryClassifier(
-              max_epochs=50,
+              max_epochs=100,
               batch_size=args.batch_size,
               device=device,
               lr=args.lr,
               callbacks=[
               EpochScoring('roc_auc', lower_is_better=False, on_train=True, name='aucroc_score_train'),
               EpochScoring('roc_auc', lower_is_better=False, on_train=False, name='aucroc_score_valid'),
-              EarlyStopping(monitor='aucroc_score_valid', patience=5, threshold=0.002, threshold_mode='rel',
-                                             lower_is_better=False),
+#               EarlyStopping(monitor='aucroc_score_valid', patience=5, threshold=0.002, threshold_mode='rel',
+#                                              lower_is_better=False),
 #               LRScheduler(policy=ReduceLROnPlateau, mode='max', monitor='aucroc_score_valid', patience=10),
                   compute_grad_norm,
-              GradientNormClipping(gradient_clip_value=0.5, gradient_clip_norm_type=2),
+#               GradientNormClipping(gradient_clip_value=0.5, gradient_clip_norm_type=2),
               Checkpoint(monitor='aucroc_score_valid', f_history=os.path.join(args.output_dir, output_filename_prefix+'.json')),
               TrainEndCheckpoint(dirname=args.output_dir, fn_prefix=output_filename_prefix),
               ],
@@ -152,7 +152,15 @@ def main():
               optimizer=torch.optim.Adam,
               optimizer__weight_decay=args.weight_decay
                          ) 
-    
+    '''
+    # fit on subset of data
+    print('fitting on subset of data...')
+    n = 500
+    rnd_inds = np.random.permutation(N)[:n]
+    X = X_train[rnd_inds]
+    y = y_train[rnd_inds]
+    clf = rnn.fit(X, y)
+    '''
     
     clf = rnn.fit(X_train, y_train)
     y_pred_proba = clf.predict_proba(X_train)
