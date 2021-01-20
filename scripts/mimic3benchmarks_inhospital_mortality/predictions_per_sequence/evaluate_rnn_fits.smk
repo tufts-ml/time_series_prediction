@@ -4,7 +4,7 @@ Evaluate RNN fits for mimic
 Usage: 
 
 To run with multiple random seeds (prespecified in a config file)
-$ snakemake --cores all --snakefile evaluate_rnn_fits.smk train_and_evaluate_classifier_many_hyperparams
+$ snakemake --cores 1 --snakefile evaluate_rnn_fits.smk evaluate_classifier
 '''
 
 # Default environment variables

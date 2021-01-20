@@ -4,7 +4,9 @@ and produce train/test CSV files
 
 Usage
 -----
-snakemake --cores 1 all
+>> snakemake --cores 1 impute_missing_values
+
+>> snakemake --cores 1 split_into_train_and_test
 '''
 
 sys.path.append('../predictions_collapsed/')

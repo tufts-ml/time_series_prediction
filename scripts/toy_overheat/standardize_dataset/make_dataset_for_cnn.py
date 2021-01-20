@@ -122,14 +122,24 @@ if __name__ == "__main__":
                       (0.492, 0.5, 0.008),
                       (0.0, 1.0, 0.0)]
 
-    mean_overheat = 3
+#     mean_overheat = 3
+
+#     stddev_KD = np.ones((n_states, D))
+#     stddev_KD[2] = 0.3
+
+#     mean_KD = np.zeros((n_states, D))
+#     mean_KD[0, 0] = 0
+#     mean_KD[1, 0] = -1
+#     mean_KD[2, 0] = mean_overheat
+    
+    mean_overheat = 5
 
     stddev_KD = np.ones((n_states, D))
     stddev_KD[2] = 0.3
 
     mean_KD = np.zeros((n_states, D))
-    mean_KD[0, 0] = 0
-    mean_KD[1, 0] = 1
+    mean_KD[0, 0] = -4
+    mean_KD[1, 0] = -5
     mean_KD[2, 0] = mean_overheat
 
     # define how long to hold a state

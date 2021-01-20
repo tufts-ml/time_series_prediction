@@ -5,6 +5,8 @@ Usage:
 
 To run with multiple random seeds (prespecified in a config file)
 $ snakemake --cores all --snakefile train_rnn_with_transient_overheat.smk train_and_evaluate_classifier_many_hyperparams
+
+$ snakemake --snakefile train_rnn_with_transient_overheat.smk --profile ../../../../profiles/hugheslab_cluster/ 
 '''
 
 configfile:"rnn.json"
@@ -23,7 +25,7 @@ DATASET_STD_PATH = os.path.join(PROJECT_REPO_DIR, 'datasets', 'toy_overheat', TO
 DATASET_TRANSIENT_SPLIT_PATH = os.path.join(DATASET_STD_PATH, 'cnn_data', 'train_test_split_dir')
 
 
-RESULTS_FEAT_PER_TSTEP_PATH = "/tmp/results/toy_overheat/rnn_vs_cnn_comparison/"
+RESULTS_FEAT_PER_TSTEP_PATH = "/cluster/tufts/hugheslab/prath01/results/toy_overheat/rnn/"
 
 rule train_and_evaluate_classifier_many_hyperparams:
     input:

@@ -36,6 +36,9 @@ def visualize2D(data_DTN=None, y_N=None, mu_all=None, cov_all=None, levels=3,
     # Plot the paramters
     cmap = sns.diverging_palette(5, 150, l=20, n=mu_all.shape[0], center="dark")
     for i, (mu, cov) in enumerate(zip(mu_all, cov_all)):
+        if len(cov.shape)==1:
+            cov = np.diag(cov)
+
         xg = np.linspace(*((max(mu[0] - 5 * cov[0,0], ax.get_xlim()[0]), min(mu[0] + 5 * cov[0,0], ax.get_xlim()[1])) + (1000,)))
         yg = np.linspace(*((max(mu[1] - 5 * cov[1,1], ax.get_ylim()[0]), min(mu[1] + 5 * cov[1,1], ax.get_ylim()[1])) + (1000,)))
 #         xg = np.linspace(mu[0] - 4*cov[0,0], mu[0] + 4*cov[0, 0], 3000)
@@ -118,7 +121,7 @@ if __name__ == '__main__':
     features_outcomes_df.drop_duplicates(subset=id_cols, inplace=True)
     y_N = features_outcomes_df['did_overheat_binary_label'].values
     
-    
+    from IPython import embed; embed()
     visualize2D(data_DTN=data_DTN, y_N=y_N, mu_all=mu_all, cov_all=cov_all, levels=3, 
                 colorlist=['salmon', 'blue'], markerlist=['$x$', '$o$'], alpha=0.3)
     

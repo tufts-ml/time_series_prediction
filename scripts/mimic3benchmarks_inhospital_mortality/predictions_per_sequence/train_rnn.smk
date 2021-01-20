@@ -16,7 +16,7 @@ To run with multiple random seeds (prespecified in a config file)
 $ snakemake --cores all --snakefile train_rnn.smk train_and_evaluate_classifier_many_hyperparams
 '''
 
-configfile:"rnn_single_config.json"
+configfile:"rnn.json"
 
 # Default environment variables
 # Can override with local env variables
@@ -25,11 +25,13 @@ from config_loader import (
     D_CONFIG,
     DATASET_SPLIT_PATH,
     PROJECT_REPO_DIR, PROJECT_CONDA_ENV_YAML,
-    RESULTS_FEAT_PER_TSTEP_PATH, DATASET_SPLIT_FEAT_PER_TSLICE_PATH)
+    DATASET_SPLIT_FEAT_PER_TSLICE_PATH)
 sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src'))
 
+
+RESULTS_FEAT_PER_TSTEP_PATH="/cluster/tufts/hugheslab/prath01/results/mimic3/rnn/"
 CLF_TRAIN_TEST_SPLIT_PATH = os.path.join(DATASET_SPLIT_FEAT_PER_TSLICE_PATH, 'classifier_train_test_split_dir')
-RESULTS_FEAT_PER_TSTEP_PATH = os.path.join(RESULTS_FEAT_PER_TSTEP_PATH, 'rnn')
+
 
 rule train_and_evaluate_classifier_many_hyperparams:
     input:

@@ -8,7 +8,7 @@ snakemake --cores 1 --snakefile visualize_pchmm_fits.smk
 '''
 PROJECT_REPO_DIR = os.environ.get("PROJECT_REPO_DIR", os.path.abspath("../../../../"))
 PROJECT_CONDA_ENV_YAML = os.path.join(PROJECT_REPO_DIR, "ts_pred.yml")
-RESULTS_FEAT_PER_TSTEP_PATH = "/cluster/tufts/hugheslab/prath01/results/toy_overheat/"
+RESULTS_FEAT_PER_TSTEP_PATH = "/cluster/tufts/hugheslab/prath01/results/toy_overheat/pchmm/"
 DATASET_DIR = os.path.join(PROJECT_REPO_DIR, "datasets", "toy_overheat", "v20200515", "")
 
 

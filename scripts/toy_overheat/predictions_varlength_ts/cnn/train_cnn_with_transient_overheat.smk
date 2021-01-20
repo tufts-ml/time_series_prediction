@@ -7,7 +7,7 @@ To run with multiple random seeds (prespecified in a config file)
 $ snakemake --cores all --snakefile train_cnn_with_transient_overheat.smk train_and_evaluate_classifier_many_hyperparams
 '''
 
-configfile:"cnn.json"
+configfile:"cnn_single_config.json"
 
 # Default environment variables
 # Can override with local env variables
@@ -23,7 +23,7 @@ DATASET_STD_PATH = os.path.join(PROJECT_REPO_DIR, 'datasets', 'toy_overheat', TO
 DATASET_TRANSIENT_SPLIT_PATH = os.path.join(DATASET_STD_PATH, 'cnn_data', 'train_test_split_dir')
 
 
-RESULTS_FEAT_PER_TSTEP_PATH = "/tmp/results/toy_overheat/rnn_vs_cnn_comparison/"
+RESULTS_FEAT_PER_TSTEP_PATH = "/cluster/tufts/hugheslab/prath01/results/toy_overheat/rnn_vs_cnn_comparison/"
 
 rule train_and_evaluate_classifier_many_hyperparams:
     input:
@@ -31,7 +31,7 @@ rule train_and_evaluate_classifier_many_hyperparams:
 
 rule train_and_evaluate_classifier:
     input:
-        script=os.path.join(PROJECT_REPO_DIR, 'src', 'cnn', 'main.py'),
+        script=os.path.join(PROJECT_REPO_DIR, 'src', 'cnn', 'main_pytorch.py'),
         x_train_csv=os.path.join(DATASET_TRANSIENT_SPLIT_PATH, 'x_train.csv'),
         x_test_csv=os.path.join(DATASET_TRANSIENT_SPLIT_PATH, 'x_test.csv'),
         y_train_csv=os.path.join(DATASET_TRANSIENT_SPLIT_PATH, 'y_train.csv'),

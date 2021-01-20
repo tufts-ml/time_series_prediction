@@ -10,10 +10,10 @@ Split 2-D features into train and test
 >> snakemake --cores 1 split_2d_features_into_train_and_test
 
 Split features with transient overheat into train and test
->> snakemake --cores 1 split_cnn_features_into_train_and_test
+>> snakemake --cores 1 split_transient_overheat_features_into_train_and_test
 
 Split features with global overheat into train and test
->> snakemake --cores 1 split_rnn_features_into_train_and_test
+>> snakemake --cores 1 split_global_overheat_features_into_train_and_test
 '''
 
 # Default environment variables
@@ -113,7 +113,7 @@ rule split_2d_features_into_train_and_test:
         '''.replace("DATASET_SPLIT_PATH", DATASET_SPLIT_PATH)
 
 
-rule split_rnn_features_into_train_and_test:
+rule split_global_overheat_features_into_train_and_test:
     input:
         script=os.path.join(PROJECT_REPO_DIR, 'src', 'split_dataset.py'),
         x_csv=os.path.join(DATASET_STD_PATH, 'rnn_features_per_tstep.csv'),
@@ -143,7 +143,6 @@ rule split_rnn_features_into_train_and_test:
             --train_csv_filename {output.x_train_csv} \
             --test_csv_filename {output.x_test_csv} \
             --output_data_dict_filename {output.x_json} \
-            --normalize True \
         && python -u {input.script} \
             --input {input.y_csv} \
             --data_dict {input.y_json} \
@@ -155,7 +154,7 @@ rule split_rnn_features_into_train_and_test:
         '''.replace("DATASET_RNN_SPLIT_PATH", DATASET_RNN_SPLIT_PATH)
         
 
-rule split_cnn_features_into_train_and_test:
+rule split_transient_overheat_features_into_train_and_test:
     input:
         script=os.path.join(PROJECT_REPO_DIR, 'src', 'split_dataset.py'),
         x_csv=os.path.join(DATASET_STD_PATH, 'cnn_features_per_tstep.csv'),
@@ -185,7 +184,6 @@ rule split_cnn_features_into_train_and_test:
             --train_csv_filename {output.x_train_csv} \
             --test_csv_filename {output.x_test_csv} \
             --output_data_dict_filename {output.x_json} \
-            --normalize True \
         && python -u {input.script} \
             --input {input.y_csv} \
             --data_dict {input.y_json} \

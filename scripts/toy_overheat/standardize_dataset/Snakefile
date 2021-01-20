@@ -5,10 +5,9 @@ Usage
 -----
 $ snakemake --cores 1 build_spec_json_from_csv
 
+snakemake --cores 1 build_csv_dataset_with_transient_overheat
 
-snakemake --cores 1 build_csv_dataset_for_cnn
-
-snakemake --cores 1 build_csv_dataset_for_rnn
+snakemake --cores 1 build_csv_dataset_with_global_overheat
 
 snakemake --cores 1 build_csv_dataset_for_pchmm
 
@@ -140,7 +139,7 @@ rule build_csv_dataset_for_pchmm:
             --n_states 10 \
         '''
 
-rule build_csv_dataset_for_rnn:
+rule build_csv_dataset_with_global_overheat:
     input:
         completed_create_output_dir=rules.create_output_dir.output.signal_file,
         script=os.path.join(DATASET_SCRIPTS_ROOT, 'standardize_dataset', 'make_dataset_for_rnn.py')
@@ -163,7 +162,7 @@ rule build_csv_dataset_for_rnn:
             --Tmax 200 \
         '''
 
-rule build_csv_dataset_for_cnn:
+rule build_csv_dataset_with_transient_overheat:
     input:
         completed_create_output_dir=rules.create_output_dir.output.signal_file,
         script=os.path.join(DATASET_SCRIPTS_ROOT, 'standardize_dataset', 'make_dataset_for_cnn.py')
