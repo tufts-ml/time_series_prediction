@@ -1,16 +1,15 @@
 {
-    "n_conv_layers": [1],
-    "n_filters" : [72],
+    "n_conv_layers": [3],
+    "n_filters" : [64],
     "kernel_size" : [3],
-    "stride" : [2],
-    "pool_size" : [4],
-    "dense_units" : [64],
-    "lr": [0.0001],
-    "batch_size": [64],
-    "dropout": [0.1], 
+    "stride" : [1],
+    "pool_size" : [3],
+    "dense_units" : [128],
+    "lr": [0.001],
+    "batch_size": [128],
+    "dropout": [0.5], 
     "weight_decay": [0],
     "seed":[1111]
 }
-
 
 

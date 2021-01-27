@@ -29,7 +29,7 @@ rule train_and_evaluate_classifier_many_hyperparams:
 
 rule train_and_evaluate_classifier:
     input:
-        script=os.path.join(PROJECT_REPO_DIR, 'src', 'cnn', 'main.py'),
+        script=os.path.join(PROJECT_REPO_DIR, 'src', 'cnn', 'main_pytorch.py'),
         x_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_train.csv'),
         x_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_test.csv'),
         y_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_train.csv'),

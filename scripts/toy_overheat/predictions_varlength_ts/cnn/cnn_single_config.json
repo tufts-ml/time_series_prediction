@@ -1,9 +1,9 @@
 {
-    "n_conv_layers": [1],
-    "n_filters" : [1],
+    "n_conv_layers": [2],
+    "n_filters" : [10],
     "kernel_size" : [3],
     "stride" : [2],
-    "pool_size" : [2],
+    "pool_size" : [3],
     "dense_units" : [128],
     "lr": [0.001],
     "batch_size": [128],

@@ -35,6 +35,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.utils import class_weight
 from sklearn.metrics import roc_auc_score
 from CNNBinaryClassifier import CNNBinaryClassifier
+from CNNBinaryClassifierModule import compute_linear_layer_input_dims
 
 def main():
     parser = argparse.ArgumentParser(description='PyTorch RNN with variable-length numeric sequences wrapper')
@@ -124,6 +125,32 @@ def main():
     
     torch.manual_seed(0)
     
+    # define conv params
+#     channels = [F, 10, 10]
+#     kernel_sizes = [3, 3]
+#     strides = [2, 2]
+#     paddings = [1, 1]
+#     pools = [3, 3]
+    channels = [F]
+    kernel_sizes = []
+    strides=[]
+    paddings = []
+    pools = []
+    for i in range(args.n_conv_layers):
+        channels.append(args.n_filters)
+        kernel_sizes.append(args.kernel_size)
+        strides.append(args.stride)
+        pools.append(args.pool_size)
+        paddings.append(1)
+        
+    
+    # reshape train test to (N, F, T) for pytorch cnn
+    X_train = np.transpose(X_train, (0, 2, 1))
+    X_test = np.transpose(X_test, (0, 2, 1))
+    
+    # calculate inputs to the linear layer
+    linear_in = compute_linear_layer_input_dims(torch.from_numpy(X_train[:1, :, :]), channels, kernel_sizes, strides, paddings, pools)
+        
     cnn = CNNBinaryClassifier(
           max_epochs=1000,
           batch_size=args.batch_size,
@@ -143,26 +170,20 @@ def main():
           criterion=torch.nn.CrossEntropyLoss,
           criterion__weight=class_weights,
           train_split=skorch.dataset.CVSplit(args.validation_size),
-          module__channels=[F, 10, 10],
-          module__kernel_sizes=[3, 3, 3],
-          module__strides=[2, 2, 2],
-          module__paddings=[1, 1, 1],
-          module__pools=[3, 3, 3],
-          module__linear_units=128,
+          module__channels=channels,
+          module__kernel_sizes=kernel_sizes,
+          module__strides=strides,
+          module__paddings=paddings,
+          module__pools=pools,
+          module__linear_in_units=linear_in,
+          module__linear_out_units=args.dense_units,
+          module__dropout_proba=args.dropout,
           optimizer=torch.optim.Adam,
           optimizer__weight_decay=args.weight_decay,
           optimizer__lr = args.lr
                      ) 
     
-    X_train = np.transpose(X_train, (0, 2, 1))
-    X_test = np.transpose(X_test, (0, 2, 1))
-    
-    from IPython import embed; embed()
     clf = cnn.fit(X_train, y_train)
-    
-    
-    
-    
     y_score_test = clf.predict_proba(X_test)
     test_auc = roc_auc_score(y_test, y_score_test)
     print('AUC on test set : %.4f'%test_auc)
