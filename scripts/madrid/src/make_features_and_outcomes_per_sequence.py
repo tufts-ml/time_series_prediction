@@ -17,25 +17,30 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--preproc_data_dir', type=str)
     parser.add_argument('--output_dir', type=str)
+    parser.add_argument('--include_medications', type=str, default='True')
     args = parser.parse_args()
     
     # Get all the labs, vitals, demographics and outcomes
-    labs_df, labs_data_dict, vitals_df, vitals_data_dict, \
-    demographics_df, demographics_data_dict, outcomes_df, outcomes_data_dict = get_preprocessed_data(args.preproc_data_dir)
+    labs_df, labs_data_dict, vitals_df, vitals_data_dict, demographics_df, demographics_data_dict, medications_df, medications_data_dict, outcomes_df, outcomes_data_dict = get_preprocessed_data(args.preproc_data_dir)
     
     # merge the labs, vitals and demographics to get a single features table
-    features_df,features_data_dict = get_all_features_data(labs_df, labs_data_dict, 
-                                                        vitals_df, vitals_data_dict, 
-                                                        demographics_df, demographics_data_dict)
+    if args.include_medications=='True':
+        print('Getting labs, vitals, medications and demographics...')
+        features_df,features_data_dict = get_all_features_data(labs_df, labs_data_dict, 
+                                                               vitals_df, vitals_data_dict, 
+                                                               demographics_df, demographics_data_dict, 
+                                                               medications_df, medications_data_dict, True)
+    else:
+        print('Getting labs, vitalsand demographics...')
+        features_df,features_data_dict = get_all_features_data(labs_df, labs_data_dict, 
+                                                               vitals_df, vitals_data_dict, 
+                                                               demographics_df, demographics_data_dict, 
+                                                               medications_df, medications_data_dict, False)
     
     
     feature_cols = parse_feature_cols(features_data_dict)
     id_cols = parse_id_cols(features_data_dict)
     time_col = parse_time_col(features_data_dict)
-#     ## impute values
-#     features_df = features_df.groupby(id_cols).apply(lambda x: x.fillna(method='pad')).copy()
-#     for feature_col in feature_cols:
-#         features_df[feature_col].fillna(features_df[feature_col].mean(), inplace=True)
 
     # sort by ids and timestamp
     features_df.sort_values(by=id_cols+[time_col], inplace=True)

@@ -36,7 +36,7 @@ rule train_and_evaluate_classifier:
         random_seed=int(random_seed_list[0])
 
     output:
-        output_html=os.path.join(RESULTS_SPLIT_PATH, "report.html")
+        output_html=os.path.join(RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH, "report.html")
 
     conda:
         PROJECT_CONDA_ENV_YAML

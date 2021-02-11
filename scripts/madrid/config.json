@@ -1,10 +1,10 @@
 {
     "DATASET_SHORTNAME": "madrid",
-    "DATASET_VERSION": "v20200424",
+    "DATASET_VERSION": "v20210119",
     "SPLIT_KEY_COL_NAMES": "patient_id",
     "OUTCOME_COL_NAME": "clinical_deterioration_outcome",
     "SPLIT_SUBPATH": "split-by=patient_id",
-    "SITE_NAME": "HUF",
+    "SITE_NAME": "HHE",
     "DATASET_TOP_PATH_LIST": ["$HOME", "datasets", "$DATASET_VERSION"],
     "DATASET_SITE_PATH_LIST": ["$HOME", "datasets", "$DATASET_VERSION","$SITE_NAME"],
     "DATASET_SPLIT_PATH_LIST" : ["$DATASET_SITE_PATH", "$SPLIT_SUBPATH"],
@@ -13,7 +13,7 @@
     "FEAT_PER_TIMESLICE_PATH_LIST": ["$DATASET_SPLIT_PATH", "features_per_timeslice"],
     "FEAT_PER_SEQUENCE_PATH_LIST": ["$DATASET_SPLIT_PATH", "features_per_sequence"],
     "FEAT_PER_TIMESTEP_PATH_LIST": ["$DATASET_SPLIT_PATH", "features_per_timestep"],
-    "TRAIN_TIMESLICE_LIST": ["30%", "60%", "90%"],
+    "TRAIN_TIMESLICE_LIST": ["30%", "90%"],
     "EVALUATE_TIMESLICE_LIST" : [ "20%", "30%", "40%", "60%", "80%", "90%", "8", "16", "24", "32", "40", "48", "56", "64", "72", "-8", "-16", "-24", "-32", "-40", "-48", "-56", "-64", "-72"],
     "CLF_RANDOM_SEED_LIST":[42, 1783, 78970, 86787, 8675309],
     "SPLIT_RANDOM_STATE": 42,
@@ -26,6 +26,6 @@
     "RESULTS_FEAT_PER_TIMESLICE_PATH_LIST": ["$RESULTS_SPLIT_PATH", "features_per_timeslice"],
     "RESULTS_FEAT_PER_SEQUENCE_PATH_LIST": ["$RESULTS_SPLIT_PATH", "features_per_sequence"],
     "RESULTS_FEAT_PER_TIMESTEP_PATH_LIST": ["$RESULTS_SPLIT_PATH", "features_per_timestep"],
-    "COLLAPSED_FEAT_PER_TIMESLICE_CLF_MODELS_PATH_LIST" : ["$RESULTS_TOP_PATH", "HUF", "$SPLIT_SUBPATH", "collapsed_features_per_timeslice"],
-    "FEAT_PER_TIMESLICE_CLF_MODELS_PATH_LIST" : ["$RESULTS_TOP_PATH", "HUF", "$SPLIT_SUBPATH", "features_per_timestep"]
+    "COLLAPSED_FEAT_PER_TIMESLICE_CLF_MODELS_PATH_LIST" : ["$RESULTS_TOP_PATH", "$SITE_NAME", "$SPLIT_SUBPATH", "collapsed_features_per_timeslice"],
+    "FEAT_PER_TIMESLICE_CLF_MODELS_PATH_LIST" : ["$RESULTS_TOP_PATH", "$SITE_NAME", "$SPLIT_SUBPATH", "features_per_timestep"]
 }

@@ -16,6 +16,7 @@ PROJECT_REPO_DIR = os.path.abspath(
 
 sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src'))
 sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src', 'rnn'))
+sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src', 'cnn'))
 
 #import LR model before importing other packages because joblib files act weird when certain packages are loaded
 from feature_transformation import *
@@ -28,11 +29,10 @@ from utils import load_data_dict_json
 from dataset_loader import TidySequentialDataCSVLoader
 import ast
 from filter_admissions_by_tslice import get_preprocessed_data
-from RNNBinaryClassifier import RNNBinaryClassifier
 import random
 from impute_missing_values_and_normalize_data import get_time_since_last_observed_features
-from train_rnn_on_patient_stay_slice_sequences import get_sequence_lengths
-
+from CNNBinaryClassifierModule import compute_linear_layer_input_dims
+from CNNBinaryClassifier import CNNBinaryClassifier
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -134,6 +134,7 @@ if __name__ == '__main__':
         feature_cols = parse_feature_cols(test_features_dict)
         non_medication_feature_cols = [feature_col for feature_col in feature_cols if 'medication' not in feature_col]
         
+        
         for feature_col in non_medication_feature_cols:
             test_features_df.loc[:, 'mask_'+feature_col] = (~test_features_df[feature_col].isna())*1.0
             
@@ -142,12 +143,13 @@ if __name__ == '__main__':
         
         # impute missing values in the test features
         test_features_df = test_features_df.groupby(id_cols).apply(lambda x: x.fillna(method='pad')).copy()
-
+        
         for feature_col in feature_cols:
             feat_ind = normalization_estimates_df.feature==feature_col
             fill_val = normalization_estimates_df[feat_ind]['numerator_scaling']
             #test_features_df[feature_col].fillna(test_features_df[feature_col].mean(), inplace=True)
             test_features_df[feature_col].fillna(fill_val, inplace=True)
+         
  
         # normalize the data
         print('Imputing and normalizing test data using estimates from training set...')
@@ -172,29 +174,67 @@ if __name__ == '__main__':
         )    
 
         # predict on test data
-        x_test, y_test = test_vitals.get_batch_data(batch_id=0)
+        x_test, y_test = test_vitals.get_batch_data(batch_id=0) 
         
-#         from IPython import embed; embed()
         x_test[np.isnan(x_test)]=0
         N,T,F = x_test.shape
+
+        
+        # TODO : Find a way around this
+        # pad the time dimension so that the number of inputs to the dense layer remains same as training
+        train_model_T = 200
+        if train_model_T>T:
+            x_test = np.pad(x_test, ((0,0), (0, train_model_T-T), (0,0)), 'constant')
+        else:
+            x_test = x_test[:, :train_model_T, :]
+        
+        # get xtest in the right form for pytorch cnn
+        x_test = torch.from_numpy(np.transpose(x_test, (0, 2, 1))).double()
+        y_test = torch.from_numpy(y_test).type(torch.LongTensor)
+        
         # load classifier
+        # define conv params
+        n_conv_layers=1
+        n_filters=64
+        kernel_size=3
+        stride=1
+        pool_size=2
+        dense_units=128
+        channels = [F]
+        kernel_sizes = []
+        strides=[]
+        paddings = []
+        pools = []
+        for i in range(n_conv_layers):
+            channels.append(n_filters)
+            kernel_sizes.append(kernel_size)
+            strides.append(stride)
+            pools.append(pool_size)
+            paddings.append(1)
+        
+        linear_in = compute_linear_layer_input_dims(x_test[:1, :, :], channels, kernel_sizes, strides, paddings, pools)
+        
         if p==0:
-            rnn = RNNBinaryClassifier(module__rnn_type='LSTM',
-                              module__n_layers=2,
-                              module__n_hiddens=16,
-                              module__n_inputs=x_test.shape[-1])
-            rnn.initialize()
-            best_model_prefix = 'hiddens=16-layers=2-lr=0.001-dropout=0-weight_decay=0.001-seed=1111-batch_size=15000'
-            rnn.load_params(f_params=os.path.join(clf_models_dir,
+            cnn = CNNBinaryClassifier(module__channels=channels,
+                                      module__kernel_sizes=kernel_sizes,
+                                      module__strides=strides,
+                                      module__paddings=paddings,
+                                      module__pools=pools,
+                                      module__linear_in_units=linear_in,
+                                      module__linear_out_units=dense_units,
+                                      module__dropout_proba=0)
+            cnn.initialize()
+            best_model_prefix = 'conv_layers=1-filters=64-kernel_size=3-stride=1-pool=2-dense=128-lr=0.001-dropout=0-weight_decay=0.001-batch_size=1000-seed=1111'
+            cnn.load_params(f_params=os.path.join(clf_models_dir,
                                                   best_model_prefix+'params.pt'),
                             f_optimizer=os.path.join(clf_models_dir,
                                                      best_model_prefix+'optimizer.pt'),
                             f_history=os.path.join(clf_models_dir,
                                                    best_model_prefix+'history.json'))
             print('Evaluating with saved model : %s'%(os.path.join(clf_models_dir, best_model_prefix)))
-            
+        
 
-        print('Evaluating rnn on tslice=%s'%(tslice))
+        print('Evaluating cnn on tslice=%s'%(tslice))
         roc_auc_np = np.zeros(len(random_seed_list))
         balanced_accuracy_np = np.zeros(len(random_seed_list))
         log_loss_np = np.zeros(len(random_seed_list))
@@ -204,10 +244,9 @@ if __name__ == '__main__':
             rnd_inds = random.sample(range(x_test.shape[0]), int(0.8*x_test.shape[0])) 
             curr_y_test = y_test[rnd_inds]
             curr_x_test = x_test[rnd_inds, :]
-            y_pred = np.argmax(rnn.predict_proba(curr_x_test), -1)
-            y_pred_proba = rnn.predict_proba(curr_x_test)[:, 1]
+            y_pred = np.argmax(cnn.predict_proba(curr_x_test), -1)
+            y_pred_proba = cnn.predict_proba(curr_x_test)[:, 1]
             y_score = y_pred_proba
-
             roc_auc_np[k] = roc_auc_score(curr_y_test, y_score)
             balanced_accuracy_np[k] = balanced_accuracy_score(curr_y_test, y_pred)
             log_loss_np[k] = log_loss(curr_y_test, y_pred_proba, normalize=True) / np.log(2)
@@ -217,7 +256,7 @@ if __name__ == '__main__':
         
         for prctile in prctile_vals:
             row_dict = dict()
-            row_dict['model'] = 'RNN'
+            row_dict['model'] = 'CNN'
             row_dict['percentile'] = prctile
             row_dict['tslice'] = tslice
             row_dict['roc_auc'] = np.percentile(roc_auc_np, prctile)
@@ -228,6 +267,13 @@ if __name__ == '__main__':
             perf_df = perf_df.append(row_dict, ignore_index=True)      
     
     
-    perf_csv = os.path.join(args.output_dir, 'rnn_pertslice_performance.csv')
-    print('Saving RNN per-tslice performance to %s'%perf_csv)
+    perf_csv = os.path.join(args.output_dir, 'cnn_pertslice_performance.csv')
+    print('Saving cnn per-tslice performance to %s'%perf_csv)
     perf_df.to_csv(perf_csv, index=False)
+
+    
+    '''
+    best_model = os.path.join(args.clf_models_dir, 'conv_layers=3-filters=64-kernel_size=3-stride=1-pool=2-dense=128-lr=0.0005-dropout=0.5-weight_decay=0-batch_size=128-seed=1111.model')
+        
+    cnn = keras.models.load_model(best_model)
+    '''

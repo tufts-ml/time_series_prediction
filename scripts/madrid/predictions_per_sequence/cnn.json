@@ -1,0 +1,13 @@
+{
+    "n_conv_layers": [1],
+    "n_filters" : [64],
+    "kernel_size" : [3],
+    "stride" : [1],
+    "pool_size" : [2],
+    "dense_units" : [128],
+    "lr": [0.001],
+    "batch_size": [1000],
+    "dropout": [0], 
+    "weight_decay": [1e-3],
+    "seed":[1111]
+}

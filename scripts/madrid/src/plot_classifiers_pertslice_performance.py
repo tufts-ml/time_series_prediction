@@ -18,10 +18,8 @@ if __name__ == '__main__':
     
     args = parser.parse_args()
     
-    
-    
     # load all performance csv into a single dataframe
-    perf_csvs = glob.glob(os.path.join(args.performance_csv_dir, '*.csv'))
+    perf_csvs = glob.glob(os.path.join(args.performance_csv_dir, '*transferred_from_HHE.csv'))
     perf_df = pd.DataFrame()
     for perf_csv in perf_csvs:
         curr_perf_df = pd.read_csv(perf_csv)
@@ -44,7 +42,7 @@ if __name__ == '__main__':
     for x in tslice_grouped_list:
         for perf_measure in perf_measures:
             f, axs = plt.subplots(figsize=[10,8])
-            model_colors=['r', 'b', 'g', 'k']
+            model_colors=['r', 'b', 'g', 'k', 'c']
             for p, model in enumerate(perf_df.model.unique()):
                 inds = (perf_df.model==model) & (perf_df.tslice.isin(x))
                 cur_df = perf_df.loc[inds, :].copy()

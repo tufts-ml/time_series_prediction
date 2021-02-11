@@ -114,7 +114,7 @@ class TidySequentialDataCSVLoader(object):
             randorder_N = np.arange(N)
         else:
             randorder_N = random_state.permutation(N)
-
+        
         n_per_batch = [batch_size for _ in range(n_batch)]
         n_total = np.sum(n_per_batch)
         assert n_total >= N
@@ -164,10 +164,10 @@ class TidySequentialDataCSVLoader(object):
         for ii, n in enumerate(seq_ids):
             start = self.seq_fp[n]
             stop = self.seq_fp[n+1]
+            stop = min(stop, start + self.max_seq_len)
             T = stop - start
             batch_x[ii, :T] = self.x_PF[start:stop]
             batch_y[ii] = self.y_N[n]
-
         if not to_pytorch_tensor:
             return batch_x, batch_y
         else:

@@ -60,11 +60,12 @@ evaluate_tslice_hours_list=D_CONFIG['EVALUATE_TIMESLICE_LIST']
 CLF_TRAIN_TEST_SPLIT_PATH=os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, 'classifier_train_test_split')
 
 
-# collapse files
-filtered_pertslice_csvs=[os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}","{feature}_before_icu_filtered_{tslice}_hours.csv.gz").format(feature=feature, tslice=str(tslice)) for tslice in evaluate_tslice_hours_list for feature in ['vitals', 'labs']]
+# filtered files
+filtered_pertslice_csvs=[os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}","{feature}_before_icu_filtered_{tslice}_hours.csv.gz").format(feature=feature, tslice=str(tslice)) for tslice in evaluate_tslice_hours_list for feature in ['vitals', 'labs', 'medications']]
 
-collapsed_pertslice_csvs=[os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}","Collapsed{feature}PerSequence.csv.gz").format(feature=feature, tslice=str(tslice)) for tslice in evaluate_tslice_hours_list for feature in ['Vitals', 'Labs']]
-collapsed_pertslice_jsons=[os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}","Spec_Collapsed{feature}PerSequence.json").format(feature=feature, tslice=str(tslice)) for tslice in evaluate_tslice_hours_list for feature in ['Vitals', 'Labs']]
+# collapsed_files
+collapsed_pertslice_csvs=[os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}","Collapsed{feature}PerSequence.csv.gz").format(feature=feature, tslice=str(tslice)) for tslice in evaluate_tslice_hours_list for feature in ['Vitals', 'Labs', 'Medications']]
+collapsed_pertslice_jsons=[os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}","Spec_Collapsed{feature}PerSequence.json").format(feature=feature, tslice=str(tslice)) for tslice in evaluate_tslice_hours_list for feature in ['Vitals', 'Labs', 'Medications']]
 
 # mews files
 mews_pertslice_csvs=[os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}","MewsScoresPerSequence.csv.gz").replace("{tslice}", str(tslice)) for tslice in evaluate_tslice_hours_list]
@@ -106,6 +107,7 @@ rule filter_admissions_by_tslice:
         filtered_demographics_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "demographics_before_icu_filtered_{tslice}_hours.csv.gz"),
         filtered_vitals_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "vitals_before_icu_filtered_{tslice}_hours.csv.gz"),
         filtered_labs_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "labs_before_icu_filtered_{tslice}_hours.csv.gz"),
+        filtered_medications_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "medications_before_icu_filtered_{tslice}_hours.csv.gz"),
         filtered_y_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "clinical_deterioration_outcomes_filtered_{tslice}_hours.csv.gz"),
         tstops_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "tstops_filtered_{tslice}_hours.csv.gz")
     
@@ -124,13 +126,17 @@ rule collapse_features:
         vitals_spec_json=os.path.join(DATASET_SITE_PATH, 'Spec-Vitals.json'),
         labs_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "labs_before_icu_filtered_{tslice}_hours.csv.gz"),
         labs_spec_json=os.path.join(DATASET_SITE_PATH, 'Spec-Labs.json'),
+        medications_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "medications_before_icu_filtered_{tslice}_hours.csv.gz"),
+        medications_spec_json=os.path.join(DATASET_SITE_PATH, 'Spec-Medications.json'),        
         tstop_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "tstops_filtered_{tslice}_hours.csv.gz")
 
     output:
         collapsed_vitals_pertslice_csv=os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "CollapsedVitalsPerSequence.csv.gz"),
         collapsed_vitals_pertslice_json=os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "Spec_CollapsedVitalsPerSequence.json"),
         collapsed_labs_pertslice_csv=os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "CollapsedLabsPerSequence.csv.gz"),
-        collapsed_labs_pertslice_json=os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "Spec_CollapsedLabsPerSequence.json")
+        collapsed_labs_pertslice_json=os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "Spec_CollapsedLabsPerSequence.json"),
+        collapsed_medications_pertslice_csv=os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "CollapsedMedicationsPerSequence.csv.gz"),
+        collapsed_medications_pertslice_json=os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "Spec_CollapsedMedicationsPerSequence.json")
 
     conda:
         PROJECT_CONDA_ENV_YAML
@@ -144,7 +150,7 @@ rule collapse_features:
             --data_dict_output "{output.collapsed_vitals_pertslice_json}" \
             --tstops {input.tstop_csv} \
             --collapse_range_features "std hours_since_measured present slope median min max" \
-            --range_pairs "[('50%','100%'), ('0%','100%'), ('T-16h','T-0h'), ('T-24h','T-0h')]" \
+            --range_pairs "[('50%','100%'), ('0%','100%')]" \
             --collapse \
 
         python -u {input.script} \
@@ -152,6 +158,16 @@ rule collapse_features:
             --data_dict {input.labs_spec_json} \
             --output "{output.collapsed_labs_pertslice_csv}" \
             --data_dict_output "{output.collapsed_labs_pertslice_json}" \
+            --tstops {input.tstop_csv}\
+            --collapse_range_features "std hours_since_measured present median min max" \
+            --range_pairs "[('0%','100%')]" \
+            --collapse \
+
+        python -u {input.script} \
+            --input {input.medications_csv} \
+            --data_dict {input.medications_spec_json} \
+            --output "{output.collapsed_medications_pertslice_csv}" \
+            --data_dict_output "{output.collapsed_medications_pertslice_json}" \
             --tstops {input.tstop_csv}\
             --collapse_range_features "std median min max" \
             --range_pairs "[('0%','100%')]" \

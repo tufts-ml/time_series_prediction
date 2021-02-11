@@ -47,6 +47,8 @@ if __name__ == '__main__':
                        help='name of outcome column in test dataframe')
     parser.add_argument('--output_dir', default='clinical_deterioration_outcome', type=str,
                        help='name of outcome column in test dataframe')
+    parser.add_argument('--include_medications', default='True', type=str,
+                       help='temporary flag to add/not add medictaions')
     
     
     args = parser.parse_args()
@@ -76,7 +78,7 @@ if __name__ == '__main__':
     
     # get demographics csv and data_dict
     # for each patient get their vitals, labs, demographics
-    _,_,_,_,demographics_df, demographics_data_dict,_,_ = get_preprocessed_data(args.preproc_data_dir)
+    _,_,_,_,demographics_df, demographics_data_dict,_,_,_,_ = get_preprocessed_data(args.preproc_data_dir)
     
     prctile_vals = [5, 50, 95]
     random_seed_list = args.random_seed_list.split(' ')
@@ -96,14 +98,32 @@ if __name__ == '__main__':
         test_vitals_df = pd.merge(collapsed_vitals_df, y_test_ids_df, on=id_cols)
         test_labs_df = pd.merge(collapsed_labs_df, y_test_ids_df, on=id_cols)
         test_mews_df = pd.merge(mews_df, y_test_ids_df, on=id_cols)
-
-
-        # merge them
-        test_collapsed_features_df = pd.merge(test_vitals_df, test_labs_df, on=id_cols, how='inner')
+        
+        if args.include_medications=='True':
+            collapsed_medications_df = pd.read_csv(os.path.join(collapsed_tslice_folder, 'CollapsedMedicationsPerSequence.csv.gz'))
+            collapsed_medications_data_dict = load_data_dict_json(os.path.join(collapsed_tslice_folder, 'Spec_CollapsedMedicationsPerSequence.json'))
+            test_medications_df = pd.merge(collapsed_medications_df, y_test_ids_df, on=id_cols)
+            
+            # merge them
+            test_collapsed_features_df = pd.merge(pd.merge(test_vitals_df, test_labs_df, 
+                                                           on=id_cols, how='inner'),
+                                                  test_medications_df,on=id_cols, how='inner')
+            data_dicts_list = [collapsed_vitals_data_dict, 
+                               collapsed_labs_data_dict,
+                               collapsed_medications_data_dict,
+                               demographics_data_dict]
+            
+        else :
+            test_collapsed_features_df = pd.merge(test_vitals_df, test_labs_df, 
+                                                           on=id_cols, how='inner')
+            
+            data_dicts_list = [collapsed_vitals_data_dict,
+                               collapsed_labs_data_dict,
+                               demographics_data_dict]
+        
         test_features_df = pd.merge(test_collapsed_features_df, demographics_df, on=id_cols)
         if p==0:
-            test_features_dict = merge_data_dicts([collapsed_vitals_data_dict, 
-                                                 collapsed_labs_data_dict, demographics_data_dict])
+            test_features_dict = merge_data_dicts(data_dicts_list)
 
         test_outcomes_df = pd.merge(test_features_df[id_cols], outcomes_df, on=id_cols, how='inner')
 

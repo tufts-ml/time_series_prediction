@@ -15,7 +15,7 @@ Usage : Split into train and test sets containing sequences
 
 Usage : Impute missing values for train and test sets seaparately by carry forward and population mean
 ------------------------------------------------------------------------------------------------------
->> snakemake --cores 1 --snakefile make_features_and_outcomes_and_split_train_test.smk impute_missing_values
+>> snakemake --cores 1 --snakefile make_features_and_outcomes_and_split_train_test.smk impute_missing_values_and_normalize_data
 
 
 '''
@@ -82,6 +82,7 @@ rule make_features_and_outcomes:
             python -u {input.script} \
                 --preproc_data_dir {params.preproc_data_dir} \
                 --output_dir {params.output_dir} \
+                --include_medications "True" \
         '''
 
 rule split_into_train_and_test:
@@ -135,9 +136,9 @@ rule split_into_train_and_test:
             )
 
 
-rule impute_missing_values:
+rule impute_missing_values_and_normalize_data:
     input:
-        script=os.path.join(os.path.abspath('../'), 'src', 'impute_missing_values.py'),
+        script=os.path.join(os.path.abspath('../'), 'src', 'impute_missing_values_and_normalize_data.py'),
         x_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_train.csv.gz'),
         x_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_test.csv.gz'),
         x_dict_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_dict.json')
@@ -150,4 +151,5 @@ rule impute_missing_values:
             python -u {input.script} \
                 --train_test_split_dir {params.train_test_split_dir} \
                 --output_dir {params.train_test_split_dir} \
+                --normalization "zscore" \
         '''     

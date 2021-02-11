@@ -4,7 +4,7 @@ Train full sequence classifier on Madrid transfer to ICU task
 Usage: 
 
 To run with multiple random seeds (prespecified in a config file)
-$ snakemake --cores 2 --snakefile rnn.smk train_and_evaluate_classifier_many_hyperparams
+$ snakemake --cores 1 --snakefile rnn.smk train_and_evaluate_classifier_many_hyperparams
 '''
 
 
@@ -28,8 +28,7 @@ CLF_TRAIN_TEST_SPLIT_PATH=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, 'classifier
            
 rule train_and_evaluate_classifier_many_hyperparams:
     input:
-        [os.path.join(RESULTS_FEAT_PER_TSTEP_PATH,"hiddens={hidden_units}-layers={hidden_layers}-lr={lr}-dropout={dropout}-weight_decay={weight_decay}-seed={seed}.json").format(hidden_units=hidden_units, hidden_layers=hidden_layers, lr=lr, dropout=dropout,
-        weight_decay=weight_decay, seed=seed) for hidden_units in config['hidden_units'] for lr in config['lr'] for hidden_layers in config['hidden_layers'] for dropout in config['dropout'] for weight_decay in config['weight_decay'] for seed in config['param_init_seed']]
+        [os.path.join(RESULTS_FEAT_PER_TSTEP_PATH,"hiddens={hidden_units}-layers={hidden_layers}-lr={lr}-dropout={dropout}-weight_decay={weight_decay}-seed={seed}-batch_size={batch_size}.json").format(hidden_units=hidden_units, hidden_layers=hidden_layers, lr=lr, dropout=dropout, weight_decay=weight_decay, seed=seed, batch_size=batch_size) for hidden_units in config['hidden_units'] for lr in config['lr'] for hidden_layers in config['hidden_layers'] for dropout in config['dropout'] for weight_decay in config['weight_decay'] for seed in config['param_init_seed'] for batch_size in config['batch_size']]
 
 
 rule train_and_evaluate_classifier:
@@ -38,14 +37,14 @@ rule train_and_evaluate_classifier:
 
     params:
         train_test_split_dir=CLF_TRAIN_TEST_SPLIT_PATH,
-        train_tslices=['90%', '60%', '20%'],
+        train_tslices=['90%', '30%'],
         output_dir=RESULTS_FEAT_PER_TSTEP_PATH,
         tstops_dir=DATASET_FEAT_PER_TSLICE_PATH,
-        fn_prefix="hiddens={hidden_units}-layers={hidden_layers}-lr={lr}-dropout={dropout}-weight_decay={weight_decay}-seed={seed}",
+        fn_prefix="hiddens={hidden_units}-layers={hidden_layers}-lr={lr}-dropout={dropout}-weight_decay={weight_decay}-seed={seed}-batch_size={batch_size}",
         pretrained_model_dir=os.path.join(RESULTS_FEAT_PER_TSTEP_PATH, "pretrained_model")
     
     output:
-        os.path.join(RESULTS_FEAT_PER_TSTEP_PATH, "hiddens={hidden_units}-layers={hidden_layers}-lr={lr}-dropout={dropout}-weight_decay={weight_decay}-seed={seed}.json")
+        os.path.join(RESULTS_FEAT_PER_TSTEP_PATH, "hiddens={hidden_units}-layers={hidden_layers}-lr={lr}-dropout={dropout}-weight_decay={weight_decay}-seed={seed}-batch_size={batch_size}.json")
         
     conda:
         PROJECT_CONDA_ENV_YAML
@@ -64,7 +63,7 @@ rule train_and_evaluate_classifier:
             --hidden_layers {wildcards.hidden_layers} \
             --hidden_units {wildcards.hidden_units} \
             --lr {wildcards.lr} \
-            --batch_size 7000 \
+            --batch_size {wildcards.batch_size} \
             --dropout {wildcards.dropout} \
             --weight_decay {wildcards.weight_decay} \
             --output_filename_prefix {params.fn_prefix} \

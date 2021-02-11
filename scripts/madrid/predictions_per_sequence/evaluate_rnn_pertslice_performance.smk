@@ -47,4 +47,5 @@ rule evaluate_performance:
         --outcome_column_name {{OUTCOME_COL_NAME}}\
         --random_seed_list "{params.random_seed_list}"\
         --output_dir {params.output_dir}\
+        --include_medications "True" \
         '''.replace("{{OUTCOME_COL_NAME}}", D_CONFIG["OUTCOME_COL_NAME"])

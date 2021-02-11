@@ -9,31 +9,30 @@ PROJECT_REPO_DIR = os.path.abspath(
 
 sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src'))
 sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src', 'rnn'))
+sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src', 'cnn'))
 from dataset_loader import TidySequentialDataCSVLoader
 from utils import load_data_dict_json
 import json
-from feature_transformation import (parse_id_cols, parse_output_cols, parse_feature_cols, parse_time_col, get_fenceposts)
+from feature_transformation import (parse_id_cols, parse_output_cols, parse_feature_cols, parse_time_col)
 
 import torch
 import skorch
-from sklearn.model_selection import GridSearchCV, cross_validate, ShuffleSplit
+from sklearn.model_selection import GridSearchCV, cross_validate, ShuffleSplit, train_test_split
 from sklearn.metrics import (roc_curve, accuracy_score, log_loss, 
                              balanced_accuracy_score, confusion_matrix, 
                              roc_auc_score, make_scorer)
 
-from RNNBinaryClassifier import RNNBinaryClassifier
 from joblib import dump
 import warnings
 warnings.filterwarnings("ignore")
-
 from skorch.callbacks import (Callback, LoadInitState, 
                               TrainEndCheckpoint, Checkpoint, 
                               EpochScoring, EarlyStopping, LRScheduler, GradientNormClipping, TrainEndCheckpoint)
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
-from skorch.utils import noop
 import glob
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+from CNNBinaryClassifier import CNNBinaryClassifier
+from CNNBinaryClassifierModule import compute_linear_layer_input_dims
+from train_rnn_on_patient_stay_slice_sequences import ComputeGradientNorm
 
 
 def get_tslice_x_y(x, y, tstops_df, id_cols, time_col):
@@ -48,58 +47,6 @@ def get_tslice_x_y(x, y, tstops_df, id_cols, time_col):
     return x_curr_tslice, y_curr_tslice
 
 
-def get_sequence_lengths(X_NTF, pad_val):
-    N = X_NTF.shape[0]
-    seq_lens_N = np.zeros(N, dtype=np.int64)
-    for n in range(N):
-        bmask_T = np.all(X_NTF[n] == 0, axis=-1)
-        seq_lens_N[n] = np.searchsorted(bmask_T, 1)
-    return seq_lens_N
-
-def get_paramater_gradient_l2_norm(net,**kwargs):
-    parameters = [i for  _,i in net.module_.named_parameters()]
-    total_norm = 0
-    for p in parameters:
-        if p.requires_grad==True:
-            param_norm = p.grad.data.norm(2)
-            total_norm += param_norm.item() ** 2
-    total_norm = total_norm ** (1. / 2)
-    return total_norm
-
-def get_paramater_gradient_inf_norm(net, **kwargs):
-    parameters = [i for  _,i in net.module_.named_parameters()]
-    total_norm = max(p.grad.data.abs().max() for p in parameters if p.grad==True)
-    return total_norm
-
-
-class ComputeGradientNorm(Callback):
-    def __init__(self, norm_type=1, f_history=None):
-        self.norm_type = norm_type
-        self.batch_num = 1
-        self.epoch_num = 1
-        self.f_history = f_history
-
-    def on_epoch_begin(self, net,  dataset_train=None, dataset_valid=None, **kwargs):
-        self.batch_num = 1
-
-    def on_epoch_end(self, net, dataset_train=None, dataset_valid=None, **kwargs):
-        self.epoch_num += 1
-
-    def on_grad_computed(self, net, named_parameters, **kwargs):
-        if self.norm_type == 1:
-            gradient_norm = get_paramater_gradient_inf_norm(net)
-            print('epoch: %d, batch: %d, gradient_norm: %.3f'%(self.epoch_num, self.batch_num, gradient_norm))
-            if self.f_history is not None:
-                self.write_to_file(gradient_norm)
-            self.batch_num += 1
-        else:
-            gradient_norm = get_paramater_gradient_l2_norm(net)
-            print('epoch: %d, batch: %d, gradient_norm: %.3f'%(self.epoch_num, self.batch_num, gradient_norm))
-            if self.f_history is not None:
-                self.write_to_file(gradient_norm)
-            self.batch_num += 1
-
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--train_test_split_dir', type=str)
@@ -110,10 +57,18 @@ if __name__ == '__main__':
                         help='Number of sequences per minibatch')
     parser.add_argument('--epochs', type=int, default=50,
                         help='Number of epochs')
-    parser.add_argument('--hidden_units', type=int, default=32,
-                        help='Number of hidden units')
-    parser.add_argument('--hidden_layers', type=int, default=1,
-                        help='Number of hidden layers')
+    parser.add_argument('--n_filters', type=int, default=32,
+                        help='Number of filters')
+    parser.add_argument('--kernel_size', type=int, default=1,
+                        help='size of eack kernel')
+    parser.add_argument('--n_conv_layers', type=int, default=1,
+                        help='number of convolutional layers') 
+    parser.add_argument('--stride', type=int, default=1,
+                        help='stride')  
+    parser.add_argument('--pool_size', type=int, default=4,
+                        help='max pool size')  
+    parser.add_argument('--dense_units', type=int, default=128,
+                        help='number of units in fully connected layer')     
     parser.add_argument('--lr', type=float, default=0.0005,
                         help='Learning rate for the optimizer')
     parser.add_argument('--dropout', type=float, default=0,
@@ -148,9 +103,6 @@ if __name__ == '__main__':
     time_col = parse_time_col(x_data_dict)
     feature_cols = parse_feature_cols(x_data_dict)
     
-    x_train[feature_cols] = x_train[feature_cols].astype(np.float32)
-    x_test[feature_cols] = x_test[feature_cols].astype(np.float32)
-    
     # Get 2 different train and test dataframes divided by slice
     train_tensors_per_tslice_list = []
     test_tensors_per_tslice_list = []
@@ -173,7 +125,6 @@ if __name__ == '__main__':
             idx_col_names=id_cols,
             y_col_name='clinical_deterioration_outcome',
             y_label_type='per_sequence',
-            batch_size=45000,
             max_seq_len=reduced_T
         )
 
@@ -184,19 +135,15 @@ if __name__ == '__main__':
             idx_col_names=id_cols,
             y_col_name='clinical_deterioration_outcome',
             y_label_type='per_sequence', 
-            batch_size=10,
-            max_seq_len=reduced_T
+            batch_size=10
         )
         del x_train_curr_tslice, x_test_curr_tslice, y_train_curr_tslice, y_test_curr_tslice
         
         X_train_tensor_curr_tslice, y_train_tensor_curr_tslice = train_vitals.get_batch_data(batch_id=0)
         X_test_tensor_curr_tslice, y_test_tensor_curr_tslice = test_vitals.get_batch_data(batch_id=0)
         
-        del train_vitals, test_vitals
-        
         curr_T_train = X_train_tensor_curr_tslice.shape[1]
         curr_T_test = X_test_tensor_curr_tslice.shape[1]
-        
         
         if curr_T_train > reduced_T:
             print('Unable to handle %s time points due to memory issues.. limiting to %s time points'%(curr_T_train, reduced_T))
@@ -223,98 +170,152 @@ if __name__ == '__main__':
             X_test_tensor = X_test_tensor_curr_tslice
             y_test_tensor = y_test_tensor_curr_tslice
         else:
-            del x_train, x_test
             
+            del x_train, x_test
             X_train_tensor = np.vstack((X_train_tensor, X_train_tensor_curr_tslice))
             y_train_tensor = np.hstack((y_train_tensor, y_train_tensor_curr_tslice))
             X_test_tensor = np.vstack((X_test_tensor, X_test_tensor_curr_tslice))
             y_test_tensor = np.hstack((y_test_tensor, y_test_tensor_curr_tslice))   
 
-        del X_train_tensor_curr_tslice, X_test_tensor_curr_tslice
-    
+        del X_train_tensor_curr_tslice, X_test_tensor_curr_tslice, train_vitals, test_vitals
     
     X_train_tensor[np.isnan(X_train_tensor)]=0
 
-    ## Start RNN training
-    print('Training RNN...')
-    torch.manual_seed(args.seed)
-    device = 'cpu'
+    ## Start CNN training
+    print('Training CNN...')
     N,T,F = X_train_tensor.shape
-    print('number of datapoints : %s\nnumber of time points : %s\nnumber of features : %s\npos sample ratio: %.4f'%(N, T,F,y_train_tensor.sum()/y_train_tensor.shape[0]))
-
+    print('number of time points : %s\nnumber of features : %s\npos sample ratio: %.4f'%(T,F,y_train_tensor.sum()/y_train_tensor.shape[0]))
     
-    # get all the sequence lengths
-    seq_lens_N = get_sequence_lengths(X_train_tensor, pad_val = 0)
-
     
     # set class weights as 1/(number of samples in class) for each class to handle class imbalance
     class_weights = torch.tensor([1/(y_train_tensor==0).sum(),
-                                  1/(y_train_tensor==1).sum()]).float()
-
-    # RNN
-    if args.output_filename_prefix==None:
-        output_filename_prefix = ('hiddens=%s-layers=%s-lr=%s-dropout=%s-weight_decay=%s-seed=%s'%(args.hidden_units, 
-                                                                       args.hidden_layers, 
-                                                                       args.lr, 
-                                                                       args.dropout, args.weight_decay, args.seed))
-    else:
-        output_filename_prefix = args.output_filename_prefix
+                                  1/(y_train_tensor==1).sum()]).double()
+    
+    print('Number of training sequences : %s'%N)
+    print('Number of test sequences : %s'%X_test_tensor.shape[0])
+    print('Ratio positive in train : %.2f'%((y_train_tensor==1).sum()/len(y_train_tensor)))
+    print('Ratio positive in test : %.2f'%((y_test_tensor==1).sum()/len(y_test_tensor)))
+    
+    
+    print('Training CNN...')
+    torch.manual_seed(args.seed)
+    device = 'cpu'
+    
+    # define conv params
+    channels = [F]
+    kernel_sizes = []
+    strides=[]
+    paddings = []
+    pools = []
+    for i in range(args.n_conv_layers):
+        channels.append(args.n_filters)
+        kernel_sizes.append(args.kernel_size)
+        strides.append(args.stride)
+        pools.append(args.pool_size)
+        paddings.append(1)
+        
+    
+    # reshape train test to (N, F, T) for pytorch cnn
+    X_train_tensor = torch.from_numpy(np.transpose(X_train_tensor, (0, 2, 1))).double()
+    X_test_tensor = torch.from_numpy(np.transpose(X_test_tensor, (0, 2, 1))).double()
+    y_train_tensor = torch.from_numpy(y_train_tensor).type(torch.LongTensor)
+    y_test_tensor = torch.from_numpy(y_test_tensor).type(torch.LongTensor)
+    
+    # calculate inputs to the linear layer
+    linear_in = compute_linear_layer_input_dims(X_train_tensor[:1, :, :], channels, kernel_sizes, strides, paddings, pools)
+    
     
     compute_grad_norm = ComputeGradientNorm(norm_type=2) 
-    print('RNN parameters : '+ output_filename_prefix)
-        
-#     if args.pretrained_model_dir is None:
-    rnn = RNNBinaryClassifier(
-              max_epochs=100,
-              batch_size=args.batch_size,
-              device=device,
-              lr=args.lr,
-              callbacks=[
-              EpochScoring('roc_auc', lower_is_better=False, on_train=True, name='aucroc_score_train'),
-              EpochScoring('roc_auc', lower_is_better=False, on_train=False, name='aucroc_score_valid'),
-              EarlyStopping(monitor='aucroc_score_valid', patience=25, threshold=0.00001, threshold_mode='abs', lower_is_better=False),
-#              LRScheduler(policy=ReduceLROnPlateau, mode='min', monitor='valid_loss', patience=25, factor=0.1,
-#                   min_lr=0.0001, verbose=True),
-              compute_grad_norm,
-#               GradientNormClipping(gradient_clip_value=0.00001, gradient_clip_norm_type=2),
-              Checkpoint(monitor='aucroc_score_valid', f_history=os.path.join(args.output_dir, output_filename_prefix+'.json')),
-              TrainEndCheckpoint(dirname=args.output_dir, fn_prefix=output_filename_prefix),
-              ],
-              criterion=torch.nn.CrossEntropyLoss,
-              criterion__weight=class_weights,
-              train_split=skorch.dataset.CVSplit(args.validation_size, random_state=42),
-              module__rnn_type='LSTM',
-              module__n_layers=args.hidden_layers,
-              module__n_hiddens=args.hidden_units,
-              module__n_inputs=X_train_tensor.shape[-1],
-              module__dropout_proba=args.dropout,
-              optimizer=torch.optim.Adam,
-              optimizer__weight_decay=args.weight_decay
-                         ) 
+    print('RNN parameters : '+ args.output_filename_prefix)
     
-    if args.pretrained_model_dir is not None:
-        print('loading pre-trained model : %s' %(args.pretrained_model_dir + output_filename_prefix))
-        
-        # continue training at half the learning rate
-        rnn.initialize()
-        rnn.load_params(f_params=os.path.join(args.pretrained_model_dir,
-                                      output_filename_prefix+'params.pt'),
-                f_optimizer=os.path.join(args.pretrained_model_dir,
-                                         output_filename_prefix+'optimizer.pt'),
-                f_history=os.path.join(args.pretrained_model_dir,
-                                       output_filename_prefix+'history.json'))
-#         rnn.lr = rnn.lr*0.5
-        clf = rnn.partial_fit(X_train_tensor, y_train_tensor)
-    else:
-        print('training model from scratch...')
-        clf = rnn.fit(X_train_tensor, y_train_tensor)
- 
+    
+    cnn = CNNBinaryClassifier(
+          max_epochs=100,
+          batch_size=args.batch_size,
+          device=device,
+          lr=args.lr,
+          callbacks=[
+          EpochScoring('roc_auc', lower_is_better=False, on_train=True, name='aucroc_score_train'),
+          EpochScoring('roc_auc', lower_is_better=False, on_train=False, name='aucroc_score_valid'),
+          EarlyStopping(monitor='aucroc_score_valid', patience=60, threshold=0.002, threshold_mode='rel', lower_is_better=False),
+#               LRScheduler(policy=ReduceLROnPlateau, mode='max', monitor='aucroc_score_valid', patience=10),
+              compute_grad_norm,
+#               GradientNormClipping(gradient_clip_value=0.5, gradient_clip_norm_type=2),
+          Checkpoint(monitor='aucroc_score_valid', f_history=os.path.join(args.output_dir, args.output_filename_prefix+'.json')),
+          TrainEndCheckpoint(dirname=args.output_dir, fn_prefix=args.output_filename_prefix),
+          ],
+          criterion=torch.nn.CrossEntropyLoss,
+          criterion__weight=class_weights,
+          train_split=skorch.dataset.CVSplit(args.validation_size, random_state=42),
+          module__channels=channels,
+          module__kernel_sizes=kernel_sizes,
+          module__strides=strides,
+          module__paddings=paddings,
+          module__pools=pools,
+          module__linear_in_units=linear_in,
+          module__linear_out_units=args.dense_units,
+          module__dropout_proba=args.dropout,
+          optimizer=torch.optim.Adam,
+          optimizer__weight_decay=args.weight_decay,
+          optimizer__lr = args.lr
+                     ) 
+    
+    print('training model from scratch...')
+    clf = cnn.fit(X_train_tensor, y_train_tensor)
     y_pred_proba = clf.predict_proba(X_train_tensor)
     y_pred_proba_neg, y_pred_proba_pos = zip(*y_pred_proba)
     auroc_train_final = roc_auc_score(y_train_tensor, y_pred_proba_pos)
-    print('AUROC with LSTM (Train) : %.2f'%auroc_train_final)
+    print('AUROC with CNN (Train) : %.2f'%auroc_train_final)
+    
+    
+    '''
+    ################################ KERAS Implementation ###########################################################
+    # add class weights
+    class_weights = class_weight.compute_class_weight('balanced', np.unique(y_train_tensor), y_train_tensor)
+    class_weights_dict = {i : class_weights[i] for i in range(len(class_weights))}
+    
+    # convert y_train to categorical
+    y_train_tensor = keras.utils.to_categorical(y_train_tensor)
+    y_test_tensor = keras.utils.to_categorical(y_test_tensor)
+    
+    X_train, X_val, y_train, y_val = train_test_split(X_train_tensor, y_train_tensor, test_size=args.validation_size, random_state=213)
+    del X_train_tensor, X_test_tensor
+    
+    print('number of time points : %s\nnumber of features : %s\n'%(T,F))
+    tf.random.set_seed(args.seed)
+    model = keras.Sequential()
+    for i in range(args.n_conv_layers):
+        model.add(keras.layers.Conv1D(filters=args.n_filters, kernel_size=args.kernel_size, activation='relu', strides=args.stride))
+        model.add(keras.layers.MaxPooling1D(pool_size=args.pool_size))
+    #model.add(keras.layers.Dropout(args.dropout)) 
+    #model.add(keras.layers.MaxPooling1D(pool_size=args.pool_size))
+    model.add(keras.layers.Flatten()) 
+    model.add(keras.layers.Dense(args.dense_units, activation='relu'))
+    model.add(keras.layers.Dropout(args.dropout))
+    model.add(keras.layers.Dense(2, activation='softmax')) 
+    
+    # set optimizer
+    opt = keras.optimizers.Adam(learning_rate=args.lr)
+    model.compile(loss='categorical_crossentropy', optimizer=opt, metrics=['accuracy', keras.metrics.AUC()])
+    
+    # set early stopping
+    early_stopping = EarlyStopping(monitor='val_auc', patience=20, mode='max', verbose=1)
+    
+    model.fit(X_train, y_train, epochs=40, validation_data=(X_val, y_val),
+             callbacks=[early_stopping], 
+             class_weight=class_weights_dict, batch_size=args.batch_size) 
+    
+    y_score_val = model.predict_proba(X_val)
+    val_auc = roc_auc_score(y_val, y_score_val)
+    print('AUC on val set : %.4f'%val_auc)
+   
 
-#     y_pred_proba = clf.predict_proba(X_test_tensor)
-#     y_pred_proba_neg, y_pred_proba_pos = zip(*y_pred_proba)
-#     auroc_test_final = roc_auc_score(y_test_tensor, y_pred_proba_pos)
-#     print('AUROC with LSTM (Test) : %.2f'%auroc_test_final)
+    # save the model history
+    training_hist_df = pd.DataFrame(model.history.history) 
+    training_hist_csv = os.path.join(args.output_dir, args.output_filename_prefix+'.csv')
+    training_hist_df.to_csv(training_hist_csv, index=False)
+    
+    # save the model
+    model_file = os.path.join(args.output_dir, args.output_filename_prefix+'.model')
+    model.save(model_file)
+    '''

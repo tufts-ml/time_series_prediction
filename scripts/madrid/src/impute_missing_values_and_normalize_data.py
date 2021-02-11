@@ -19,7 +19,7 @@ def get_time_since_last_observed_features(df, id_cols, time_col, feature_cols):
     pbar = ProgressBar()
     for feature_col in pbar(feature_cols):
         f_mask_arr = df['mask_'+feature_col].values
-        deltas_arr = np.zeros_like(f_mask_arr)
+        deltas_arr = np.zeros_like(t_arr)
         for p in range(n_fences):
             curr_stay_times = t_arr[fp[p]:fp[p+1]]
             curr_stay_feature_mask = f_mask_arr[fp[p]:fp[p+1]]
@@ -47,11 +47,13 @@ def update_data_dict_with_mask_features(x_data_dict):
         if col['name'] in id_cols:
             new_fields.append(dict(col))
         
-        if col['name'] in feature_cols:
+        if col['name'] in non_medication_feature_cols:
             for missing_feature in ['', 'mask_', 'delta_']:
                 new_dict = dict(col)
                 new_dict['name'] = '{}{}'.format(missing_feature, col['name'])
                 new_fields.append(new_dict)
+        elif col['name'] in medication_feature_cols:
+            new_fields.append(dict(col))
      
 
     new_data_dict = copy.deepcopy(x_data_dict)
@@ -59,13 +61,55 @@ def update_data_dict_with_mask_features(x_data_dict):
     new_data_dict['fields'] = new_fields
         
     return new_data_dict
+
+def normalize_df(df, feature_cols, scaling='minmax', train_df=None):
+    ''' Normalizes the dataframe if needed. Useful to normalize train and test sets separately after splitting dataset'''
+    if train_df is None:
+        train_df = df.copy()
     
+    
+    scaling_dict_list = []
+    normalized_df = df.copy()
+    
+    if scaling=='zscore':
+        for col in feature_cols:
+            den_scaling = train_df[col].std()
+            num_scaling = train_df[col].mean()
+            
+            if den_scaling==0:
+                den_scaling = 1
+            
+            # scale the data
+            normalized_df[col] = (df[col]-num_scaling)/den_scaling
+            
+            # store the normalization estimates in a list and save them for later evaluation
+            scaling_dict_list.append({'feature':col, 'numerator_scaling':num_scaling, 
+                                      'denominator_scaling':den_scaling})
+            
+    elif scaling=='minmax':
+        for col in feature_cols:
+            den_scaling = train_df[col].max()-train_df[col].min()
+            num_scaling = train_df[col].min()
+            
+            if den_scaling==0:
+                den_scaling = 1  
+                
+            # scale the data
+            normalized_df[col] = (df[col]-num_scaling)/den_scaling
+            
+            # store the normalization estimates in a list and save them for later evaluation
+            scaling_dict_list.append({'feature':col, 'numerator_scaling':num_scaling, 
+                                      'denominator_scaling':den_scaling})
+        
+    scaling_df = pd.DataFrame(scaling_dict_list) 
+    return normalized_df, scaling_df
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--train_test_split_dir', type=str)
     parser.add_argument('--output_dir', type=str)
+    parser.add_argument('--normalization', type=str, default='minmax')
     args = parser.parse_args()
     
     # get the train test features
@@ -83,13 +127,16 @@ if __name__ == '__main__':
     time_col = parse_time_col(x_data_dict)
     
     # add mask features
+    non_medication_feature_cols = [feature_col for feature_col in feature_cols if 'medication' not in feature_col]
+    medication_feature_cols = [feature_col for feature_col in feature_cols if 'medication' in feature_col]
+    
     print('Adding missing values mask as features...')
-    for feature_col in feature_cols:
+    for feature_col in non_medication_feature_cols:
         x_train_df.loc[:, 'mask_'+feature_col] = (~x_train_df[feature_col].isna())*1.0
         x_test_df.loc[:, 'mask_'+feature_col] = (~x_test_df[feature_col].isna())*1.0
     print('Adding time since last missing value is observed as features...')
-    x_train_df = get_time_since_last_observed_features(x_train_df, id_cols, time_col, feature_cols)
-    x_test_df = get_time_since_last_observed_features(x_test_df, id_cols, time_col, feature_cols)
+    x_train_df = get_time_since_last_observed_features(x_train_df, id_cols, time_col, non_medication_feature_cols)
+    x_test_df = get_time_since_last_observed_features(x_test_df, id_cols, time_col, non_medication_feature_cols)
     
     
     # impute values
@@ -105,9 +152,21 @@ if __name__ == '__main__':
     # Update data dict with missing value features
     new_data_dict = update_data_dict_with_mask_features(x_data_dict)
     
-    print('Saving imputed data to :\n%s \n%s'%(x_train_csv, x_test_csv))
-    x_train_df.to_csv(x_train_csv, index=False, compression='gzip') 
-    x_test_df.to_csv(x_test_csv, index=False, compression='gzip')
+    # get feature columns with mask features
+    feature_cols_with_mask_features = parse_feature_cols(new_data_dict)
+    
+    # normalize the data
+    x_train_normalized_df, scaling_df = normalize_df(x_train_df, feature_cols_with_mask_features, scaling=args.normalization)
+    x_test_normalized_df, scaling_df = normalize_df(x_test_df, feature_cols_with_mask_features, scaling=args.normalization, train_df=x_train_df)
+    
+    
+    print('Saving imputed and normalized train-test splits to :\n%s \n%s'%(x_train_csv, x_test_csv))
+    x_train_normalized_df.to_csv(x_train_csv, index=False, compression='gzip') 
+    x_test_normalized_df.to_csv(x_test_csv, index=False, compression='gzip')
+    
+    norm_estimates_csv = os.path.join(args.output_dir, 'normalization_estimates.csv') 
+    print('Saving normalization estimates to : \n%s'%norm_estimates_csv)
+    scaling_df.to_csv(norm_estimates_csv, index=False)
     
     #save the new data dict
     print('Saving data dict with masking features to : \n%s'%x_dict_json)

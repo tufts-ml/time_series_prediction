@@ -41,15 +41,31 @@ def merge_data_dicts(data_dicts_list):
             feat_names.append(feat_dict['name'])
     return features_data_dict
 
-def get_all_features_data(labs_df, labs_data_dict, vitals_df, vitals_data_dict, demographics_df, demographics_data_dict):
+def get_all_features_data(labs_df, labs_data_dict, vitals_df, vitals_data_dict, demographics_df, demographics_data_dict, medications_df, medications_data_dict, include_medications=True):
     '''Returns the merged labs, vitals and demographics features into a single table and the data dict'''
 
     time_col = parse_time_col(vitals_data_dict)
     id_cols = parse_id_cols(vitals_data_dict)
 
-    # merge the labs and vitals
-    highfreq_df = pd.merge(vitals_df, labs_df, on=id_cols +[time_col], how='outer')
-    highfreq_data_dict = merge_data_dicts([labs_data_dict, vitals_data_dict])
+    # merge the labs, vitals and medications
+    
+    if include_medications:
+        highfreq_df = pd.merge(pd.merge(vitals_df, 
+                               labs_df, on=id_cols +[time_col], how='outer'),
+                               medications_df, on=id_cols +[time_col], how='outer')
+    
+        # forward fill medications because the patient is/is not on medication on new time points created by outer join
+        medication_features = parse_feature_cols(medications_data_dict)
+        highfreq_df[id_cols + medication_features] = highfreq_df[id_cols + medication_features].groupby(id_cols).apply(lambda x: x.fillna(method='pad')).copy()
+
+        highfreq_df[id_cols + medication_features] = highfreq_df[id_cols + medication_features].fillna(0)
+        highfreq_data_dict = merge_data_dicts([labs_data_dict, vitals_data_dict, medications_data_dict])
+        
+    else :
+        highfreq_df = pd.merge(vitals_df, labs_df, on=id_cols +[time_col], how='outer')
+        highfreq_data_dict = merge_data_dicts([labs_data_dict, vitals_data_dict])
+        
+        
     highfreq_data_dict['fields'] = highfreq_data_dict['schema']['fields']
     cols_to_keep = parse_id_cols(highfreq_data_dict) + [parse_time_col(highfreq_data_dict)] + parse_feature_cols(highfreq_data_dict)
     highfreq_df = highfreq_df[cols_to_keep].copy()
@@ -75,6 +91,8 @@ if __name__ == '__main__':
             help='directory where data dict for demographics and outcomes')
     parser.add_argument('--output_dir',  type=str,
         help='folder to save merged features and outcomes from all tslices')
+    parser.add_argument('--include_medications',  type=str, default='True',
+                        help='temporary flag to include medications or not')
 
     args = parser.parse_args()
     
@@ -88,7 +106,12 @@ if __name__ == '__main__':
     
     id_cols = parse_id_cols(demographics_data_dict)
     # get all the collapsed labs, collapsed vitals, demographics and outcomes in all the tslice folders
-    print('Merging collapsed vitals, collapsed labs, demographics and outcomes in all the tslice folders = %s into a single features table and a single outcomes table...'%args.tslice_list)
+    
+    if args.include_medications=='True':
+        print('Merging collapsed vitals, collapsed labs, collapsed medications, demographics and outcomes in all the tslice folders = %s into a single features table and a single outcomes table...'%args.tslice_list)
+    else:
+        print('Merging collapsed vitals, collapsed labs, demographics and outcomes in all the tslice folders = %s into a single features table and a single outcomes table...'%args.tslice_list)
+        
     features_df_all_slices_list = list()
     outcomes_df_all_slices_list = list()
     mews_df_all_slices_list = list()
@@ -101,46 +124,48 @@ if __name__ == '__main__':
 
         print('Loading collapsed vitals...')
         collapsed_vitals_df = read_csv_with_float32_dtypes(os.path.join(curr_collapsed_tslice_folder, 'CollapsedVitalsPerSequence.csv.gz'))
-
-        print('Merging collapsed labs and vitals...')
-        collapsed_vitals_labs_df = pd.merge(collapsed_vitals_df, collapsed_labs_df, on=id_cols, how='inner')
         
-        print('Freeing some memory...')
-        del collapsed_labs_df, collapsed_vitals_df
+        if args.include_medications=='True':
+            print('Loading collapsed medications...')
+            collapsed_medications_df = read_csv_with_float32_dtypes(os.path.join(curr_collapsed_tslice_folder, 'CollapsedMedicationsPerSequence.csv.gz'))
+            
+            print('Merging collapsed labs, vitals and medications...')
+            collapsed_features_df = pd.merge(pd.merge(collapsed_vitals_df, 
+                                                         collapsed_labs_df, on=id_cols, how='inner'),
+                                                collapsed_medications_df, on=id_cols, how='inner')
+            print('Freeing some memory...')
+            del collapsed_labs_df, collapsed_vitals_df, collapsed_medications_df
+            
+        else:    
+            print('Merging collapsed labs and vitals...')
+            collapsed_features_df = pd.merge(collapsed_vitals_df, collapsed_labs_df, on=id_cols, how='inner')
+        
+            print('Freeing some memory...')
+            del collapsed_labs_df, collapsed_vitals_df
         
         print('Merging demographics...')
         demographics_df = read_csv_with_float32_dtypes(os.path.join(curr_tslice_folder, 'demographics_before_icu_filtered_%s_hours.csv.gz'%tslice))
 
         # merge the collapsed feaatures and static features in each tslice
-        features_df = pd.merge(collapsed_vitals_labs_df, demographics_df, on=id_cols, how='inner')
-        del demographics_df
+        features_df = pd.merge(collapsed_features_df, demographics_df, on=id_cols, how='inner')
+        del demographics_df, collapsed_features_df
 
-        from IPython import embed; embed()        
         mews_df = read_csv_with_float32_dtypes(os.path.join(curr_collapsed_tslice_folder, 'MewsScoresPerSequence.csv.gz'))
         outcomes_df = pd.read_csv(os.path.join(curr_tslice_folder, 'clinical_deterioration_outcomes_filtered_%s_hours.csv.gz'%tslice))
         feature_cols = features_df.columns
         outcome_cols = outcomes_df.columns
         mews_cols = mews_df.columns
-        #del collapsed_vitals_labs_df, collapsed_vitals_df, collapsed_labs_df, demographics_df
 
-        '''
-        # convert to float 32 due to memory constraints
-        features_df[feature_cols] = features_df[feature_cols].astype(np.float32)
-        outcomes_df[outcome_cols] = outcomes_df[outcome_cols].astype(np.float32)
-        mews_df[mews_cols] = mews_df.mews_cols.astype(np.float32)
-        w'''
         # append fearures from all tslices
         features_df_all_slices_list.append(features_df.values)
         outcomes_df_all_slices_list.append(outcomes_df.values)
         mews_df_all_slices_list.append(mews_df.values)
-        del collapsed_vitals_labs_df
 
     features_df_all_slices = pd.DataFrame(np.concatenate(features_df_all_slices_list), columns=feature_cols)
     outcomes_df_all_slices = pd.DataFrame(np.concatenate(outcomes_df_all_slices_list), columns=outcome_cols)
     mews_df_all_slices = pd.DataFrame(np.concatenate(mews_df_all_slices_list), columns=mews_cols)
     
-    # get collapsed vitals and labs dict
-    print('Merging collapsed vitals, collapsed labs, demographics and outcomes data dicts into a single features data dict and a single outcomes data dict...')
+    # get collapsed vitals and labs dicts        
     with open(os.path.join(curr_collapsed_tslice_folder, 'Spec_CollapsedLabsPerSequence.json'), 'r') as f3:
         collapsed_labs_data_dict = json.load(f3)
 
@@ -149,15 +174,27 @@ if __name__ == '__main__':
     
     with open(os.path.join(curr_collapsed_tslice_folder, 'Spec_MewsScoresPerSequence.json'), 'r') as f5:
         mews_data_dict = json.load(f5)
-        
+    
     # get a single consolidated data dict for all features and another for outcomes
     # combine all the labs, demographics and vitals jsons into a single json
     features_data_dict = dict()
-    features_data_dict['schema']= dict()
-    features_dict_merged = collapsed_labs_data_dict['schema']['fields'] + collapsed_vitals_data_dict['schema']['fields'] + demographics_data_dict['schema']['fields'] 
-    
+    features_data_dict['schema']= dict()   
     feat_names = list()
     features_data_dict['schema']['fields'] = []
+    
+    if args.include_medications=='True':
+        print('Merging collapsed vitals, collapsed labs, collapsed medications, demographics and outcomes data dicts into a single features data dict and a single outcomes data dict...')
+        with open(os.path.join(curr_collapsed_tslice_folder, 'Spec_CollapsedMedicationsPerSequence.json'), 'r') as fm:
+            collapsed_medications_data_dict = json.load(fm)
+        
+        features_dict_merged = collapsed_labs_data_dict['schema']['fields'] + collapsed_vitals_data_dict['schema']['fields'] + demographics_data_dict['schema']['fields'] + collapsed_medications_data_dict['schema']['fields']     
+        
+    else:
+        print('Merging collapsed vitals, collapsed labs, demographics and outcomes data dicts into a single features data dict and a single outcomes data dict...')
+
+        features_dict_merged = collapsed_labs_data_dict['schema']['fields'] + collapsed_vitals_data_dict['schema']['fields'] + demographics_data_dict['schema']['fields'] 
+    
+
     for feat_dict in features_dict_merged:
         if feat_dict['name'] not in feat_names:
             features_data_dict['schema']['fields'].append(feat_dict)
@@ -170,6 +207,7 @@ if __name__ == '__main__':
         feature_type_dict[k] = np.float32
     features_df_all_slices = features_df_all_slices.astype(feature_type_dict)
     
+    
     # save to disk
     features_csv = os.path.join(args.output_dir, 'features.csv.gz')
     outcomes_csv = os.path.join(args.output_dir, 'outcomes.csv.gz')
@@ -178,6 +216,7 @@ if __name__ == '__main__':
     outcomes_json = os.path.join(args.output_dir, 'Spec_outcomes.json')
     mews_json = os.path.join(args.output_dir, 'Spec_mews.json')
     
+    from IPython import embed; embed()
     print('saving features and outcomes to :\n%s\n%s\n%s'%(features_csv, outcomes_csv, mews_csv))
     features_df_all_slices.to_csv(features_csv, index=False, compression='gzip')
     outcomes_df_all_slices.to_csv(outcomes_csv, index=False, compression='gzip')

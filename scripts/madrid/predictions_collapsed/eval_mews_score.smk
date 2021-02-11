@@ -1,5 +1,8 @@
 '''
 Evaluate mews score
+
+>> snakemake --cores 1 --snakefile eval_mews_score.smk evaluate_mews_score
+
 '''
 
 # Default environment variables
