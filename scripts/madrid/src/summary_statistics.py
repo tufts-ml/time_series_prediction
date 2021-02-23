@@ -50,13 +50,13 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     
-    df_vitals = pd.read_csv(os.path.join(args.preproc_data_dir, 'vitals_before_icu.csv' ))
+    df_vitals = pd.read_csv(os.path.join(args.preproc_data_dir, 'vitals_before_icu.csv.gz' ))
 
-    df_labs = pd.read_csv(os.path.join(args.preproc_data_dir, 'labs_before_icu.csv'))
+    df_labs = pd.read_csv(os.path.join(args.preproc_data_dir, 'labs_before_icu.csv.gz'))
 
-    df_demographics = pd.read_csv(os.path.join(args.preproc_data_dir, 'demographics_before_icu.csv'))
+    df_demographics = pd.read_csv(os.path.join(args.preproc_data_dir, 'demographics_before_icu.csv.gz'))
 
-    df_transfer_to_icu_outcomes = pd.read_csv(os.path.join(args.preproc_data_dir,'clinical_deterioration_outcomes.csv'))
+    df_transfer_to_icu_outcomes = pd.read_csv(os.path.join(args.preproc_data_dir,'clinical_deterioration_outcomes.csv.gz'))
    
     vitals_data_dict_json = os.path.join(args.data_dicts_dir, 'Spec-Vitals.json')
     
@@ -221,13 +221,13 @@ if __name__ == '__main__':
 
         print('----------------------------------------------------')
         print('%s :'%(split_name))
-        print('TOTAL PATIENTS : %s, TOTAL STAYS : %s, TOTAL CLINICAL DETERIORATIONS : %s, OUTCOME FREQUENCY : %s'%(len(df.patient_id.unique()), len(df.hospital_admission_id.unique()), 
+        print('TOTAL PATIENTS : %s, TOTAL STAYS : %s, TOTAL CLINICAL DETERIORATIONS : %s, OUTCOME FREQUENCY : %.5f'%(len(df.patient_id.unique()), len(df.hospital_admission_id.unique()), 
             outcome_df.clinical_deterioration_outcome.sum(), outcome_df.clinical_deterioration_outcome.sum()/len(df.hospital_admission_id.unique())))
         stay_lengths = outcome_df.stay_length
         stay_lengths_outcome_0 = stay_lengths[outcome_df.clinical_deterioration_outcome==0]
         stay_lengths_outcome_1 = stay_lengths[outcome_df.clinical_deterioration_outcome==1]
-        print('lengths of stay outcome 0:  %.2f(%.5f - %.5f)'%( np.median(stay_lengths_outcome_0), np.percentile(stay_lengths_outcome_0, 5), np.percentile(stay_lengths_outcome_0, 95)))
-        print('lengths of stay outcome 1:  %.2f(%.5f - %.5f)'%( np.median(stay_lengths_outcome_1), np.percentile(stay_lengths_outcome_1, 5), np.percentile(stay_lengths_outcome_1, 95)))
+        print('lengths of stay outcome 0:  %.2f(%.2f - %.2f)'%( np.median(stay_lengths_outcome_0), np.percentile(stay_lengths_outcome_0, 5), np.percentile(stay_lengths_outcome_0, 95)))
+        print('lengths of stay outcome 1:  %.2f(%.2f - %.2f)'%( np.median(stay_lengths_outcome_1), np.percentile(stay_lengths_outcome_1, 5), np.percentile(stay_lengths_outcome_1, 95)))
         print('number of outcome 1 ICU transfers : %.1f'%((outcome_df.transfer_to_ICU_outcome==1).sum()))
         print('number of outcome 1 non-ICU transfer deaths : %.1f'%(((outcome_df.inhospital_mortality_outcome==1)&(outcome_df.transfer_to_ICU_outcome==0)&(outcome_df.clinical_deterioration_outcome==1)).sum()))
         print('number of outcome 1 in-ICU deaths : %.1f'%(((outcome_df.clinical_deterioration_outcome==1)&(outcome_df.inhospital_mortality_outcome==1)).sum()))

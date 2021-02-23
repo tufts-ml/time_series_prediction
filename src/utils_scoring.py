@@ -23,12 +23,21 @@ average_precision_scorer = make_scorer(average_precision_score,
                                        needs_threshold=True)
 
 HARD_DECISION_SCORERS = dict(
+     accuracy_score=make_scorer(accuracy_score),
+     balanced_accuracy_score=make_scorer(balanced_accuracy_score),
+     f1_score=make_scorer(f1_score, pos_label=1, average='binary'),
+     precision_score=make_scorer(precision_score, pos_label=1, average='binary'),
+     recall_score=make_scorer(recall_score, pos_label=1, average='binary'),
+     )
+
+HARD_DECISION_PARAMS = dict(
      accuracy_score=(accuracy_score, {}),
      balanced_accuracy_score=(balanced_accuracy_score, {}),
      f1_score=(f1_score, dict(pos_label=1, average='binary')),
      precision_score=(precision_score, dict(pos_label=1, average='binary')),
      recall_score=(recall_score, dict(pos_label=1, average='binary')),
      )
+
 THRESHOLD_SCORING_OPTIONS = list(HARD_DECISION_SCORERS.keys())
 
 def calc_score_for_binary_predictions(
@@ -36,6 +45,6 @@ def calc_score_for_binary_predictions(
           y_pred=None,
           scoring='balanced_accuracy'):
 
-     calc_score_func, kwargs = HARD_DECISION_SCORERS[scoring]
+     calc_score_func, kwargs = HARD_DECISION_PARAMS[scoring]
      score = calc_score_func(y_true, y_pred, **kwargs)
      return score           

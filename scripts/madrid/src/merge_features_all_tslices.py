@@ -216,7 +216,6 @@ if __name__ == '__main__':
     outcomes_json = os.path.join(args.output_dir, 'Spec_outcomes.json')
     mews_json = os.path.join(args.output_dir, 'Spec_mews.json')
     
-    from IPython import embed; embed()
     print('saving features and outcomes to :\n%s\n%s\n%s'%(features_csv, outcomes_csv, mews_csv))
     features_df_all_slices.to_csv(features_csv, index=False, compression='gzip')
     outcomes_df_all_slices.to_csv(outcomes_csv, index=False, compression='gzip')

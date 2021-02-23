@@ -46,7 +46,7 @@ import sklearn.ensemble
 from custom_classifiers import ThresholdClassifier
 from sklearn.metrics import (accuracy_score, balanced_accuracy_score, f1_score,
                              average_precision_score, confusion_matrix, log_loss,
-                             roc_auc_score, roc_curve, precision_recall_curve)
+                             roc_auc_score, roc_curve, precision_recall_curve, precision_score, recall_score)
 from sklearn.model_selection import GridSearchCV, ShuffleSplit
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer, make_column_selector
@@ -55,6 +55,7 @@ from split_dataset import Splitter
 
 from utils_scoring import (
     HYPERSEARCH_SCORING_OPTIONS, THRESHOLD_SCORING_OPTIONS,
+    HARD_DECISION_SCORERS,
     calc_cross_entropy_base2_score,
     calc_score_for_binary_predictions)
 from utils_calibration import plot_binary_clf_calibration_curve_and_histograms
@@ -365,7 +366,7 @@ if __name__ == '__main__':
     # Assign training instances to splits by provided keys
     key_train = splitter.make_groups_from_df(df_by_split['train'][key_cols])
 
-
+    
     scoring_dict = dict()
     scoring_weights_dict = dict()
     for score_expr in args.scoring.split("+"):
@@ -375,7 +376,10 @@ if __name__ == '__main__':
         else:
             score_wt = 1.0
             score_func_name = score_expr
-        scoring_dict[score_func_name] = HYPERSEARCH_SCORING_OPTIONS[score_func_name]
+        if score_func_name in HYPERSEARCH_SCORING_OPTIONS.keys():
+            scoring_dict[score_func_name] = HYPERSEARCH_SCORING_OPTIONS[score_func_name]
+        elif score_func_name in HARD_DECISION_SCORERS.keys():
+            scoring_dict[score_func_name] = HARD_DECISION_SCORERS[score_func_name]
         scoring_weights_dict[score_func_name] = score_wt
     
     
@@ -398,7 +402,7 @@ if __name__ == '__main__':
                 src_colname = src_colname_pattern.replace("{sname}", sname)
                 target_arr += wt * cv_perf_df[src_colname]
             cv_perf_df[target_colname] = target_arr
-
+    
     tr_split_keys = ['params', 'mean_train_score'] + [
         'split%d_train_score' % a for a in range(args.n_splits)]
     te_split_keys = ['params', 'mean_test_score'] + [

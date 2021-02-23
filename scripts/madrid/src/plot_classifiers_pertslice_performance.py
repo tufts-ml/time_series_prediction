@@ -19,7 +19,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     
     # load all performance csv into a single dataframe
-    perf_csvs = glob.glob(os.path.join(args.performance_csv_dir, '*transferred_from_HHE.csv'))
+    perf_csvs = glob.glob(os.path.join(args.performance_csv_dir, '*.csv'))
     perf_df = pd.DataFrame()
     for perf_csv in perf_csvs:
         curr_perf_df = pd.read_csv(perf_csv)
@@ -39,6 +39,7 @@ if __name__ == '__main__':
     tslice_grouped_list = [perc_tslices_list, pos_tslices_list, neg_tslices_list]
     perf_measures = ['roc_auc', 'average_precision']
     fontsize=18
+    suffix=''
     for x in tslice_grouped_list:
         for perf_measure in perf_measures:
             f, axs = plt.subplots(figsize=[10,8])
@@ -58,13 +59,13 @@ if __name__ == '__main__':
             if x==neg_tslices_list:
                 axs.invert_xaxis()
                 axs.set_xlabel('Hours Until Deterioration', fontsize=fontsize)
-                fig_aka='perf_%s_neg_hours.pdf'%perf_measure
+                fig_aka='perf_%s_neg_hours%s.pdf'%(perf_measure,suffix)
             elif x==perc_tslices_list:
                 axs.set_xlabel('% Data Recorded', fontsize=fontsize)
-                fig_aka='perf_%s_perc_hours.pdf'%perf_measure
+                fig_aka='perf_%s_perc_hours%s.pdf'%(perf_measure,suffix)
             elif x==pos_tslices_list:
                 axs.set_xlabel('Hours From Admission', fontsize=fontsize)
-                fig_aka='perf_%s_pos_hours.pdf'%perf_measure
+                fig_aka='perf_%s_pos_hours%s.pdf'%(perf_measure,suffix)
                 
             if perf_measure == 'roc_auc':
                 axs.set_ylim([0.48, 1])

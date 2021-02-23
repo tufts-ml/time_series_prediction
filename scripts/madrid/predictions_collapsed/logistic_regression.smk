@@ -56,8 +56,8 @@ rule train_and_evaluate_classifier:
             --key_cols_to_group_when_splitting {{SPLIT_KEY_COL_NAMES}} \
             --random_seed {params.random_seed}\
             --n_splits 2 \
-            --scoring roc_auc_score \
-            --threshold_scoring balanced_accuracy_score \
+            --scoring "5*precision_score+1*recall_score" \
+            --threshold_scoring recall_score \
             --class_weight balanced \
             --tol 0.001\
             --max_iter 10000
