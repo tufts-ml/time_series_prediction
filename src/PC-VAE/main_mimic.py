@@ -35,14 +35,8 @@ from sklearn.model_selection import train_test_split
 from pcvae.util.optimizers import get_optimizer
 from sklearn.linear_model import LogisticRegression
 import tensorflow as tf
-
-def get_sequence_lengths(X_NTF, pad_val):
-    N = X_NTF.shape[0]
-    seq_lens_N = np.zeros(N, dtype=np.int64)
-    for n in range(N):
-        bmask_T = np.all(X_NTF[n] == 0, axis=-1)
-        seq_lens_N[n] = np.searchsorted(bmask_T, 1)
-    return seq_lens_N
+import numpy.ma as ma
+from sklearn.cluster import KMeans
 
 
 def main():
@@ -61,6 +55,8 @@ def main():
                         help='random seed')
     parser.add_argument('--validation_size', type=float, default=0.15,
                         help='validation split size')
+    parser.add_argument('--n_states', type=int, default=0.15,
+                        help='number of HMM states')
     parser.add_argument('--output_dir', type=str, default=None, 
                         help='directory where trained model and loss curves over epochs are saved')
     parser.add_argument('--output_filename_prefix', type=str, default=None, 
@@ -98,18 +94,11 @@ def main():
 
     X_train, y_train = train_vitals.get_batch_data(batch_id=0)
     X_test, y_test = test_vitals.get_batch_data(batch_id=0)
-    _,T,F = X_train.shape
     
-    print('number of time points : %s\nnumber of features : %s\n'%(T,F))
+    del train_vitals, test_vitals
+    N,T,F = X_train.shape
     
-    
-#     # add missing values to the train and test data at random
-    n_missing_tr = 900
-    n_missing_te = 100
-    miss_inds_tr = np.random.choice(X_train.size, n_missing_tr, replace=False)
-    miss_inds_te = np.random.choice(X_test.size, n_missing_te, replace=False)
-    X_train.ravel()[miss_inds_tr] = np.nan
-    X_test.ravel()[miss_inds_te] = np.nan
+    print('number of data points : %d\nnumber of time points : %s\nnumber of features : %s\n'%(N,T,F))
     
     # split train into train and validation
     X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=args.validation_size, random_state=213)
@@ -125,47 +114,34 @@ def main():
     data_dict['valid'] = (X_val, y_val)
     data_dict['test'] = (X_test, y_test)
     
+    # get the init means and covariances of the observation distribution by clustering
+    print('Initializing cluster means with kmeans...')
+    prng = np.random.RandomState(args.seed)
+    n_init = 10000
+    init_inds = prng.permutation(N)[:n_init]# select random samples from training set
+    X_flat = X_train[:n_init].reshape(n_init*T, X_train.shape[-1])# flatten across time
+    X_flat = np.where(np.isnan(X_flat), ma.array(X_flat, mask=np.isnan(X_flat)).mean(axis=0), X_flat)
+        
+    # get cluster means
+    n_states = args.n_states
+    kmeans = KMeans(n_clusters=n_states, random_state=42).fit(X_flat)
+    init_means = kmeans.cluster_centers_
+    
+    # get cluster covariance in each cluster
+    init_covs = np.stack([np.zeros(F) for i in range(n_states)])
+#     for i in range(n_states):
+#         init_covs[i,:]=np.var(X_flat[X_flat_preds==i], axis=0)
     
     # train model
-    n_states = 12
-    spacing = 5
     optimizer = get_optimizer('adam', lr = args.lr)
-    init_means = np.zeros((n_states, F))
-    init_means[:, 0] = np.arange(0, n_states*spacing, spacing)
-#     init_means[0, :] = [0, .75]
-#     init_means[10, :] = [0, -.75]
-#     init_means[3, :] = [15, .75]
-#     init_means[11, :] = [15, -.75]
-    
-    
-#     # scaled lower triangular covariance
-#     init_covs = np.stack([np.zeros((F,F)) for i in range(n_states)])
-#     init_covs[0,:] = [[0.1, 0], 
-#                       [0, -0.75]]
-#     init_covs[10,:] = [[0.1, 0],
-#                        [0,  -0.75]]
-#     init_covs[3,:] = [[0.1, 0],
-#                       [0,  -0.75]]
-#     init_covs[11,:] = [[0.1, 0], 
-#                        [0,  -0.75]]
-    
-    
-#    diagonal covariance for multivariate diagonal
-    init_covs = np.stack([np.zeros(F) for i in range(n_states)])
-#     init_covs[0,:] = [0.1, -0.75]
-#     init_covs[10,:] = [0.1, -0.75]
-#     init_covs[3,:] = [0.1, -0.75]
-#     init_covs[11,:] = [0.1, -0.75]
-    
-    init_state_probas = 0.124*np.ones(n_states)
-#     init_state_probas[0] = 0.006
-#     init_state_probas[3] = 0.006
-#     init_state_probas[10] = 0.006
-#     init_state_probas[11] = 0.006
+
+    # draw the initial probabilities from dirichlet distribution
+    prng = np.random.RandomState(args.seed)
+    init_state_probas = prng.dirichlet(5*np.ones(n_states))
 
     model = HMM(
             states=n_states,                                     
-            lam=1000,                                      
+            lam=100,                                      
             prior_weight=0.01,
             observation_dist='NormalWithMissing',
             observation_initializer=dict(loc=init_means, 
@@ -229,8 +205,14 @@ def main():
     model.fit(data, steps_per_epoch=1, epochs=200, batch_size=args.batch_size, lr=args.lr,
               initial_weights=model.model.get_weights())
     
+    # evaluate on test set
+    x_test, y_test = data.test().numpy()
+    z_test = model.hmm_model.predict(x_test)
+    y_test_pred_proba = model._predictor.predict(z_test)
+    test_roc_auc = roc_auc_score(y_test, y_test_pred_proba)
+    print('ROC AUC on test : %.2f'%test_roc_auc)
+    
     # get the parameters of the fit distribution
-#     x,y = data.train().numpy()
     mu_all = model.hmm_model(x).observation_distribution.distribution.mean().numpy()
     try:
         cov_all = model.hmm_model(x).observation_distribution.distribution.covariance().numpy()
@@ -249,7 +231,12 @@ def main():
     # save the loss plots of the model
     save_file = os.path.join(args.output_dir, args.output_filename_prefix+'.csv')
     save_loss_plots(model, save_file, data_dict)
-
+    
+    # save the model
+    model_filename = os.path.join(args.output_dir, args.output_filename_prefix+'-weights.h5')
+    model.model.save_weights(model_filename, save_format='h5')
+    
+    
 # def standardize_data_for_pchmm(X_train, y_train, X_test, y_test):
 def convert_to_categorical(y):
     C = len(np.unique(y))
@@ -385,3 +372,4 @@ if __name__ == '__main__':
     f.savefig('predicted_proba_viz.png')
     ''' 
     
+

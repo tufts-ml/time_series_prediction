@@ -90,9 +90,13 @@ def get_predictor_network(network, predictor_l2_weight=0., predictor_time_reduce
         if len(x.shape) == 3:
             for cl in range(predictor_conv_layers):
                 x = tf.keras.layers.Conv1D(**predictor_conv_args)(x)
-
+        
         if len(x.shape) == 3 and predictor_time_reducer:
             x = Lambda(lambda a: tf.reduce_mean(a, axis=1))(x)
+#             sum_x_N = tf.constant(tf.reduce_sum(x, axis=1))
+#             _, seq_lens_N = tf.math.top_k(tf.cast(tf.reduce_all(x==0, axis=-1), x.dtype), k=1)
+#             seq_lens_N = tf.where(seq_lens_N==0, tf.ones_like(seq_lens_N), seq_lens_N)
+#             x = sum_x_N/tf.cast(seq_lens_N, x.dtype)
 
         for dl in range(predictor_dense_layers):
             kernel_reg = tf.keras.regularizers.l2(predictor_l2_weight)

@@ -111,7 +111,7 @@ class BaseVAE(object):
         cblr.append(TqdmCallback(verbose=verbose))
         if reduce_lr:
             cblr.append(ReduceLROnPlateau(monitor='val_loss', factor=0.2, verbose=1,
-                                          patience=10, min_lr=0.00001))
+                                          patience=50, min_lr=0.00001))
             cblr.append(EarlyStopping(patience=50))
         elif expon_decay:
             def dfunc(epoch):

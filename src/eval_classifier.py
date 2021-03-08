@@ -35,14 +35,14 @@ from joblib import dump
 import sklearn.linear_model
 import sklearn.tree
 import sklearn.ensemble
-
+import sys
 from custom_classifiers import ThresholdClassifier
 from sklearn.metrics import (accuracy_score, balanced_accuracy_score, f1_score,
                              average_precision_score, confusion_matrix, log_loss,
                              roc_auc_score, roc_curve, precision_recall_curve)
 from sklearn.model_selection import GridSearchCV, ShuffleSplit
 from sklearn.pipeline import Pipeline
-from sklearn.compose import ColumnTransformer, make_column_selector
+from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import StandardScaler
 from split_dataset import Splitter
 
@@ -52,13 +52,16 @@ from utils_scoring import (
     calc_score_for_binary_predictions)
 from utils_calibration import plot_binary_clf_calibration_curve_and_histograms
 
+DEFAULT_PROJECT_REPO = os.path.sep.join(__file__.split(os.path.sep)[:-2])
+PROJECT_REPO_DIR = os.path.abspath(
+    os.environ.get('PROJECT_REPO_DIR', DEFAULT_PROJECT_REPO))
+
+
 def get_sorted_list_of_kwargs_specific_to_group_parser(group_parser):
     keys = [a.option_strings[0].replace('--', '') for a in group_parser._group_actions]
     return [k for k in sorted(keys)]
 
-DEFAULT_PROJECT_REPO = os.path.sep.join(__file__.split(os.path.sep)[:-2])
-PROJECT_REPO_DIR = os.path.abspath(
-    os.environ.get('PROJECT_REPO_DIR', DEFAULT_PROJECT_REPO))
+
 
 default_json_dir = os.path.join(PROJECT_REPO_DIR, 'src', 'default_hyperparameters')
 if not os.path.exists(default_json_dir):
@@ -93,7 +96,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(title="clf_name", dest="clf_name")
     subparsers_by_name = dict()
-
+    
+    
     # Create classifier-specific options for the parser
     # Read in 'defaults' from json files, allow overriding with kwarg args
     for json_file in DEFAULT_SETTINGS_JSON_FILES:
@@ -114,13 +118,15 @@ if __name__ == '__main__':
         # Read in defaults from JSON file
         with open(json_file, 'r') as f:
             defaults = json.load(f)
-
+        
+        
         # Setup parser options using the contents of JSON file
         for key, val in defaults.items():
             if key.count('constructor'):
                 assert val.count(' ') == 0
                 assert val.startswith('sklearn')
                 for ii, name in enumerate(val.split('.')):
+                    from IPython import embed; embed()
                     if ii == 0:
                         mod = globals().get(name)
                     else:
@@ -141,7 +147,6 @@ if __name__ == '__main__':
                 else:
                     default_group.add_argument("--%s" % key, default=val, type=type(val))
         subparsers_by_name[clf_name] = clf_parser
-
 
     # Create dataset-specific and experimental design options for the parser
     for p in subparsers_by_name.values():

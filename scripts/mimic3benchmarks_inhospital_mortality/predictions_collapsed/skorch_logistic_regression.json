@@ -1,0 +1,7 @@
+{
+    "lr": [0.005],
+    "batch_size": [-1],
+    "weight_decay": [1e-5, 1e-3, 0.01, 0.1],
+    "scoring" : ["cross_entropy_loss", "surrogate_loss_tight"],
+    "seed" : [111, 9764, 46788]
+}

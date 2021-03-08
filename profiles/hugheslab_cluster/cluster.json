@@ -5,7 +5,7 @@
         "cores" : "8",
         "partition" : "batch",
         "priority" : "normal",
-        "memory" : "60G",
+        "memory" : "100G",
         
     }
 }

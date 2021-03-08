@@ -294,7 +294,7 @@ class dataset(labeled_dataset, remote_dataset, input_dataset):
 
 
         self._shape = self.norm(x_train)[0].shape if self._shape is None else self._shape
-        print('Training data shape:', tx.shape)
+        print('Training data shape:', x_train.shape)
 
         # Get the labeled subset as a separate dataset
         if self.semisupervised:
