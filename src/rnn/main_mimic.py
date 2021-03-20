@@ -110,6 +110,7 @@ def main():
     print('Ratio positive in train : %.2f'%((y_train==1).sum()/len(y_train)))
     print('Ratio positive in test : %.2f'%((y_test==1).sum()/len(y_test)))
     
+    from IPython import embed; embed()
     # callback to compute gradient norm
     compute_grad_norm = ComputeGradientNorm(norm_type=2)
 

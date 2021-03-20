@@ -15,7 +15,7 @@ import json
 def get_time_since_last_observed_features(df, id_cols, time_col, feature_cols):
     fp = get_fenceposts(df, id_cols)
     n_fences = len(fp)-1
-    t_arr = np.asarray(df[time_col].values.copy(), dtype=np.float64) 
+    t_arr = np.asarray(df[time_col].values.copy()) 
     pbar = ProgressBar()
     for feature_col in pbar(feature_cols):
         f_mask_arr = df['mask_'+feature_col].values
@@ -126,9 +126,10 @@ if __name__ == '__main__':
     
     # add mask features
     print('Adding missing values mask as features...')
+    
     for feature_col in feature_cols:
-        x_train_df.loc[:, 'mask_'+feature_col] = (~x_train_df[feature_col].isna())*1.0
-        x_test_df.loc[:, 'mask_'+feature_col] = (~x_test_df[feature_col].isna())*1.0
+        x_train_df.loc[:, 'mask_'+feature_col] = (~x_train_df[feature_col].isna())*1
+        x_test_df.loc[:, 'mask_'+feature_col] = (~x_test_df[feature_col].isna())*1
     print('Adding time since last missing value is observed as features...')
     x_train_df = get_time_since_last_observed_features(x_train_df, id_cols, time_col, feature_cols)
     x_test_df = get_time_since_last_observed_features(x_test_df, id_cols, time_col, feature_cols)
@@ -156,15 +157,19 @@ if __name__ == '__main__':
     x_test_normalized_df, scaling_df = normalize_df(x_test_df, feature_cols_with_mask_features, scaling=args.normalization, train_df=x_train_df)
     
     
-    print('Saving imputed data to :\n%s \n%s'%(x_train_csv, x_test_csv))
-    x_train_normalized_df.to_csv(x_train_csv, index=False) 
-    x_test_normalized_df.to_csv(x_test_csv, index=False)
+    x_train_imputed_csv = x_train_csv.split('.')[0]+'_imputed'+'.csv' 
+    x_test_imputed_csv = x_test_csv.split('.')[0]+'_imputed'+'.csv'
+    x_imputed_dict_json = x_dict_json.split('.')[0]+'_imputed.json' 
+    
+    print('Saving imputed data to :\n%s \n%s'%(x_train_imputed_csv, x_test_imputed_csv))
+    x_train_normalized_df.to_csv(x_train_imputed_csv, index=False) 
+    x_test_normalized_df.to_csv(x_test_imputed_csv, index=False)
     
     norm_estimates_csv = os.path.join(args.train_test_split_dir, 'normalization_estimates.csv') 
     print('Saving normalization estimates to : \n%s'%norm_estimates_csv)
     scaling_df.to_csv(norm_estimates_csv, index=False)
     
     #save the new data dict
-    print('Saving data dict with masking features to : \n%s'%x_dict_json)
-    with open(x_dict_json, 'w') as f:
+    print('Saving data dict with masking features to : \n%s'%x_imputed_dict_json)
+    with open(x_imputed_dict_json, 'w') as f:
         json.dump(new_data_dict, f, indent=4)

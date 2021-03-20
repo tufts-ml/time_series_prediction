@@ -9,7 +9,7 @@ import skorch
 from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import (roc_curve, accuracy_score, log_loss, 
                             balanced_accuracy_score, confusion_matrix, 
-                            roc_auc_score, make_scorer, precision_score)
+                            roc_auc_score, make_scorer, precision_score, recall_score)
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from SkorchLogisticRegression import SkorchLogisticRegression
@@ -94,7 +94,7 @@ if __name__ == '__main__':
     y_train = np.ravel(df_by_split['train'][outcome_col_name])
     
     x_test = df_by_split['test'][feature_cols].values.astype(np.float32)
-    y_test = np.ravel(df_by_split['test'][outcome_col_name])    
+    y_test = np.ravel(df_by_split['test'][outcome_col_name])        
     
     # get the feature columns
     class_weights_ = torch.tensor(np.asarray([1/((y_train==0).sum()), 1/((y_train==1).sum())]))
@@ -139,6 +139,9 @@ if __name__ == '__main__':
     
     lr_scheduler = LRScheduler(policy=ReduceLROnPlateau, mode='max', factor=0.1, patience=3, min_lr=1e-04, verbose=True)
     
+    
+    n_cv_folds = int(np.floor(1/args.validation_size))
+    
     ## start training
     if args.scoring == 'cross_entropy_loss':
         logistic = SkorchLogisticRegression(n_features=len(feature_cols),
@@ -147,7 +150,7 @@ if __name__ == '__main__':
                                             lr=args.lr,
                                             batch_size=args.batch_size, 
                                             max_epochs=max_epochs,
-                                            train_split=skorch.dataset.CVSplit(args.validation_size),
+                                            train_split=skorch.dataset.CVSplit(n_cv_folds),
                                             loss_name=args.scoring,
                                             callbacks=[epoch_scoring_precision_train,
                                                        epoch_scoring_precision_valid,
@@ -168,7 +171,7 @@ if __name__ == '__main__':
                                             lr=args.lr,
                                             batch_size=args.batch_size, 
                                             max_epochs=max_epochs,
-                                            train_split=skorch.dataset.CVSplit(args.validation_size),
+                                            train_split=skorch.dataset.CVSplit(n_cv_folds),
                                             loss_name='cross_entropy_loss',
                                             callbacks=[epoch_scoring_precision_train,
                                                        epoch_scoring_precision_valid,
@@ -189,13 +192,15 @@ if __name__ == '__main__':
                                             lr=args.lr,
                                             batch_size=args.batch_size, 
                                             max_epochs=max_epochs,
-                                            train_split=skorch.dataset.CVSplit(args.validation_size),
+                                            train_split=skorch.dataset.CVSplit(n_cv_folds),
                                             loss_name=args.scoring,
+                                            min_precision=0.9,
+                                            constraint_lambda=100,
                                             callbacks=[epoch_scoring_precision_train,
                                                        epoch_scoring_precision_valid,
                                                        epoch_scoring_recall_train,
                                                        epoch_scoring_recall_valid,
-                                                       lr_scheduler,
+#                                                        lr_scheduler,
                                                        early_stopping_cp,
                                                        cp, train_end_cp],
                                            optimizer=torch.optim.Adam)
@@ -218,6 +223,38 @@ if __name__ == '__main__':
     # print precision on train and validation
     y_train_pred = logistic_clf.predict(x_train_transformed)
     precision_train = precision_score(y_train, y_train_pred)
+    recall_train = recall_score(y_train, y_train_pred)
+#     print('Train precision when minimizing %s loss :%.3f'%(args.scoring, precision_train))
+    #
+    y_test_pred = logistic_clf.predict(x_test_transformed)
+    precision_test = precision_score(y_test, y_test_pred)
+    recall_test = recall_score(y_test, y_test_pred)
+#     print('Test precision when minimizing %s loss :%.3f'%(args.scoring, precision_test))
     
-    print('Train precision when minimizing %s loss :%.3f'%(args.scoring, precision_train))
     
+    # compute the TP's, FP's, TN's and FN's
+    y_train = y_train[:, np.newaxis] 
+    y_test = y_test[:, np.newaxis]
+    
+    TP_train = np.sum(np.logical_and(y_train == 1, y_train_pred == 1))
+    FP_train = np.sum(np.logical_and(y_train == 0, y_train_pred == 1))
+    TN_train = np.sum(np.logical_and(y_train == 0, y_train_pred == 0))
+    FN_train = np.sum(np.logical_and(y_train == 1, y_train_pred == 0))
+    
+    TP_test = np.sum(np.logical_and(y_test == 1, y_test_pred == 1))
+    FP_test = np.sum(np.logical_and(y_test == 0, y_test_pred == 1))
+    TN_test = np.sum(np.logical_and(y_test == 0, y_test_pred == 0))
+    FN_test = np.sum(np.logical_and(y_test == 1, y_test_pred == 0))    
+    
+    
+    f_out_name = os.path.join(args.output_dir, args.output_filename_prefix+'.txt')
+    f_out = open(f_out_name, 'w')
+    
+    print_st_tr = "Training performance minimizing %s loss | Precision %.3f | Recall %.3f | TP %5d | FP %5d | TN %5d | FN %5d"%(args.scoring, precision_train, recall_train, TP_train, FP_train, TN_train, FN_train)
+    print_st_te = "Test performance minimizing %s loss | Precision %.3f | Recall %.3f | TP %5d | FP %5d | TN %5d | FN %5d"%(args.scoring, precision_test, recall_test,TP_test, FP_test, TN_test, FN_test) 
+        
+    
+    print(print_st_tr)
+    print(print_st_te)
+    f_out.write(print_st_tr + ' \n ' + print_st_te)
+    f_out.close()

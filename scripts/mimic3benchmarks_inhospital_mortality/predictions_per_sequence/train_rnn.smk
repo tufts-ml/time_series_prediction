@@ -16,7 +16,7 @@ To run with multiple random seeds (prespecified in a config file)
 $ snakemake --cores all --snakefile train_rnn.smk train_and_evaluate_classifier_many_hyperparams
 '''
 
-configfile:"rnn.json"
+configfile:"rnn_single_config.json"
 
 # Default environment variables
 # Can override with local env variables

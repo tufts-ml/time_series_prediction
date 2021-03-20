@@ -25,6 +25,8 @@ class SkorchMLP(skorch.NeuralNet):
             batch_size=-1,
             max_epochs=100,
             criterion=torch.nn.NLLLoss,
+            min_precision=0.9,
+            constraint_lambda=100,
             loss_name='cross_entropy_loss',
             *args,
             **kwargs
@@ -35,6 +37,8 @@ class SkorchMLP(skorch.NeuralNet):
         self.l2_penalty_bias = l2_penalty_bias
         self.clip = clip
         self.loss_name=loss_name
+        self.min_precision = min_precision
+        self.constraint_lambda=constraint_lambda
         kwargs.update(dict(module=SkorchMLPModule, 
                            module__n_features=n_features, 
                            module__n_hiddens=n_hiddens,
@@ -134,7 +138,7 @@ class SkorchMLP(skorch.NeuralNet):
         weights_ = torch.cat([self.module_.hidden_layer.weight.flatten(), self.module_.output_layer.weight.flatten()])
         bias_ = torch.cat([self.module_.hidden_layer.bias, self.module_.output_layer.bias])
         
-        sigmoid_loss = 1.2*torch.sigmoid(-((torch.sign(y_true_-.001)*8*y_est_logits_))+1.2)
+        sigmoid_loss = 1.2*torch.sigmoid(-((torch.sign(y_true_-.001)*8*y_est_logits_))+1.8)
         fp_upper_bound = torch.sum(sigmoid_loss[y_true_==0])
         tp_lower_bound = torch.sum(1-(sigmoid_loss[y_true_==1]))
         
@@ -202,7 +206,8 @@ class SkorchMLP(skorch.NeuralNet):
             if self.loss_name == 'cross_entropy_loss':
                 loss_, y_logproba_ = self.calc_bce_loss(y, X=X, return_y_logproba=True)
             elif self.loss_name == 'surrogate_loss_tight':
-                loss_, y_logproba_ = self.calc_surrogate_loss_tight(y, X=X, return_y_logproba=True)
+                loss_, y_logproba_ = self.calc_surrogate_loss_tight(y, X=X, return_y_logproba=True, 
+                                                                alpha=self.min_precision, lamb=self.constraint_lambda)
                 
             y_pred_ = self.predict(X.type(torch.DoubleTensor))
             
