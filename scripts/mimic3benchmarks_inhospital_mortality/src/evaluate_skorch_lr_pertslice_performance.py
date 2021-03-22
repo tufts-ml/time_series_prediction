@@ -37,6 +37,8 @@ def get_best_model(clf_models_dir, filename_aka):
     valid_losses_np = np.zeros(len(training_files))
     precision_valid_np = np.zeros(len(training_files))
     recall_valid_np = np.zeros(len(training_files))
+    precision_train_np = np.zeros(len(training_files))
+    
     for i, f in enumerate(training_files):
         training_hist_df = pd.DataFrame(json.load(open(f)))
         
@@ -44,10 +46,12 @@ def get_best_model(clf_models_dir, filename_aka):
         valid_losses_np[i] = training_hist_df.valid_loss.values[-1]
         precision_valid_np[i] = training_hist_df.precision_valid.values[-1]
         recall_valid_np[i] = training_hist_df.recall_valid.values[-1]
-    
+        precision_train_np[i] = training_hist_df.precision_train.values[-1]
+        
     precision_valid_np[np.isnan(precision_valid_np)]=0
+    precision_train_np[np.isnan(precision_train_np)]=0
     recall_valid_np[np.isnan(recall_valid_np)]=0
-    best_model_ind = np.argmax(recall_valid_np)
+    best_model_ind = np.argmax(precision_train_np)
     
     return training_files[best_model_ind]
     

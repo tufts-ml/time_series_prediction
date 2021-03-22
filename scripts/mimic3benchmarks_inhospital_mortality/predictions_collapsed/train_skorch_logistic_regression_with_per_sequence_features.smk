@@ -10,7 +10,7 @@ snakemake --snakefile train_skorch_logistic_regression_with_per_sequence_feature
 '''
 
 
-configfile : "skorch_logistic_regression_single_config.json"
+configfile : "skorch_logistic_regression.json"
 
 from config_loader import (
     D_CONFIG,
@@ -74,5 +74,6 @@ rule train_and_evaluate_classifier:
             --batch_size {wildcards.batch_size} \
             --merge_x_y False \
             --seed {wildcards.seed} \
+            --n_splits 5 \
         '''.replace("{{OUTCOME_COL_NAME}}", D_CONFIG["OUTCOME_COL_NAME"])\
            .replace("{{SPLIT_KEY_COL_NAMES}}", D_CONFIG["SPLIT_KEY_COL_NAMES"])
