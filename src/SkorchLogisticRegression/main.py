@@ -192,9 +192,9 @@ if __name__ == '__main__':
         
             for gg, thr in enumerate(thr_grid): 
     #             logistic_clf.module_.linear_transform_layer.bias.data = torch.tensor(thr_grid[gg]).double()
-                curr_thr_y_preds = logistic_clf.predict_proba(x_va)[:,1]>=thr_grid[gg] 
-                precision_score_grid_SG[ss, gg] = precision_score(y_va, curr_thr_y_preds)
-                recall_score_grid_SG[ss, gg] = recall_score(y_va, curr_thr_y_preds) 
+                curr_thr_y_preds = logistic_clf.predict_proba(x_tr)[:,1]>=thr_grid[gg] 
+                precision_score_grid_SG[ss, gg] = precision_score(y_tr, curr_thr_y_preds)
+                recall_score_grid_SG[ss, gg] = recall_score(y_tr, curr_thr_y_preds) 
             
         mean_precision_score_G = np.mean(precision_score_grid_SG, axis=0)
         mean_recall_score_G = np.mean(recall_score_grid_SG, axis=0)
@@ -215,7 +215,7 @@ if __name__ == '__main__':
             print(thr_perf_df)
             print('Chosen threshold : '+str(best_thr))
         else:
-                print('Could not find thresholds achieving fixed precision of %.2f. Evaluating with threshold 0.5'%fixed_precision)
+            print('Could not find thresholds achieving fixed precision of %.2f. Evaluating with threshold 0.5'%fixed_precision)
         
     elif args.scoring == 'surrogate_loss_tight':
         print('Warm starting by minimizing cross entropy loss first...')
@@ -277,6 +277,8 @@ if __name__ == '__main__':
     
     
     # print precision on train and validation
+    f_out_name = os.path.join(args.output_dir, args.output_filename_prefix+'.txt')
+    f_out = open(f_out_name, 'w')
     for thr in thr_list : 
         y_train_pred_probas = logistic_clf.predict_proba(x_train_transformed)[:,1]
 #         y_train_pred = logistic_clf.predict(x_train_transformed)
@@ -303,10 +305,6 @@ if __name__ == '__main__':
         FP_test = np.sum(np.logical_and(y_test == 0, y_test_pred == 1))
         TN_test = np.sum(np.logical_and(y_test == 0, y_test_pred == 0))
         FN_test = np.sum(np.logical_and(y_test == 1, y_test_pred == 0))    
-
-
-        f_out_name = os.path.join(args.output_dir, args.output_filename_prefix+'.txt')
-        f_out = open(f_out_name, 'w')
 
         print_st_tr = "Training performance minimizing %s loss at threshold %.5f : | Precision %.3f | Recall %.3f | TP %5d | FP %5d | TN %5d | FN %5d"%(args.scoring, thr, precision_train, recall_train, TP_train, FP_train, TN_train, FN_train)
         print_st_te = "Test performance minimizing %s loss at threshold %.5f :  | Precision %.3f | Recall %.3f | TP %5d | FP %5d | TN %5d | FN %5d"%(args.scoring, thr, precision_test, recall_test,TP_test, FP_test, TN_test, FN_test) 

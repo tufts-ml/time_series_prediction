@@ -73,5 +73,6 @@ rule train_and_evaluate_classifier:
             --merge_x_y False \
             --seed {wildcards.seed} \
             --n_hiddens {wildcards.n_hiddens} \
+            --n_splits 5\
         '''.replace("{{OUTCOME_COL_NAME}}", D_CONFIG["OUTCOME_COL_NAME"])\
            .replace("{{SPLIT_KEY_COL_NAMES}}", D_CONFIG["SPLIT_KEY_COL_NAMES"])

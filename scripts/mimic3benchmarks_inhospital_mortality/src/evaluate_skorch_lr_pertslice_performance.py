@@ -51,7 +51,7 @@ def get_best_model(clf_models_dir, filename_aka):
     precision_valid_np[np.isnan(precision_valid_np)]=0
     precision_train_np[np.isnan(precision_train_np)]=0
     recall_valid_np[np.isnan(recall_valid_np)]=0
-    best_model_ind = np.argmax(precision_train_np)
+    best_model_ind = np.argmax(recall_valid_np)
     
     return training_files[best_model_ind]
     
