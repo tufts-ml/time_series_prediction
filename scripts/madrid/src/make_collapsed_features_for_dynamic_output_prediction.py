@@ -115,7 +115,12 @@ if __name__ == '__main__':
     features_df_all_slices_list = list()
     outcomes_df_all_slices_list = list()
     mews_df_all_slices_list = list()
-    for tslice in args.tslice_list.split(' '):
+    tslice_list = args.tslice_list.split(' ')
+    prediction_window = abs(int(args.tslice_list))
+    
+    # for patients with less than prediction_window hours of data, use 90% of their data
+    tslice_list.append("90%")    
+    for tslice in tslice_list:
         print('Appending tslice=%s...'%tslice)
         curr_tslice_folder = args.tslice_folder+tslice
         curr_collapsed_tslice_folder = args.collapsed_tslice_folder+tslice
@@ -152,6 +157,16 @@ if __name__ == '__main__':
 
         mews_df = read_csv_with_float32_dtypes(os.path.join(curr_collapsed_tslice_folder, 'MewsScoresPerSequence.csv.gz'))
         outcomes_df = pd.read_csv(os.path.join(curr_tslice_folder, 'clinical_deterioration_outcomes_filtered_%s_hours.csv.gz'%tslice))
+        
+        # for patient stays less than the prediction window length, use 90% of their data 
+        # if tslice is 90%, keep only outcomes, features and mews of patients whose stay length is less than prediction window length
+        if tslice=="90%":
+            print("For patient stays less than prediction window = %d, using %s of their data"%(prediction_window, "90%"))
+            keep_inds = outcomes_df.stay_length<prediction_window
+            outcomes_df = outcomes_df[keep_inds]
+            features_df = features_df[keep_inds]
+            mews_df = mews_df[keep_inds]
+        
         feature_cols = features_df.columns
         outcome_cols = outcomes_df.columns
         mews_cols = mews_df.columns
@@ -164,7 +179,7 @@ if __name__ == '__main__':
     features_df_all_slices = pd.DataFrame(np.concatenate(features_df_all_slices_list), columns=feature_cols)
     outcomes_df_all_slices = pd.DataFrame(np.concatenate(outcomes_df_all_slices_list), columns=outcome_cols)
     mews_df_all_slices = pd.DataFrame(np.concatenate(mews_df_all_slices_list), columns=mews_cols)
-        
+    
     # get collapsed vitals and labs dicts        
     with open(os.path.join(curr_collapsed_tslice_folder, 'Spec_CollapsedLabsPerSequence.json'), 'r') as f3:
         collapsed_labs_data_dict = json.load(f3)
@@ -209,9 +224,9 @@ if __name__ == '__main__':
     
     
     # save to disk
-    features_csv = os.path.join(args.output_dir, 'features.csv.gz')
-    outcomes_csv = os.path.join(args.output_dir, 'outcomes.csv.gz')
-    mews_csv = os.path.join(args.output_dir, 'mews.csv.gz')
+    features_csv = os.path.join(args.output_dir, 'features_T_hrs_before_clinical_deterioration.csv.gz')
+    outcomes_csv = os.path.join(args.output_dir, 'outcomes_T_hrs_before_clinical_deterioration.csv.gz')
+    mews_csv = os.path.join(args.output_dir, 'mews_T_hrs_before_clinical_deterioration.csv.gz')
     features_json = os.path.join(args.output_dir, 'Spec_features.json')
     outcomes_json = os.path.join(args.output_dir, 'Spec_outcomes.json')
     mews_json = os.path.join(args.output_dir, 'Spec_mews.json')

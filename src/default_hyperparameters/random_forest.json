@@ -6,7 +6,7 @@
     "bootstrap": "True",
     "n_estimators": 25,
     "grid__max_features": [0.1, 0.55, 1.0],
-    "grid__min_samples_leaf": [4, 64, 256, 4096],
+    "grid__min_samples_leaf": [4, 64, 256],
     "filter__min_samples_leaf": "lambda x, n_examples, n_features: np.minimum(int(x), n_examples)",
     "filter__max_features": "lambda x, n_examples, n_features: np.maximum(1, int(np.round(x * n_features)))",
     "simplicity_score_func": "lambda d, n_examples, n_features: (1.01 - d['max_features']) + np.log2(d['min_samples_leaf']) / n_examples"

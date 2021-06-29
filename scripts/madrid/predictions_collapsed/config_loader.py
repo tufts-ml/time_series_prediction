@@ -43,6 +43,10 @@ update_os_environ_vars()
 DATASET_COLLAPSED_FEAT_PER_SEQUENCE_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["COLLAPSED_FEAT_PER_SEQUENCE_PATH_LIST"])))
 update_os_environ_vars()
 
+DATASET_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH = os.path.join(*list(map(os.path.expandvars,
+                                                     D_CONFIG["COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH_LIST"])))
+update_os_environ_vars()
+
 DATASET_FEAT_PER_SEQUENCE_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["FEAT_PER_SEQUENCE_PATH_LIST"])))
 update_os_environ_vars()
 
@@ -69,6 +73,10 @@ RESULTS_COLLAPSED_FEAT_PER_SEQUENCE_PATH = os.path.join(*list(map(os.path.expand
                                                                   D_CONFIG["RESULTS_COLLAPSED_FEAT_PER_SEQUENCE_PATH_LIST"])))
 update_os_environ_vars()
 
+RESULTS_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH = os.path.join(*list(map(os.path.expandvars,
+                                                     D_CONFIG["RESULTS_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH_LIST"])))
+update_os_environ_vars()
+
 RESULTS_FEAT_PER_SEQUENCE_PATH = os.path.join(*list(map(os.path.expandvars,
                                                         D_CONFIG["RESULTS_FEAT_PER_SEQUENCE_PATH_LIST"])))
 update_os_environ_vars()
@@ -81,6 +89,11 @@ COLLAPSED_FEAT_PER_TIMESLICE_CLF_MODELS_PATH = os.path.join(*list(map(os.path.ex
                                                      D_CONFIG["COLLAPSED_FEAT_PER_TIMESLICE_CLF_MODELS_PATH_LIST"])))
 update_os_environ_vars()
 
+COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_CLF_MODELS_PATH = os.path.join(*list(map(os.path.expandvars,
+                                                     D_CONFIG["COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_CLF_MODELS_PATH_LIST"])))
+update_os_environ_vars()
+
 FEAT_PER_TIMESLICE_CLF_MODELS_PATH = os.path.join(*list(map(os.path.expandvars,
                                                      D_CONFIG["FEAT_PER_TIMESLICE_CLF_MODELS_PATH_LIST"])))
 update_os_environ_vars()
+

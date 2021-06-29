@@ -42,6 +42,7 @@ from joblib import dump
 import sklearn.linear_model
 import sklearn.tree
 import sklearn.ensemble
+import sklearn.neural_network
 
 from custom_classifiers import ThresholdClassifier
 from sklearn.metrics import (accuracy_score, balanced_accuracy_score, f1_score,
@@ -150,7 +151,6 @@ if __name__ == '__main__':
                     default_group.add_argument("--%s" % key, default=val, type=type(val))
         subparsers_by_name[clf_name] = clf_parser
 
-
     # Create dataset-specific and experimental design options for the parser
     for p in subparsers_by_name.values():
         data_group = p.add_argument_group('data')
@@ -170,6 +170,7 @@ if __name__ == '__main__':
         protocol_group.add_argument('--scoring', type=str, default='roc_auc_score+0.001*cross_entropy_base2_score')
         protocol_group.add_argument('--random_seed', type=int, default=8675309)
         protocol_group.add_argument('--n_splits', type=int, default=1)
+        protocol_group.add_argument('--max_recall_at_fixed_precision_param', type=float, default=0.0)
         protocol_group.add_argument('--threshold_scoring', type=str,
             default=None, choices=[None, 'None'] + THRESHOLD_SCORING_OPTIONS)
 
@@ -334,7 +335,10 @@ if __name__ == '__main__':
             else:
                 # Safe to use filtered grid for this parameter
                 pipeline_param_grid_dict['classifier__' + key] = filtered_grid
-
+    
+    if 'hidden_layer_sizes' in fixed_args.keys():
+        fixed_args['hidden_layer_sizes'] = eval(fixed_args['hidden_layer_sizes'])
+    
     # Create classifier pipeline
     # --------------------------
     clf = args.clf_constructor(
@@ -381,6 +385,7 @@ if __name__ == '__main__':
         elif score_func_name in HARD_DECISION_SCORERS.keys():
             scoring_dict[score_func_name] = HARD_DECISION_SCORERS[score_func_name]
         scoring_weights_dict[score_func_name] = score_wt
+
     
     
     # Run expensive training + selection
@@ -450,16 +455,26 @@ if __name__ == '__main__':
     else:
         mean_test_score_S = cv_te_perf_df['mean_score'].values
         cv_te_perf_df['total_score'] = mean_test_score_S.copy()
-
+    
     # Select the single best set of hyperparameters
-    best_row_id = cv_te_perf_df['total_score'].argmax()
-    best_param_dict = cv_te_perf_df.loc[best_row_id, 'params']
+    if args.max_recall_at_fixed_precision_param>0:
+        # if the user wants to maximize recall at fixed precision, keep only the indices that achieve fixed precision and choose the best hyperparameter as the max recall among those achieving fixed precision
+        alpha = args.max_recall_at_fixed_precision_param
+        default_alpha=0.2
+        
+        # if none of the indices achieve fixed precision, then set fixed precision to default alpha
+        print('Choosing hyperpapram with maximum precision on validation set..')
+        best_row_id = cv_perf_df.mean_test_precision_score.argmax()
+        best_param_dict = cv_perf_df.loc[best_row_id, 'params']
+    else:
+        best_row_id = cv_te_perf_df['total_score'].argmax()
+        best_param_dict = cv_te_perf_df.loc[best_row_id, 'params']
     hyper_searcher.best_estimator_ = hyper_searcher.estimator
     hyper_searcher.best_estimator_.set_params(**best_param_dict)
 
     # Refit the best estimator with these hypers!
     hyper_searcher.best_estimator_.fit(x_train, y_train)
-
+    
     # Threshold search
     # TODO cast wider net at nearby settings to the best estimator??
     if str(args.threshold_scoring) != 'None':
@@ -480,9 +495,9 @@ if __name__ == '__main__':
             # Cover the space of typical computed values well
             # But also include some extreme values
             dense_thr_grid = np.linspace(
-                np.percentile(nontrivial_thr_vals, 5),
-                np.percentile(nontrivial_thr_vals, 95),
-                90)
+                np.percentile(nontrivial_thr_vals, 1),
+                np.percentile(nontrivial_thr_vals, 99),
+                100)
             extreme_thr_grid = np.linspace(
                 nontrivial_thr_vals[0],
                 nontrivial_thr_vals[-1],
@@ -510,47 +525,95 @@ if __name__ == '__main__':
         else:
             print("thr_grid = %s" % (
                 ', '.join(['%.4f' % a for a in thr_grid])))
+        
+        if args.max_recall_at_fixed_precision_param>0:
+            # Search thresholds that achieve atleast fixed precsion and choose threshold as the one that maximizes recall among them
+            precision_score_grid_SG = np.zeros((splitter.n_splits, thr_grid.size))
+            recall_score_grid_SG = np.zeros((splitter.n_splits, thr_grid.size))
+            for ss, (tr_inds, va_inds) in enumerate(
+                    splitter.split(x_train, y_train, groups=key_train)):
+                x_tr = x_train[tr_inds].copy()
+                y_tr = y_train[tr_inds].copy()
+                x_va = x_train[va_inds]
+                y_va = y_train[va_inds]
 
-        score_grid_SG = np.zeros((splitter.n_splits, thr_grid.size))
-        for ss, (tr_inds, va_inds) in enumerate(
-                splitter.split(x_train, y_train, groups=key_train)):
-            x_tr = x_train[tr_inds].copy()
-            y_tr = y_train[tr_inds].copy()
-            x_va = x_train[va_inds]
-            y_va = y_train[va_inds]
+                tmp_clf = ThresholdClassifier(hyper_searcher.best_estimator_)
+                tmp_clf.fit(x_tr, y_tr)
+                for gg, thr in enumerate(thr_grid):
+                    tmp_clf = tmp_clf.set_params(threshold=thr)
+                    yhat = tmp_clf.predict(x_va)
+                    precision_score_grid_SG[ss, gg] = calc_score_for_binary_predictions(
+                        y_va, yhat, scoring='precision_score')
+                    recall_score_grid_SG[ss, gg] = calc_score_for_binary_predictions(
+                        y_va, yhat, scoring='recall_score')
+            
+            
+            avg_precision_score_G = np.mean(precision_score_grid_SG, axis=0)
+            avg_recall_score_G = np.mean(recall_score_grid_SG, axis=0)
+            
+            # keep only thresholds that match atleast the specified precision
+            keep_inds = avg_precision_score_G>=alpha
+            if keep_inds.sum()==0:
+                print('Could not find threshold achieving precision of %.3f'%alpha)
+                print('Dropping fixed precision to %.3f'%default_alpha)
+                keep_inds = avg_precision_score_G>=default_alpha
+                if keep_inds.sum()==0:
+                    keep_inds = (avg_precision_score_G >= np.percentile(avg_precision_score_G, 75)) 
+            
 
-            tmp_clf = ThresholdClassifier(hyper_searcher.best_estimator_)
-            tmp_clf.fit(x_tr, y_tr)
-            for gg, thr in enumerate(thr_grid):
-                tmp_clf = tmp_clf.set_params(threshold=thr)
-                yhat = tmp_clf.predict(x_va)
-                score_grid_SG[ss, gg] = calc_score_for_binary_predictions(
-                    y_va, yhat, scoring=args.threshold_scoring)
+            avg_precision_score_G = avg_precision_score_G[keep_inds]
+            avg_recall_score_G = avg_recall_score_G[keep_inds]
+            thr_grid = thr_grid[keep_inds]
+            gg = np.argmax(avg_recall_score_G)
+            best_thr = thr_grid[gg]
+            thr_perf_df = pd.DataFrame(np.vstack([
+                    thr_grid[np.newaxis,:],
+                    avg_precision_score_G[np.newaxis,:],
+                    avg_recall_score_G[np.newaxis,:]]).T,
+                columns=['thr', 'precision_score', 'recall_score'])          
 
-        avg_score_G = np.mean(score_grid_SG, axis=0)
+        else:
+            score_grid_SG = np.zeros((splitter.n_splits, thr_grid.size))
+            for ss, (tr_inds, va_inds) in enumerate(
+                    splitter.split(x_train, y_train, groups=key_train)):
+                x_tr = x_train[tr_inds].copy()
+                y_tr = y_train[tr_inds].copy()
+                x_va = x_train[va_inds]
+                y_va = y_train[va_inds]
 
-        # Do a 2nd order quadratic fit to the scores
-        # Focusing weight on points near the maximizer
-        # This gives us a "smoothed" function mapping thresholds to scores
-        # Avoids issues if scores are "wiggly" and don't want to rely on max
-        # Also will do right thing when there are many thresholds that work
-        # Smoothed scores guarantees we get maximizer in middle of that range
-        weights_G = np.exp(-10.0 * np.abs(avg_score_G - np.max(avg_score_G)))
-        poly_coefs = np.polyfit(thr_grid, avg_score_G, 2, w=weights_G)
-        smoothed_score_G = np.polyval(poly_coefs, thr_grid)
+                tmp_clf = ThresholdClassifier(hyper_searcher.best_estimator_)
+                tmp_clf.fit(x_tr, y_tr)
+                for gg, thr in enumerate(thr_grid):
+                    tmp_clf = tmp_clf.set_params(threshold=thr)
+                    yhat = tmp_clf.predict(x_va)
+                    score_grid_SG[ss, gg] = calc_score_for_binary_predictions(
+                        y_va, yhat, scoring=args.threshold_scoring)
 
-        # Keep best scoring estimator 
-        gg = np.argmax(smoothed_score_G)
-        best_thr = thr_grid[gg]
-        thr_perf_df = pd.DataFrame(np.vstack([
-                thr_grid[np.newaxis,:],
-                avg_score_G[np.newaxis,:],
-                smoothed_score_G[np.newaxis,:]]).T,
-            columns=['thr', 'score', 'smoothed_score'])
+            avg_score_G = np.mean(score_grid_SG, axis=0)
+
+            # Do a 2nd order quadratic fit to the scores
+            # Focusing weight on points near the maximizer
+            # This gives us a "smoothed" function mapping thresholds to scores
+            # Avoids issues if scores are "wiggly" and don't want to rely on max
+            # Also will do right thing when there are many thresholds that work
+            # Smoothed scores guarantees we get maximizer in middle of that range
+            weights_G = np.exp(-10.0 * np.abs(avg_score_G - np.max(avg_score_G)))
+            poly_coefs = np.polyfit(thr_grid, avg_score_G, 2, w=weights_G)
+            smoothed_score_G = np.polyval(poly_coefs, thr_grid)
+
+            # Keep best scoring estimator 
+            gg = np.argmax(smoothed_score_G)
+            best_thr = thr_grid[gg]
+            thr_perf_df = pd.DataFrame(np.vstack([
+                    thr_grid[np.newaxis,:],
+                    avg_score_G[np.newaxis,:],
+                    smoothed_score_G[np.newaxis,:]]).T,
+                columns=['thr', 'score', 'smoothed_score'])
         G = thr_perf_df.shape[0]
         disp_ids = np.unique(np.hstack([
             [0,1,2], [gg-2, gg-1, gg, gg+1, gg+2], [G-3, G-2, G-1]]))
-
+        
+        disp_ids = disp_ids[disp_ids>=0]
         print(thr_perf_df.loc[disp_ids].to_string(index=False))
         print("Chosen Threshold: %.4f" % best_thr)
         best_clf = ThresholdClassifier(

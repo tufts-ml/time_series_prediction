@@ -56,8 +56,9 @@ rule train_and_evaluate_classifier:
             --key_cols_to_group_when_splitting {{SPLIT_KEY_COL_NAMES}} \
             --random_seed {params.random_seed}\
             --n_splits 2 \
-            --scoring "5*precision_score+1*recall_score" \
+            --scoring "1.0*precision_score+1.0*recall_score" \
             --threshold_scoring recall_score \
             --class_weight balanced \
+            --max_recall_at_fixed_precision_param 0.35
         '''.replace("{{OUTCOME_COL_NAME}}", D_CONFIG["OUTCOME_COL_NAME"])\
            .replace("{{SPLIT_KEY_COL_NAMES}}", D_CONFIG["SPLIT_KEY_COL_NAMES"])

@@ -80,7 +80,7 @@ class TidySequentialDataCSVLoader(object):
             y_N = y_csv_df[y_col_name].values.copy()
             del y_csv_df[y_col_name]
             self.y_N = np.asarray(y_N, dtype=np.int64)
-
+        
         ## Parse x
         if x_col_names == '__all__':
             x_PF = x_csv_df.values.copy()

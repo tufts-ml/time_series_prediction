@@ -45,6 +45,6 @@ def calc_score_for_binary_predictions(
           y_pred=None,
           scoring='balanced_accuracy'):
 
-     calc_score_func, kwargs = HARD_DECISION_PARAMS[scoring]
-     score = calc_score_func(y_true, y_pred, **kwargs)
-     return score           
+    calc_score_func, kwargs = HARD_DECISION_PARAMS[scoring]
+    score = calc_score_func(y_true, y_pred, **kwargs)
+    return score           

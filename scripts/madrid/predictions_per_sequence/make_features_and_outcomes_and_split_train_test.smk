@@ -9,6 +9,10 @@ Usage : make a single set of features containing from all patient-stays and outc
 ----------------------------------------------------------------------------------------------------------
 >>  snakemake --cores 1 --snakefile make_features_and_outcomes_and_split_train_test.smk make_features_and_outcomes
 
+Usage : make  features containing from all patient-stays and outcomes 48 hours before clinical deterioration
+----------------------------------------------------------------------------------------------------------
+>>  snakemake --cores 1 --snakefile make_features_and_outcomes_and_split_train_test.smk make_features_and_outcomes_for_dynamic_output_prediction
+
 Usage : Split into train and test sets containing sequences
 -----------------------------------------------------------
 >> snakemake --cores 1 --snakefile make_features_and_outcomes_and_split_train_test.smk split_into_train_and_test
@@ -37,7 +41,7 @@ CLF_TRAIN_TEST_SPLIT_PATH = os.path.join(DATASET_FEAT_PER_TSLICE_PATH, 'classifi
 evaluate_tslice_hours_list=D_CONFIG['EVALUATE_TIMESLICE_LIST']
 
 # filtered sequences
-filtered_pertslice_csvs=[os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}","{feature}_before_icu_filtered_{tslice}_hours.csv.gz").format(feature=feature, tslice=str(tslice)) for tslice in evaluate_tslice_hours_list for feature in ['vitals', 'labs']]
+filtered_pertslice_csvs=[os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}","{feature}_before_icu_filtered_{tslice}_hours.csv.gz").format(feature=feature, tslice=str(tslice)) for tslice in evaluate_tslice_hours_list for feature in ['vitals', 'labs', 'medications']]
 
 rule filter_admissions_by_tslice_many_tslices:
     input:
@@ -85,11 +89,32 @@ rule make_features_and_outcomes:
                 --include_medications "True" \
         '''
 
+rule make_features_and_outcomes_for_dynamic_output_prediction:
+    input:
+        script=os.path.join(os.path.abspath('../'), 'src', 'make_features_and_outcomes_for_dynamic_output_prediction.py'),
+    
+    params:
+        preproc_data_dir=DATASET_SITE_PATH,
+        output_dir=CLF_TRAIN_TEST_SPLIT_PATH
+    
+    output:
+        features_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "features_T_hrs_before_clinical_deterioration.csv.gz"),
+        outcomes_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "outcomes_T_hrs_before_clinical_deterioration.csv.gz")
+    
+    shell:
+        '''
+            python -u {input.script} \
+                --preproc_data_dir {params.preproc_data_dir} \
+                --output_dir {params.output_dir} \
+                --include_medications "True" \
+        '''
+
+
 rule split_into_train_and_test:
     input:
         script=os.path.join(PROJECT_REPO_DIR, 'src', 'split_dataset.py'),
-        features_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'features.csv.gz'),
-        outcomes_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "outcomes.csv.gz"),
+        features_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "features_T_hrs_before_clinical_deterioration.csv.gz"),
+        outcomes_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "outcomes_T_hrs_before_clinical_deterioration.csv.gz"),
         features_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "features_dict.json"),
         outcomes_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "outcomes_dict.json"),
 

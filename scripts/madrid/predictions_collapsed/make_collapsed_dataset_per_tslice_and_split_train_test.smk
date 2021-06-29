@@ -27,6 +27,10 @@ Usage : Merge all the collapsed features across tslices into a single features t
 ----------------------------------------------------------------------------------------
 >> snakemake --cores 1 --snakefile make_collapsed_dataset_per_tslice_and_split_train_test.smk merge_collapsed_features_all_tslices
 
+Usage : Make features for prediction in the next T hours
+----------------------------------------------------------------------------------------
+>> snakemake --cores 1 --snakefile make_collapsed_dataset_per_tslice_and_split_train_test.smk make_collapsed_features_for_dynamic_output_prediction
+
 Usage : Split the features table into train - test. A single classifier will be trained on this training fold
 -------------------------------------------------------------------------------------------------------------
 >> snakemake --cores 1 --snakefile make_collapsed_dataset_per_tslice_and_split_train_test.smk split_into_train_and_test
@@ -228,12 +232,42 @@ rule merge_collapsed_features_all_tslices:
             --output_dir {params.output_dir}\
         '''
 
+rule make_collapsed_features_for_dynamic_output_prediction:
+    input:
+        script=os.path.join(os.path.abspath('../'), 'src', 'make_collapsed_features_for_dynamic_output_prediction.py')
+    
+    params:
+        collapsed_tslice_folder=os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, "TSLICE="),
+        tslice_folder=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE="),
+        tslice_list=train_tslice_hours_list,
+        static_data_dict_dir=DATASET_SITE_PATH,
+        output_dir=CLF_TRAIN_TEST_SPLIT_PATH,
+    
+    output:
+        features_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "features_T_hrs_before_clinical_deterioration.csv.gz"),
+        outcomes_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "outcomes_T_hrs_before_clinical_deterioration.csv.gz")
+
+    conda:
+        PROJECT_CONDA_ENV_YAML
+
+    shell:
+        '''
+        mkdir -p {{params.output_dir}} && \
+        python -u {input.script} \
+            --collapsed_tslice_folder {params.collapsed_tslice_folder} \
+            --tslice_folder {params.tslice_folder} \
+            --tslice_list "{params.tslice_list}" \
+            --static_data_dict_dir {params.static_data_dict_dir} \
+            --output_dir {params.output_dir}\
+        '''
+
+
 rule split_into_train_and_test:
     input:
         script=os.path.join(PROJECT_REPO_DIR, 'src', 'split_dataset.py'),
-        features_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "features.csv.gz"),
-        outcomes_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "outcomes.csv.gz"),
-        mews_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "mews.csv.gz"),
+        features_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "features_T_hrs_before_clinical_deterioration.csv.gz"),
+        outcomes_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "outcomes_T_hrs_before_clinical_deterioration.csv.gz"),
+        mews_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "mews_T_hrs_before_clinical_deterioration.csv.gz"),
         features_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "Spec_features.json"),
         outcomes_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "Spec_outcomes.json"),
         mews_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "Spec_mews.json")

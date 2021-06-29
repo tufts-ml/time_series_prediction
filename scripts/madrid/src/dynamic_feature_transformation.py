@@ -1,4 +1,4 @@
-# feature_transformation.py
+# dynamic_feature_transformation.py
 
 # Input: Requires a dataframe, specification of whether to collapse
 #        into summary statistics and which statistics, or whether to
@@ -21,7 +21,15 @@ from scipy import stats
 import ast
 import time
 import copy
+import os
 from scipy.stats import skew
+DEFAULT_PROJECT_REPO = os.path.sep.join(__file__.split(os.path.sep)[:-2])
+PROJECT_REPO_DIR = os.path.abspath(
+    os.environ.get('PROJECT_REPO_DIR', DEFAULT_PROJECT_REPO))
+
+sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src'))
+from utils import load_data_dict_json
+from progressbar import ProgressBar
 
 def get_fenceposts(ts_df, id_cols):
     keys_df = ts_df[id_cols].copy()
@@ -32,8 +40,6 @@ def get_fenceposts(ts_df, id_cols):
     fp = np.hstack([0, 1 + np.flatnonzero(np.diff(keys_df.values, axis=0).any(axis=1)), keys_df.shape[0]]) 
     return fp
 
-
-
 def main():
     parser = argparse.ArgumentParser(description="Script for collapsing"
                                                  "time features or adding"
@@ -42,11 +48,14 @@ def main():
                         help='Path to csv dataframe of readings')
     parser.add_argument('--data_dict', type=str, required=True,
                         help='Path to json data dictionary file')
-    parser.add_argument('--output', type=str, required=False, default=None)
-    parser.add_argument('--data_dict_output', type=str, required=False, 
-                        default=None)
-
-    parser.add_argument('--collapse', default=False, action='store_true')
+    parser.add_argument('--outcomes', type=str, required=True, 
+                        help='Path to csv dataframe of outcomes')
+    parser.add_argument('--data_dict_outcomes', type=str, required=True,
+                        help='Path to json data dictionary file for outcomes')
+    parser.add_argument('--dynamic_collapsed_features_csv', type=str, required=False, default=None)
+    parser.add_argument('--dynamic_collapsed_features_data_dict', type=str, required=False, default=None)
+    parser.add_argument('--dynamic_outcomes_csv', type=str, required=False, default=None)    
+    parser.add_argument('--dynamic_outcomes_data_dict', type=str, required=False, default=None) 
     parser.add_argument('--collapse_features', type=str, required=False,
                         default='count mean median std min max', 
                         help="Enclose options with 's, choose "
@@ -61,54 +70,35 @@ def main():
                         default='[(0, 10), (0, 25), (0, 50), (50, 100), (75, 100), (90, 100), (0, 100)]',
                         help="Enclose pairs list with 's and [], list all desired ranges in "
                              "parentheses like this: '[(0, 50), (25, 75), (50, 100)]'")
-    parser.add_argument('--tstops', type=str, required=False,
-                        default=None, help='''csv containing end times of each patient-stay-slice. If set as None, 
-                        then, the last timestamp is considered as the end of each patient-stay-slice''')
 
-    # TODO: Add arithmetic opertions (ie column1 * column2 / column3)
-    parser.add_argument('--add_feature', default=False, action='store_true')
-    parser.add_argument('--add_from', type=str, required=False)
-    parser.add_argument('--new_feature', type=str, required=False,
-                        default='z-score', 
-                        choices=['square', 'floor', 'int', 'sqrt', 
-                                 'abs', 'z-score', 'ceiling', 'float'])
 
     args = parser.parse_args()
 
-    args.data_dict_path = args.data_dict
-    with open(args.data_dict_path, 'r') as f:
-        args.data_dict = json.load(f)
-    try:
-        args.data_dict['fields'] = args.data_dict['schema']['fields']
-    except KeyError:
-        pass
-
-    print('done parsing...')
-    print('reading csv...')
+    print('reading features...')
     ts_df = pd.read_csv(args.input)
-    print('done reading csv...')
-    data_dict = None
+    data_dict = load_data_dict_json(args.data_dict)
+    print('done reading features...')
+    
+    print('reading outcomes...')
+    outcomes_df = pd.read_csv(args.outcomes)
+    data_dict_outcomes = load_data_dict_json(args.data_dict_outcomes)
+    print('done reading outcomes...')    
 
     # transform data
-    if args.tstops is None:
-        print('collapsing entire history of data..')
-        tstops_df = None
-    else :
-        print('collapsing features in patient-stay-slices with end times stored in %s'%(args.tstops))
-        tstops_df = pd.read_csv(args.tstops)
-    
     t1 = time.time()
-    if args.collapse:
-        ts_df = collapse_np(ts_df, args.data_dict, args.collapse_range_features, args.range_pairs, tstops_df)
-        data_dict = update_data_dict_collapse(args.data_dict, args.collapse_range_features, args.range_pairs)
-    elif args.add_feature:
-        ts_df = add_new_feature(ts_df, args)
-        data_dict = update_data_dict_add_feature(args)
+    ts_df = collapse_dynamic(ts_df=ts_df, data_dict=data_dict, 
+                             collapse_range_features=args.collapse_range_features, 
+                             range_pairs=args.range_pairs, outcomes_df=outcomes_df, 
+                             data_dict_outcomes=data_dict_outcomes)
+    
+    
+    data_dict = update_data_dict_collapse(data_dict, args.collapse_range_features, args.range_pairs)
     t2 = time.time()
     print('done collapsing data..')
     print('time taken to collapse data : {} seconds'.format(t2-t1))
    
     # save data to file
+    '''
     print('saving data to output...')
     if args.output is None:
         file_name = args.input.split('/')[-1].split('.')[0]
@@ -126,6 +116,7 @@ def main():
     else:
         ts_df.to_csv(data_output, index=False)
         print("Wrote to output CSV:\n%s" % (data_output))
+    '''
     
     # save data dictionary to file
     if args.data_dict_output is None:
@@ -139,7 +130,7 @@ def main():
         json.dump(data_dict, f, indent=4)
     
 
-def collapse_np(ts_df, data_dict, collapse_range_features, range_pairs, tstops_df):
+def collapse_dynamic(ts_df, data_dict, collapse_range_features, range_pairs, outcomes_df, data_dict_outcomes):
     id_cols = parse_id_cols(data_dict)
     id_cols = remove_col_names_from_list_if_not_in_df(id_cols, ts_df)
 
@@ -164,134 +155,139 @@ def collapse_np(ts_df, data_dict, collapse_range_features, range_pairs, tstops_d
             keys_df[col] = keys_df[col].astype('category')
             keys_df[col] = keys_df[col].cat.codes
     fp = np.hstack([0, 1 + np.flatnonzero(np.diff(keys_df.values, axis=0).any(axis=1)), keys_df.shape[0]]) 
-
-    list_of_collapsed_feat_arr = list()
+    
+    list_of_dynamic_collapsed_feat_arr = list()
     list_of_collapsed_feat_names = list()
-
+    
+    # define outcome column (TODO : Avoid hardcording by loading from config.json)
+    outcome_col = 'clinical_deterioration_outcome'
+    
     # Start timer
     total_time = 0
     #ts_df[feature_cols] = ts_df[feature_cols].astype(np.float32)
     timestamp_arr = np.asarray(ts_df[time_col].values.copy(), dtype=np.float32)
     features_arr = ts_df[feature_cols].values
-    
-    if tstops_df is None:
-        ts_with_max_tstop_df = ts_df[id_cols + [time_col]].groupby(id_cols, as_index=False).max().rename(columns={time_col:'max_tstop'})
-        tstops_arr = np.asarray(pd.merge(ts_df, ts_with_max_tstop_df, on=id_cols, how='left')['max_tstop'], dtype=np.float32)
-    else:
-        tstops_arr = np.asarray(pd.merge(ts_df, tstops_df, on=id_cols, how='left')['tstop'], dtype=np.float32)
-    
+    ids_arr = ts_df[id_cols].values
+    ts_with_max_tstop_df = ts_df[id_cols + [time_col]].groupby(id_cols, as_index=False).max().rename(columns={time_col:'max_tstop'})
+    tstops_arr = np.asarray(pd.merge(ts_df, ts_with_max_tstop_df, on=id_cols, how='left')['max_tstop'], dtype=np.float32)
+    prediction_window = 24
+    prediction_horizon= 24
+    t_start=-24 # start time 
+    dynamic_collapsed_feat_id_list = list()
+    dynamic_outcomes_list = list()
+    dynamic_window_list = list()
     for op_ind, op in enumerate(collapse_range_features.split(' ')):
         print('Collapsing with func %s'%op)
         t1=time.time()
-
-        for low, high in ast.literal_eval(range_pairs):           
+        
+        list_of_dynamic_collapsed_feat_cur_op = list()
+        for rp_ind, (low, high) in enumerate(ast.literal_eval(range_pairs)):           
             #print('Collapsing with func %s in %d to %d percentile range'%(op, low, high))
             #t1 = time.time()
             # initialize collapsed dataframe for the current summary function
             n_rows = len(fp) - 1
             n_feats = len(feature_cols)
-            collapsed_feat_arr = np.zeros([n_rows, n_feats], dtype=np.float32)
-
-            is_str_lo_and_hi = isinstance(low, str) and isinstance(high, str)
-            do_case_percentage = is_str_lo_and_hi and (
-                low.endswith('%') and high.endswith('%'))
-            do_case_abs_hrs = is_str_lo_and_hi and (
-                low.count('T') > 0 and high.count('T'))
-
+            
+            list_of_dynamic_collapsed_feat_cur_op_range_pair = list()
+            
             # loop through all the subject episode fenceposts
             empty_arrays = 0
-            for p in range(n_rows):
+            pbar=ProgressBar()
+            
+#             for p in pbar(range(n_rows)):
+            for p in pbar(range(1000)):
                 # Get features and times for the current fencepost
                 fp_start = fp[p]
                 fp_end = fp[p+1]
                 cur_feat_arr = features_arr[fp_start:fp_end,:].copy()
                 cur_timestamp_arr = timestamp_arr[fp_start:fp_end]
+                cur_tstops_arr = tstops_arr[fp_start:fp_end]
+                
+                # get the current stay id
+                cur_id_df = ts_df[id_cols].iloc[fp[p]:fp[p+1]].drop_duplicates(subset=id_cols)
+                
+                # get the stay length of the current 
+                cur_outcomes_df = pd.merge(outcomes_df, cur_id_df, on=id_cols, how='inner')
+                cur_stay_length = cur_outcomes_df['stay_length'].values[0]
+                cur_final_outcome = int(cur_outcomes_df[outcome_col].values[0])
+                
+                # create windows from start to length of stay (0-prediction_window, 0-2*prediction_window, ... 0-length_of_stay)
+                window_ends = np.arange(t_start+prediction_window, cur_stay_length+prediction_window, prediction_window)
+                
+                # collapse features in each window
+#                 cur_dynamic_collapsed_feat_arr = np.zeros([len(window_ends), n_feats], dtype=np.float32)
+                cur_dynamic_collapsed_feat_list = list()
+                
+                for q, window_end in enumerate(window_ends):
+                    cur_dynamic_idx = (cur_timestamp_arr>t_start)&(cur_timestamp_arr<=window_end)
+                    cur_dynamic_timestamp_arr = cur_timestamp_arr[cur_dynamic_idx]
+                    cur_dynamic_feat_arr = cur_feat_arr[cur_dynamic_idx]
+                    
+                     
+                    if len(cur_dynamic_timestamp_arr)>0:
+                        start, stop = calc_start_and_stop_indices_from_percentiles(
+                            cur_dynamic_timestamp_arr,
+                            start_percentile=int(low[:-1]),
+                            end_percentile=int(high[:-1]))
 
-                if do_case_percentage:
-                    start, stop = calc_start_and_stop_indices_from_percentages(
-                        cur_timestamp_arr,
-                        start_percentage=int(low[:-1]),
-                        end_percentage=int(high[:-1]),
-                        tstops_array=tstops_arr[fp_start:fp_end])
-                elif do_case_abs_hrs:
-                    low_hrs = low.split('-')[1]
-                    low_hrs = int(low_hrs.replace('h', ''))
-                    high_hrs = high.split('-')[1]
-                    high_hrs = int(high_hrs.replace('h', ''))
-                    start, stop = calc_start_and_stop_indices_from_abs_hrs(
-                        cur_timestamp_arr,
-                        start_hr=low_hrs,
-                        end_hr=high_hrs,
-                        tstops_array=tstops_arr[fp_start:fp_end])
-                else:
-                    start, stop = calc_start_and_stop_indices_from_percentiles(
-                        cur_timestamp_arr,
-                        start_percentile=low,
-                        end_percentile=high)
+#                         cur_dynamic_collapsed_feat_arr[q,:] = COLLAPSE_FUNCTIONS_np[op](cur_dynamic_feat_arr, start, stop,
+#                                                                                         cur_timestamp_arr=cur_dynamic_timestamp_arr)
+                        cur_dynamic_collapsed_feat_list.append(COLLAPSE_FUNCTIONS_np[op](cur_dynamic_feat_arr, start, stop,
+                                                                                         cur_timestamp_arr=cur_dynamic_timestamp_arr))
+                    
+                        if (op_ind==0) & (rp_ind==0):
+                            # keep track of stay ids
+                            dynamic_collapsed_feat_id_list.append(cur_id_df.values[0])
+                            
+                            # keep track of windows
+                            dynamic_window_list.append(np.array([t_start, window_end]))
+                            
+                            # if the length of stay is within the prediction horizon, set the outcome as the clinical deterioration outcome, else set 0
+                            if window_end>=cur_stay_length-prediction_horizon:
+                                dynamic_outcomes_list.append(cur_final_outcome)
+                            else:
+                                dynamic_outcomes_list.append(0)
+#                 cur_dynamic_collapsed_feat_arr = np.vstack(cur_dynamic_collapsed_feat_list)
+                
+#             if op_ind==0:
+#                 print('Percentage of empty slices in %s to %s is %.2f'%(
+#                     low, high, (empty_arrays/n_rows)*100))
 
-                if len(cur_feat_arr[start:stop])==0:
-                    empty_arrays += 1
-
-                # compute summary function on that particular subject episode dataframe
-                collapsed_feat_arr[p,:] = COLLAPSE_FUNCTIONS_np[op](
-                    cur_feat_arr, start, stop,
-                    cur_timestamp_arr=cur_timestamp_arr)
+                list_of_dynamic_collapsed_feat_cur_op_range_pair.append(np.vstack(cur_dynamic_collapsed_feat_list))
+                
+                # vertically stack collapsed features for this op and range pair across all stays
+                dynamic_collapsed_feat_cur_op_range_pair = np.vstack(list_of_dynamic_collapsed_feat_cur_op_range_pair)
+                
+            # get the collapsed feature for all range pairs for current op
+            list_of_dynamic_collapsed_feat_cur_op.append(dynamic_collapsed_feat_cur_op_range_pair)
+#             del dynamic_collapsed_feat_cur_op_range_pair
             
-            if op_ind==0:
-                print('Percentage of empty slices in %s to %s is %.2f'%(
-                    low, high, (empty_arrays/n_rows)*100))
-            list_of_collapsed_feat_arr.append(collapsed_feat_arr.astype(np.float32))
+            # keep track of the collapsed feature op range pair
             list_of_collapsed_feat_names.extend([x+'_'+op+'_'+str(low)+'_to_'+str(high) for x in feature_cols])
-            
+        
+        # horizontally stack across all ops range pairs for current op
+        list_of_dynamic_collapsed_feat_arr.append(np.hstack(list_of_dynamic_collapsed_feat_cur_op))
         t2 = time.time()
         print('done in %d seconds'%(t2-t1))
         total_time = total_time + t2-t1
     print('-----------------------------------------')
     print('total time taken to collapse features = %d seconds'%total_time)
     print('-----------------------------------------')
-    collapsed_df = pd.DataFrame(np.hstack(list_of_collapsed_feat_arr), columns=list_of_collapsed_feat_names)
     
-    for col_name in id_cols[::-1]:
-        collapsed_df.insert(0, col_name, ts_df[col_name].values[fp[:-1]].copy())
-    return collapsed_df
-
-
-def calc_start_and_stop_indices_from_percentages(timestamp_arr, start_percentage, end_percentage, tstops_array=None):
-    ''' Find start and stop indices selecting start percentage to stop percentage of  time in tstop array'''
-    tstop = np.max(tstops_array)
-    if start_percentage==0:
-        lower_bound=0
-    else:
-        lower_bound = np.searchsorted(timestamp_arr, start_percentage*tstop/100)
-    upper_bound = np.searchsorted(timestamp_arr, (end_percentage+0.001)*tstop/100)
-
-    # if lower bound and upper bound are the same, add 1 to the upper bound
-    if lower_bound >= upper_bound:
-        upper_bound = lower_bound + 1
-    assert upper_bound <= timestamp_arr.size + 1
+    # horizontally stack across all ops
+    dynamic_collapsed_df = pd.DataFrame(np.hstack(list_of_dynamic_collapsed_feat_arr), columns=list_of_collapsed_feat_names)
     
-    return int(lower_bound), int(upper_bound)
-
-def calc_start_and_stop_indices_from_abs_hrs(timestamp_arr, start_hr, end_hr, tstops_array=None):
-    ''' Find start and stop indices selecting start percentage to stop percentage of  time in tstop array'''
-    tstop = np.max(tstops_array)
-    lower_bound = np.searchsorted(timestamp_arr, tstop-start_hr)
-    upper_bound = np.searchsorted(timestamp_arr, tstop-end_hr+0.001)
-
-        # if lower bound and upper bound are the same, add 1 to the upper bound
-    if lower_bound >= upper_bound:
-        upper_bound = lower_bound + 1
-    assert upper_bound <= timestamp_arr.size + 1
-
-    return int(lower_bound), int(upper_bound)
-
-
-    # if lower bound and upper bound are the same, add 1 to the upper bound
-    if lower_bound >= upper_bound:
-        upper_bound = lower_bound + 1
-    assert upper_bound <= timestamp_arr.size + 1
-
-    return int(lower_bound), int(upper_bound)
+    # add the ids back to the collapsed features
+    ids_df = pd.DataFrame(dynamic_collapsed_feat_id_list, columns=id_cols) 
+    
+    # add the window start and ends
+    dynamic_window_df = pd.DataFrame(np.vstack(dynamic_window_list), columns=['window_start','window_end'])
+    
+    dynamic_collapsed_df = pd.concat([ids_df, dynamic_collapsed_df, dynamic_window_df], axis=1)
+    
+    dynamic_outcomes_df = pd.DataFrame(np.array(dynamic_outcomes_list), columns=[outcome_col])
+    dynamic_outcomes_df = pd.concat([ids_df, dynamic_outcomes_df, dynamic_window_df], axis=1)    
+    from IPython import embed; embed()
 
 
 def calc_start_and_stop_indices_from_percentiles(
@@ -375,31 +371,7 @@ def all_id_combinations(cols, df, combos, ids=[]):
                             combos, ids_copy)
 
 
-# ADD NEW FEATURE COLUMN
-def add_new_feature(ts_df, args):
-    new_col_name = '{}_{}'.format(args.new_feature, args.add_from) 
-    original_values = ts_df[args.add_from].tolist()
-    new_values = None 
 
-    if args.new_feature == 'z-score':
-        new_values = stats.zscore(original_values)
-    elif args.new_feature == 'square':
-        new_values = np.square(original_values)
-    elif args.new_feature == 'sqrt':
-        new_values = np.sqrt(original_values)
-    elif args.new_feature == 'floor':
-        new_values = np.floor(original_values)
-    elif args.new_feature == 'ceiling':
-        new_values = np.ceil(original_values)
-    elif args.new_feature == 'float':
-        new_values = np.array(original_values).astype(float)
-    elif args.new_feature == 'int':
-        new_values = np.array(original_values).astype(int)
-    elif args.new_feature == 'abs':
-        new_values = np.absolute(original_values)
-
-    ts_df[new_col_name] = new_values
-    return ts_df
 
 
 # DATA DICTIONARY STUFF: PARSING FUNCTIONS AND DICT UPDATING
@@ -612,7 +584,6 @@ COLLAPSE_FUNCTIONS_np = {
     "skew":collapse_skew_np,
     "hours_since_measured":collapse_hours_since_measured_np
 }
-
 
 if __name__ == '__main__':
     main()

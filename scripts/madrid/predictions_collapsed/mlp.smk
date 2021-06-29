@@ -1,7 +1,7 @@
 '''
 Train collapsed feature classifier on Madrid transfer to ICU task
 
->> snakemake --cores 1 --snakefile logistic_regression.smk
+>> snakemake --cores 1 --snakefile mlp.smk
 '''
 
 # Default environment variables
@@ -16,8 +16,8 @@ from config_loader import (
 #tstep_hours_list=D_CONFIG['TIMESTEP_LIST']
 random_seed_list=D_CONFIG['CLF_RANDOM_SEED_LIST']
 
-RESULTS_SPLIT_PATH=os.path.join(RESULTS_SPLIT_PATH, 'logistic_regression')
-RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH = os.path.join(RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH, 'logistic_regression')
+RESULTS_SPLIT_PATH=os.path.join(RESULTS_SPLIT_PATH, 'mlp')
+RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH = os.path.join(RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH, 'mlp')
 CLF_TRAIN_TEST_SPLIT_PATH=os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, 'classifier_train_test_split')
 
 
@@ -45,7 +45,7 @@ rule train_and_evaluate_classifier:
         '''
         mkdir -p {params.output_dir} && \
         python -u {input.script} \
-            logistic_regression \
+            mlp \
             --outcome_col_name {{OUTCOME_COL_NAME}} \
             --output_dir {params.output_dir} \
             --train_csv_files {input.x_train_csv},{input.y_train_csv} \
@@ -58,9 +58,6 @@ rule train_and_evaluate_classifier:
             --n_splits 2 \
             --scoring "1.0*recall_score+1.0*precision_score" \
             --threshold_scoring recall_score \
-            --class_weight balanced \
-            --tol 0.0001\
-            --max_iter 10000 \
-            --max_recall_at_fixed_precision_param 0.2
+            --max_recall_at_fixed_precision_param 0.7
         '''.replace("{{OUTCOME_COL_NAME}}", D_CONFIG["OUTCOME_COL_NAME"])\
            .replace("{{SPLIT_KEY_COL_NAMES}}", D_CONFIG["SPLIT_KEY_COL_NAMES"])

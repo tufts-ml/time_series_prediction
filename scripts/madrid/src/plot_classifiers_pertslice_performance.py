@@ -19,7 +19,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     
     # load all performance csv into a single dataframe
-    perf_csvs = glob.glob(os.path.join(args.performance_csv_dir, '*.csv'))
+    perf_csvs = glob.glob(os.path.join(args.performance_csv_dir, '*max_recall_at_fixed_precision.csv'))
     perf_df = pd.DataFrame()
     for perf_csv in perf_csvs:
         curr_perf_df = pd.read_csv(perf_csv)
@@ -37,9 +37,9 @@ if __name__ == '__main__':
             pos_tslices_list.append(i)
 
     tslice_grouped_list = [perc_tslices_list, pos_tslices_list, neg_tslices_list]
-    perf_measures = ['roc_auc', 'average_precision']
+    perf_measures = ['roc_auc', 'average_precision', 'precision_score', 'recall_score']
     fontsize=18
-    suffix=''
+    suffix='mrafp_HUF'
     for x in tslice_grouped_list:
         for perf_measure in perf_measures:
             f, axs = plt.subplots(figsize=[10,8])
@@ -71,7 +71,12 @@ if __name__ == '__main__':
                 axs.set_ylim([0.48, 1])
             elif perf_measure == 'average_precision':
                 axs.set_ylim([0, 0.6])
-
+            elif perf_measure == 'precision_score':
+                axs.set_ylim([0, 0.5])
+            elif perf_measure == 'recall_score':
+                axs.set_ylim([0, 0.8])
+            
+            axs.grid(True)
             axs.set_ylabel(perf_measure, fontsize=fontsize)
             axs.legend(fontsize=fontsize-2, loc='upper left')
             axs.tick_params(labelsize=fontsize)
