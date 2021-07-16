@@ -29,8 +29,51 @@ from RNNBinaryClassifier import RNNBinaryClassifier
 import ast
 import random
 from impute_missing_values_and_normalize_data import get_time_since_last_observed_features
+import glob
 
 
+def get_best_model(saved_model_files_aka):
+    
+    training_files = glob.glob(saved_model_files_aka)
+    aucroc_per_fit_list = []
+    
+    for i, tr_file in enumerate(training_files):
+        train_df = pd.DataFrame(json.load(open(tr_file))) 
+        aucroc_per_fit_list.append(train_df.aucroc_score_valid.values[-1])
+    
+    aucroc_per_fit_np = np.array(aucroc_per_fit_list)
+    aucroc_per_fit_np[np.isnan(aucroc_per_fit_np)]=0
+    
+    best_model_ind = np.argmax(aucroc_per_fit_np)
+    best_model_file = training_files[best_model_ind] 
+    
+    # get parameters of best model
+    model_params = best_model_file.split('/')[-1].split('-')
+    hiddens_param = [f for f in model_params if 'hiddens' in f][0] 
+    layers_param = [f for f in model_params if 'layers' in f][0]
+    n_hiddens = int(hiddens_param.split('=')[-1])
+    n_layers = int(layers_param.split('=')[-1]) 
+    
+    # make the plots
+    best_model_train_df = pd.DataFrame(json.load(open(best_model_file))) 
+    train_loss = best_model_train_df.train_loss
+    valid_loss = best_model_train_df.valid_loss
+    train_auroc = best_model_train_df.aucroc_score_train
+    valid_auroc = best_model_train_df.aucroc_score_valid
+    epochs = best_model_train_df.epoch
+    
+    f, axs = plt.subplots(2, 1, figsize=(12, 8), sharex=True) 
+    axs[0].plot(epochs, train_loss, label='loss (train)')
+    axs[0].plot(epochs, valid_loss, label='loss (valid)')
+    axs[0].legend()
+    axs[1].plot(epochs, train_auroc, label = 'ROC (Train)')
+    axs[1].plot(epochs, valid_auroc, label = 'ROC (Valid)')
+    axs[1].set_xlabel('Epochs')
+    axs[1].legend()
+    axs[0].set_title(best_model_file.split('/')[-1])
+    
+    f.savefig('rnn_best_model_training_plots_n_layers=%s.png'%str(n_layers))
+    return best_model_file, n_hiddens, n_layers
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -61,7 +104,7 @@ if __name__ == '__main__':
     y_test_dict_file = os.path.join(args.clf_train_test_split_dir, 'y_dict.json')
     
     # get the x test feature columns
-    x_test_dict_file = os.path.join(args.clf_train_test_split_dir, 'x_dict.json')
+    x_test_dict_file = os.path.join(args.clf_train_test_split_dir, 'x_dict_imputed.json')
     x_test_dict = load_data_dict_json(x_test_dict_file)
     feature_cols_with_mask_features = parse_feature_cols(x_test_dict)
     
@@ -145,54 +188,53 @@ if __name__ == '__main__':
         N,T,F = x_test.shape
         
         # load classifier
-        if p==0:
+        for layers in ['1', '2']:
+            saved_model_files_aka = os.path.join(clf_models_dir, '*layers=%s*history.json'%layers)
+
+            best_model_file, n_hiddens, n_layers = get_best_model(saved_model_files_aka)
             rnn = RNNBinaryClassifier(module__rnn_type='GRU',
-                              module__n_layers=1,
-                              module__n_hiddens=128,
+                              module__n_layers=n_layers,
+                              module__n_hiddens=n_hiddens,
                               module__n_inputs=x_test.shape[-1])
             rnn.initialize()
-            best_model_prefix = 'hiddens=128-layers=1-lr=0.001-dropout=0.1-weight_decay=1e-06-batch_size=512'
-            rnn.load_params(f_params=os.path.join(clf_models_dir,
-                                                  best_model_prefix+'params.pt'),
-                            f_optimizer=os.path.join(clf_models_dir,
-                                                     best_model_prefix+'optimizer.pt'),
-                            f_history=os.path.join(clf_models_dir,
-                                                   best_model_prefix+'history.json'))
-            print('Evaluating with saved model : %s'%(os.path.join(clf_models_dir, best_model_prefix)))
-        
-        print('Evaluating rnn on tslice=%s'%(tslice))
-        roc_auc_np = np.zeros(len(random_seed_list))
-        balanced_accuracy_np = np.zeros(len(random_seed_list))
-        log_loss_np = np.zeros(len(random_seed_list))
-        avg_precision_np = np.zeros(len(random_seed_list))
-        for k, seed in enumerate(random_seed_list):
-            random.seed(int(seed))
-            rnd_inds = random.sample(range(x_test.shape[0]), int(0.8*x_test.shape[0])) 
-            curr_y_test = y_test[rnd_inds]
-            curr_x_test = x_test[rnd_inds, :]
-            y_pred = np.argmax(rnn.predict_proba(curr_x_test), -1)
-            y_pred_proba = rnn.predict_proba(curr_x_test)[:, 1]
-            y_score = y_pred_proba
+#             best_model_prefix = 'hiddens=128-layers=1-lr=0.001-dropout=0.1-weight_decay=1e-06-batch_size=512'
+            rnn.load_params(f_params=best_model_file.replace('history.json', 'params.pt'),
+                            f_optimizer=best_model_file.replace('history.json', 'optimizer.pt'),
+                            f_history=best_model_file)
+            print('Evaluating with saved model : %s'%(best_model_file))
 
-            roc_auc_np[k] = roc_auc_score(curr_y_test, y_score)
-            balanced_accuracy_np[k] = balanced_accuracy_score(curr_y_test, y_pred)
-            log_loss_np[k] = log_loss(curr_y_test, y_pred_proba, normalize=True) / np.log(2)
-            avg_precision_np[k] = average_precision_score(curr_y_test, y_score)
-        
-        print('tslice : %s, ROC-AUC : %.2f'%(tslice, np.percentile(roc_auc_np, 50)))
-        
-        for prctile in prctile_vals:
-            row_dict = dict()
-            row_dict['model'] = 'RNN'
-            row_dict['percentile'] = prctile
-            row_dict['tslice'] = tslice
-            row_dict['roc_auc'] = np.percentile(roc_auc_np, prctile)
-            row_dict['balanced_accuracy'] = np.percentile(balanced_accuracy_np, prctile)
-            row_dict['log_loss'] = np.percentile(log_loss_np, prctile)
-            row_dict['average_precision'] = np.percentile(avg_precision_np, prctile)
+            print('Evaluating rnn on tslice=%s'%(tslice))
+            roc_auc_np = np.zeros(len(random_seed_list))
+            balanced_accuracy_np = np.zeros(len(random_seed_list))
+            log_loss_np = np.zeros(len(random_seed_list))
+            avg_precision_np = np.zeros(len(random_seed_list))
+            for k, seed in enumerate(random_seed_list):
+                random.seed(int(seed))
+                rnd_inds = random.sample(range(x_test.shape[0]), int(0.8*x_test.shape[0])) 
+                curr_y_test = y_test[rnd_inds]
+                curr_x_test = x_test[rnd_inds, :]
+                y_pred = np.argmax(rnn.predict_proba(curr_x_test), -1)
+                y_pred_proba = rnn.predict_proba(curr_x_test)[:, 1]
+                y_score = y_pred_proba
 
-            perf_df = perf_df.append(row_dict, ignore_index=True)      
-    
+                roc_auc_np[k] = roc_auc_score(curr_y_test, y_score)
+                balanced_accuracy_np[k] = balanced_accuracy_score(curr_y_test, y_pred)
+                log_loss_np[k] = log_loss(curr_y_test, y_pred_proba, normalize=True) / np.log(2)
+                avg_precision_np[k] = average_precision_score(curr_y_test, y_score)
+
+            print('tslice : %s, ROC-AUC : %.4f'%(tslice, np.percentile(roc_auc_np, 50)))
+
+            for prctile in prctile_vals:
+                row_dict = dict()
+                row_dict['model'] = 'GRU-layers=%s'%layers
+                row_dict['percentile'] = prctile
+                row_dict['tslice'] = tslice
+                row_dict['roc_auc'] = np.percentile(roc_auc_np, prctile)
+                row_dict['balanced_accuracy'] = np.percentile(balanced_accuracy_np, prctile)
+                row_dict['log_loss'] = np.percentile(log_loss_np, prctile)
+                row_dict['average_precision'] = np.percentile(avg_precision_np, prctile)
+
+                perf_df = perf_df.append(row_dict, ignore_index=True)      
     
     perf_csv = os.path.join(args.output_dir, 'rnn_pertslice_performance.csv')
     print('Saving RNN per-tslice performance to %s'%perf_csv)

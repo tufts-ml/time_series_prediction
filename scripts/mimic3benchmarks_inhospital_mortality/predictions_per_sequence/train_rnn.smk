@@ -14,9 +14,10 @@ $ snakemake --cores 1 --snakefile train_rnn.smk
 
 To run with multiple random seeds (prespecified in a config file)
 $ snakemake --cores all --snakefile train_rnn.smk train_and_evaluate_classifier_many_hyperparams
+
 '''
 
-configfile:"rnn_single_config.json"
+configfile:"rnn.json"
 
 # Default environment variables
 # Can override with local env variables
@@ -40,11 +41,11 @@ rule train_and_evaluate_classifier_many_hyperparams:
 rule train_and_evaluate_classifier:
     input:
         script=os.path.join(PROJECT_REPO_DIR, 'src', 'rnn', 'main_mimic.py'),
-        x_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_train.csv'),
-        x_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_test.csv'),
-        y_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_train.csv'),
-        y_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_test.csv'),
-        x_dict_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_dict.json'),
+        x_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_train_first_24_hours_imputed.csv'),
+        x_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_test_first_24_hours_imputed.csv'),
+        y_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_train_first_24_hours.csv'),
+        y_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_test_first_24_hours.csv'),
+        x_dict_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_dict_imputed.json'),
         y_dict_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_dict.json')
 
     params:

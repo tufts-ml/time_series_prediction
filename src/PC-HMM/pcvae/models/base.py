@@ -93,13 +93,13 @@ class BaseVAE(object):
             use_multiprocessing=False, checkpoint_file=None, steps_per_epoch=None, save=None, load_from=None, load_checkpoint=None,
             labeled_only=False, use_fit_generator=False, show_recon=False, show_consistency=False, show_viz=False,
             verbose=0, show_model=False, initial_weights=None, **kwargs):
-
+        
         # A little bit of bookkeeping
         self.classes = data.classes()
 
-        # Build the actual keras models
-        if not self.built:
-            self.build(data)
+#         # Build the actual keras models
+#         if not self.built:
+#             self.build(data)
 
         if load_from:
             self.model.load_weights(os.path.join(load_from, 'weights.h5'), by_name=True, skip_mismatch=True)
@@ -147,7 +147,7 @@ class BaseVAE(object):
 
         # Details of history tracking
         steps_per_epoch = data.steps_per_epoch if steps_per_epoch is None else steps_per_epoch
-
+        
         # Finally actually train the damn model
         vd = data.valid().numpy()
         vd = tf.data.Dataset.from_tensor_slices((vd, vd)).batch(np.sum(data.batch_size).astype(int))
@@ -157,7 +157,7 @@ class BaseVAE(object):
         self.history = training_engine(training_generator, validation_data=vd,
                                        steps_per_epoch=steps_per_epoch,
                                        epochs=epochs, use_multiprocessing=use_multiprocessing,
-                                       callbacks=cblr, verbose=0)
+                                       callbacks=cblr, verbose=0, batch_size=data.batch_size)
 
         if save:
             self.save(save)

@@ -5,11 +5,15 @@ Usage
 -----
 snakemake --cores all --snakefile train_pchmm.smk train_and_evaluate_classifier_many_hyperparams
 
+Schedule as slurm jobs
+----------------------
+$ snakemake --snakefile train_pchmm.smk --profile ../../../profiles/hugheslab_cluster/ train_and_evaluate_classifier_many_hyperparams
+
 '''
 
 # Default environment variables
 # Can override with local env variables
-configfile:"pchmm_single_config.json"
+configfile:"pchmm.json"
 
 # Default environment variables
 # Can override with local env variables
@@ -28,24 +32,24 @@ CLF_TRAIN_TEST_SPLIT_PATH = os.path.join(DATASET_SPLIT_FEAT_PER_TSLICE_PATH, 'cl
 
 rule train_and_evaluate_classifier_many_hyperparams:
     input:
-        [os.path.join(RESULTS_FEAT_PER_TSTEP_PATH,"pchmm-lr={lr}-seed={seed}-batch_size={batch_size}-n_states={n_states}.csv").format(lr=lr, seed=seed, batch_size=batch_size, n_states=n_states) for lr in config['lr'] for seed in config['seed'] for batch_size in config['batch_size'] for n_states in config['n_states']]
+        [os.path.join(RESULTS_FEAT_PER_TSTEP_PATH,"pchmm-lr={lr}-seed={seed}-batch_size={batch_size}-n_states={n_states}-lamb={lamb}.csv").format(lr=lr, seed=seed, batch_size=batch_size, n_states=n_states, lamb=lamb) for lr in config['lr'] for seed in config['seed'] for batch_size in config['batch_size'] for n_states in config['n_states'] for lamb in config['lamb']]
         
 rule train_and_evaluate_classifier:
     input:
-        script=os.path.join(PROJECT_REPO_DIR, 'src', 'PC-VAE', 'main_mimic.py'),
-        x_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_train.csv'),
-        x_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_test.csv'),
-        y_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_train.csv'),
-        y_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_test.csv'),
+        script=os.path.join(PROJECT_REPO_DIR, 'src', 'PC-HMM', 'main_mimic.py'),
+        x_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_train_first_24_hours.csv'),
+        x_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_test_first_24_hours.csv'),
+        y_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_train_first_24_hours.csv'),
+        y_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_test_first_24_hours.csv'),
         x_dict_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_dict.json'),
         y_dict_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_dict.json')
 
     params:
         output_dir=RESULTS_FEAT_PER_TSTEP_PATH,
-        fn_prefix="pchmm-lr={lr}-seed={seed}-batch_size={batch_size}-n_states={n_states}"
+        fn_prefix="pchmm-lr={lr}-seed={seed}-batch_size={batch_size}-n_states={n_states}-lamb={lamb}"
     
     output:
-        os.path.join(RESULTS_FEAT_PER_TSTEP_PATH, "pchmm-lr={lr}-seed={seed}-batch_size={batch_size}-n_states={n_states}.csv")
+        os.path.join(RESULTS_FEAT_PER_TSTEP_PATH, "pchmm-lr={lr}-seed={seed}-batch_size={batch_size}-n_states={n_states}-lamb={lamb}.csv")
         
     conda:
         PROJECT_CONDA_ENV_YAML
@@ -59,11 +63,12 @@ rule train_and_evaluate_classifier:
             --train_csv_files {input.x_train_csv},{input.y_train_csv} \
             --test_csv_files {input.x_test_csv},{input.y_test_csv} \
             --data_dict_files {input.x_dict_json},{input.y_dict_json} \
-            --validation_size 0.15 \
+            --validation_size 0.2 \
             --lr {wildcards.lr} \
             --n_states {wildcards.n_states} \
             --seed {wildcards.seed} \
             --batch_size {wildcards.batch_size} \
             --output_filename_prefix {params.fn_prefix} \
-        '''.replace("{{OUTCOME_COL_NAME}}", D_CONFIG["OUTCOME_COL_NAME"])
+            --lamb {wildcards.lamb} \
+        '''.replace("{{OUTCOME_COL_NAME}}", D_CONFIG["OUTCOME_COL_NAME"])\
 

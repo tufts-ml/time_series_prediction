@@ -5,10 +5,12 @@ Usage
 -----
 snakemake --cores 1 --snakefile train_skorch_mlp_with_per_sequence_features.smk train_and_evaluate_classifier_many_hyperparams
 
+snakemake --snakefile train_skorch_mlp_with_per_sequence_features.smk --profile ../../../profiles/hugheslab_cluster/ train_and_evaluate_classifier_many_hyperparams
+
 '''
 
 
-configfile : "skorch_mlp.json"
+configfile : "skorch_mlp_bce.json"
 
 from config_loader import (
     D_CONFIG,
@@ -24,14 +26,14 @@ CLF_TRAIN_TEST_SPLIT_PATH = os.path.join(DATASET_SPLIT_COLLAPSED_FEAT_PER_SEQUEN
 
 RESULTS_COLLAPSED_FEAT_PER_SEQUENCE_PATH="/cluster/tufts/hugheslab/prath01/results/mimic3/skorch_mlp"
 
-print("Training MLP MLP")
+print("Training MLP")
 print("--------------------------")
 print("Results and trained model will go to:")
 print(RESULTS_COLLAPSED_FEAT_PER_SEQUENCE_PATH)
 
 rule train_and_evaluate_classifier_many_hyperparams:
     input:
-        [os.path.join(RESULTS_COLLAPSED_FEAT_PER_SEQUENCE_PATH, "skorch_mlp_lr={lr}-weight_decay={weight_decay}-batch_size={batch_size}-scoring={scoring}-seed={seed}-n_hiddens={n_hiddens}.json").format(lr=lr, weight_decay=weight_decay, batch_size=batch_size, scoring=scoring, seed=seed, n_hiddens=n_hiddens) for lr in config['lr'] for weight_decay in config['weight_decay'] for batch_size in config['batch_size'] for scoring in config['scoring'] for seed in config['seed'] for n_hiddens in config['n_hiddens']]
+        [os.path.join(RESULTS_COLLAPSED_FEAT_PER_SEQUENCE_PATH, "skorch_mlp_lr={lr}-weight_decay={weight_decay}-batch_size={batch_size}-scoring={scoring}-seed={seed}-lamb={lamb}-n_hiddens={n_hiddens}-warm_start={warm_start}-incremental_min_precision={incremental_min_precision}-initialization_gain={initialization_gain}.json").format(lr=lr, weight_decay=weight_decay, batch_size=batch_size, scoring=scoring, seed=seed, n_hiddens=n_hiddens, lamb=lamb, warm_start=warm_start, incremental_min_precision=incremental_min_precision, initialization_gain=initialization_gain) for lr in config['lr'] for weight_decay in config['weight_decay'] for batch_size in config['batch_size'] for scoring in config['scoring'] for seed in config['seed'] for n_hiddens in config['n_hiddens'] for lamb in config['lamb'] for warm_start in config['warm_start'] for incremental_min_precision in config['incremental_min_precision'] for initialization_gain in config['initialization_gain']]
 
 
 rule train_and_evaluate_classifier:
@@ -46,10 +48,10 @@ rule train_and_evaluate_classifier:
 
     params:
         output_dir=RESULTS_COLLAPSED_FEAT_PER_SEQUENCE_PATH,
-        fn_prefix="skorch_mlp_lr={lr}-weight_decay={weight_decay}-batch_size={batch_size}-scoring={scoring}-seed={seed}-n_hiddens={n_hiddens}"
+        fn_prefix="skorch_mlp_lr={lr}-weight_decay={weight_decay}-batch_size={batch_size}-scoring={scoring}-seed={seed}-lamb={lamb}-n_hiddens={n_hiddens}-warm_start={warm_start}-incremental_min_precision={incremental_min_precision}-initialization_gain={initialization_gain}"
 
     output:
-        os.path.join(RESULTS_COLLAPSED_FEAT_PER_SEQUENCE_PATH, "skorch_mlp_lr={lr}-weight_decay={weight_decay}-batch_size={batch_size}-scoring={scoring}-seed={seed}-n_hiddens={n_hiddens}.json")
+        os.path.join(RESULTS_COLLAPSED_FEAT_PER_SEQUENCE_PATH, "skorch_mlp_lr={lr}-weight_decay={weight_decay}-batch_size={batch_size}-scoring={scoring}-seed={seed}-lamb={lamb}-n_hiddens={n_hiddens}-warm_start={warm_start}-incremental_min_precision={incremental_min_precision}-initialization_gain={initialization_gain}.json")
 
     conda:
         PROJECT_CONDA_ENV_YAML
@@ -64,7 +66,7 @@ rule train_and_evaluate_classifier:
             --train_csv_files {input.x_train_csv},{input.y_train_csv} \
             --test_csv_files {input.x_test_csv},{input.y_test_csv} \
             --data_dict_files {input.x_dict_json},{input.y_dict_json} \
-            --validation_size 0.15 \
+            --validation_size 0.25 \
             --key_cols_to_group_when_splitting {{SPLIT_KEY_COL_NAMES}} \
             --scoring {wildcards.scoring} \
             --lr {wildcards.lr} \
@@ -73,6 +75,10 @@ rule train_and_evaluate_classifier:
             --merge_x_y False \
             --seed {wildcards.seed} \
             --n_hiddens {wildcards.n_hiddens} \
-            --n_splits 5\
+            --n_splits 1\
+            --lamb {wildcards.lamb}\
+            --warm_start {wildcards.warm_start} \
+            --incremental_min_precision {wildcards.incremental_min_precision}\
+            --initialization_gain {wildcards.initialization_gain}\
         '''.replace("{{OUTCOME_COL_NAME}}", D_CONFIG["OUTCOME_COL_NAME"])\
            .replace("{{SPLIT_KEY_COL_NAMES}}", D_CONFIG["SPLIT_KEY_COL_NAMES"])

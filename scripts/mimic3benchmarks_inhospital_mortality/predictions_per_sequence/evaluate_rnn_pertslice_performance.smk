@@ -15,8 +15,10 @@ sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src'))
     
 evaluate_tslice_hours_list=D_CONFIG['EVALUATE_TIMESLICE_LIST']
 random_seed_list=D_CONFIG['CLF_RANDOM_SEED_LIST']
+RESULTS_FEAT_PER_TSTEP_PATH="/cluster/tufts/hugheslab/prath01/results/mimic3/rnn/"
 CLF_TRAIN_TEST_SPLIT_PATH = os.path.join(DATASET_SPLIT_FEAT_PER_TSLICE_PATH, 'classifier_train_test_split_dir')
-CLF_MODELS_PATH = os.path.join(RESULTS_FEAT_PER_TSTEP_PATH, 'rnn')
+CLF_MODELS_PATH = RESULTS_FEAT_PER_TSTEP_PATH
+
 
 rule evaluate_performance:
     input:

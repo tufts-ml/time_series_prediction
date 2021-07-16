@@ -1,0 +1,11 @@
+{
+    "lr": [0.0025],
+    "batch_size": [-1],
+    "weight_decay": [0],
+    "scoring" : ["cross_entropy_loss"],
+    "lamb" : [1000, 10000], 
+    "warm_start" : ["false"],
+    "incremental_min_precision" : ["false"],
+    "initialization_gain" : [1.0, 3.0],
+    "seed" : [46788, 23124, 7437, 8577, 97, 123, 1111, 634, 789, 51, 6231, 774, 82432, 9623, 1451, 111121, 623, 566, 1001, 3231, 66, 1020, 190, 89955, 7126]
+}

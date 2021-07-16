@@ -1,0 +1,8 @@
+{
+    "lr": [0.03],
+    "seed" : [5121],
+    "batch_size" : [256],
+    "lamb" : [100000],
+    "n_states" : [10],
+    "perc_labelled" : [10],
+}

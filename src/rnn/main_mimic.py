@@ -110,7 +110,6 @@ def main():
     print('Ratio positive in train : %.2f'%((y_train==1).sum()/len(y_train)))
     print('Ratio positive in test : %.2f'%((y_test==1).sum()/len(y_test)))
     
-    from IPython import embed; embed()
     # callback to compute gradient norm
     compute_grad_norm = ComputeGradientNorm(norm_type=2)
 
@@ -127,7 +126,7 @@ def main():
     print('RNN parameters : '+ output_filename_prefix)
     
     rnn = RNNBinaryClassifier(
-              max_epochs=100,
+              max_epochs=30,
               batch_size=args.batch_size,
               device=device,
               lr=args.lr,

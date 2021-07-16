@@ -62,8 +62,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
         
     #go through all the saved loss plots
-    all_fits_csvs = glob.glob(os.path.join(args.fits_dir, "pchmm-*.csv"))
-
+    all_fits_csvs = glob.glob(os.path.join(args.fits_dir, "pchmm-*lamb=1.csv"))
+    
     losses_per_fit_list = []
     auc_per_fit_list = []
     for fit_csv in all_fits_csvs:
@@ -121,9 +121,8 @@ if __name__ == '__main__':
     features_outcomes_df.drop_duplicates(subset=id_cols, inplace=True)
     y_N = features_outcomes_df['did_overheat_binary_label'].values
     
-    from IPython import embed; embed()
     visualize2D(data_DTN=data_DTN, y_N=y_N, mu_all=mu_all, cov_all=cov_all, levels=3, 
                 colorlist=['salmon', 'blue'], markerlist=['$x$', '$o$'], alpha=0.3)
     
-#     from IPython import embed; embed()
+    from IPython import embed; embed()
         

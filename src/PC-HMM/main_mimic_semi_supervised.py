@@ -3,7 +3,7 @@ import argparse
 import numpy as np 
 import pandas as pd
 import json
-from sklearn.model_selection import GridSearchCV, cross_validate, ShuffleSplit
+from sklearn.model_selection import GridSearchCV, cross_validate, ShuffleSplit, StratifiedShuffleSplit
 from sklearn.metrics import (roc_curve, accuracy_score, log_loss, 
                              balanced_accuracy_score, confusion_matrix, 
                              roc_auc_score, make_scorer)
@@ -38,8 +38,33 @@ import tensorflow as tf
 import numpy.ma as ma
 from sklearn.cluster import KMeans
 
+# def standardize_data_for_pchmm(X_train, y_train, X_test, y_test):
+def convert_to_categorical(y):
+    C = len(np.unique(y))
+    N = len(y)
+    y_cat = np.zeros((N, C))
+    y_cat[:, 0] = (y==0)*1.0
+    y_cat[:, 1] = (y==1)*1.0
+    
+    return y_cat
 
-def main():
+def save_loss_plots(model, save_file, data_dict):
+    model_hist = model.history.history
+    epochs = range(len(model_hist['loss']))
+    hmm_model_loss = model_hist['hmm_model_loss']
+    predictor_loss = model_hist['predictor_loss']
+    model_hist['epochs'] = epochs
+    model_hist['n_train'] = len(data_dict['train'][1])
+    model_hist['n_valid'] = len(data_dict['valid'][1])
+    model_hist['n_test'] = len(data_dict['test'][1])
+    model_hist_df = pd.DataFrame(model_hist)
+    
+    # save to file
+    model_hist_df.to_csv(save_file, index=False)
+    print('Training plots saved to %s'%save_file)
+
+
+if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='pchmm fitting')
     parser.add_argument('--outcome_col_name', type=str, required=True)
     parser.add_argument('--train_csv_files', type=str, required=True)
@@ -53,10 +78,14 @@ def main():
                         help='Learning rate for the optimizer')
     parser.add_argument('--seed', type=int, default=1111,
                         help='random seed')
+    parser.add_argument('--lamb', type=int, default=100,
+                        help='Langrange multiplier')
     parser.add_argument('--validation_size', type=float, default=0.15,
                         help='validation split size')
     parser.add_argument('--n_states', type=int, default=0.15,
                         help='number of HMM states')
+    parser.add_argument('--perc_labelled', type=int, default=0.15,
+                        help='percentage of labelled examples')
     parser.add_argument('--output_dir', type=str, default=None, 
                         help='directory where trained model and loss curves over epochs are saved')
     parser.add_argument('--output_filename_prefix', type=str, default=None, 
@@ -69,7 +98,7 @@ def main():
     x_test_csv_filename, y_test_csv_filename = args.test_csv_files.split(',')
     x_dict, y_dict = args.data_dict_files.split(',')
     x_data_dict = load_data_dict_json(x_dict)
-
+    
     # get the id and feature columns
     id_cols = parse_id_cols(x_data_dict)
     feature_cols = parse_feature_cols(x_data_dict)
@@ -99,9 +128,39 @@ def main():
     N,T,F = X_train.shape
     
     print('number of data points : %d\nnumber of time points : %s\nnumber of features : %s\n'%(N,T,F))
+      
+    # split train into train and validation with label balancing
+#     X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=args.validation_size, 
+#                                                       random_state=213, shuffle=False)
+    sss = StratifiedShuffleSplit(n_splits=1, test_size=args.validation_size, random_state=213)
+    for train_idx, val_idx in sss.split(X_train, y_train):
+        X_train, X_val = X_train[train_idx], X_train[val_idx]
+        y_train, y_val = y_train[train_idx], y_train[val_idx]
     
-    # split train into train and validation
-    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=args.validation_size, random_state=213)
+    
+    # mask labels in training set and validation set as per user provided %perc_labelled
+    N_tr = len(X_train)
+    N_va = len(X_val)
+    N_te = len(X_test)
+    
+    state_id = 41
+    rnd_state = np.random.RandomState(state_id)
+    n_unlabelled_tr = int((1-(args.perc_labelled)/100)*N_tr)
+    unlabelled_inds_tr = rnd_state.permutation(N_tr)[:n_unlabelled_tr]
+    y_train = y_train.astype(np.float32)
+    y_train[unlabelled_inds_tr] = np.nan  
+    
+    rnd_state = np.random.RandomState(state_id)
+    n_unlabelled_va = int((1-(args.perc_labelled)/100)*N_va)
+    unlabelled_inds_va = rnd_state.permutation(N_va)[:n_unlabelled_va]
+    y_val = y_val.astype(np.float32)
+    y_val[unlabelled_inds_va] = np.nan 
+    
+    rnd_state = np.random.RandomState(state_id)
+    n_unlabelled_te = int((1-(args.perc_labelled)/100)*N_te)
+    unlabelled_inds_te = rnd_state.permutation(N_te)[:n_unlabelled_te]
+    y_test = y_test.astype(np.float32)
+    y_test[unlabelled_inds_te] = np.nan 
     
     X_train = np.expand_dims(X_train, 1)
     X_val = np.expand_dims(X_val, 1)
@@ -117,14 +176,14 @@ def main():
     # get the init means and covariances of the observation distribution by clustering
     print('Initializing cluster means with kmeans...')
     prng = np.random.RandomState(args.seed)
-    n_init = 10000
+    n_init = 15000
     init_inds = prng.permutation(N)[:n_init]# select random samples from training set
     X_flat = X_train[:n_init].reshape(n_init*T, X_train.shape[-1])# flatten across time
     X_flat = np.where(np.isnan(X_flat), ma.array(X_flat, mask=np.isnan(X_flat)).mean(axis=0), X_flat)
         
     # get cluster means
     n_states = args.n_states
-    kmeans = KMeans(n_clusters=n_states, random_state=42).fit(X_flat)
+    kmeans = KMeans(n_clusters=n_states, n_init=10).fit(X_flat)
     init_means = kmeans.cluster_centers_
     
     # get cluster covariance in each cluster
@@ -141,7 +200,7 @@ def main():
 
     model = HMM(
             states=n_states,                                     
-            lam=100,                                      
+            lam=args.lamb,                                      
             prior_weight=0.01,
             observation_dist='NormalWithMissing',
             observation_initializer=dict(loc=init_means, 
@@ -158,17 +217,17 @@ def main():
     
     # set the regression coefficients of the model
     eta_weights = np.zeros((n_states, 2))  
-    
+        
     # set the initial etas as the weights from logistic regression classifier with average beliefs as features 
-    x,y = data.train().numpy()
+    x_train,y_train = data.train().numpy()
     
-    pos_inds = np.where(y[:,1]==1)[0]
-    neg_inds = np.where(y[:,0]==1)[0]
+    pos_inds = np.where(y_train[:,1]==1)[0]
+    neg_inds = np.where(y_train[:,0]==1)[0]
     
-    x_pos = x[pos_inds]
-    y_pos = y[pos_inds]
-    x_neg = x[neg_inds]
-    y_neg = y[neg_inds]
+    x_pos = x_train[pos_inds]
+    y_pos = y_train[pos_inds]
+    x_neg = x_train[neg_inds]
+    y_neg = y_train[neg_inds]
     
     # get their belief states of the positive and negative sequences
     z_pos = model.hmm_model.predict(x_pos)
@@ -202,22 +261,33 @@ def main():
     init_etas = [opt_eta_weights, opt_eta_intercept]
     model._predictor.set_weights(init_etas)
     
-    model.fit(data, steps_per_epoch=1, epochs=200, batch_size=args.batch_size, lr=args.lr,
+    
+    model.fit(data, steps_per_epoch=10, epochs=50, batch_size=args.batch_size, lr=args.lr,
               initial_weights=model.model.get_weights())
+    
+    # evaluate on test set
+#     x_train, y_train = data.train().numpy()
+    z_train = model.hmm_model.predict(x_train)
+    y_train_pred_proba = model._predictor.predict(z_train)
+    labelled_inds_tr = ~np.isnan(y_train[:,0])
+    train_roc_auc = roc_auc_score(y_train[labelled_inds_tr], y_train_pred_proba[labelled_inds_tr])
+    print('ROC AUC on train : %.2f'%train_roc_auc)
+    
     
     # evaluate on test set
     x_test, y_test = data.test().numpy()
     z_test = model.hmm_model.predict(x_test)
     y_test_pred_proba = model._predictor.predict(z_test)
-    test_roc_auc = roc_auc_score(y_test, y_test_pred_proba)
+    labelled_inds_te = ~np.isnan(y_test[:,0])
+    test_roc_auc = roc_auc_score(y_test[labelled_inds_te], y_test_pred_proba[labelled_inds_te])
     print('ROC AUC on test : %.2f'%test_roc_auc)
     
     # get the parameters of the fit distribution
-    mu_all = model.hmm_model(x).observation_distribution.distribution.mean().numpy()
+    mu_all = model.hmm_model(x_train).observation_distribution.distribution.mean().numpy()
     try:
-        cov_all = model.hmm_model(x).observation_distribution.distribution.covariance().numpy()
+        cov_all = model.hmm_model(x_train).observation_distribution.distribution.covariance().numpy()
     except:
-        cov_all = model.hmm_model(x).observation_distribution.distribution.scale.numpy()
+        cov_all = model.hmm_model(x_train).observation_distribution.distribution.scale.numpy()
         
     eta_all = np.vstack(model._predictor.get_weights())
     
@@ -237,34 +307,9 @@ def main():
     model.model.save_weights(model_filename, save_format='h5')
     
     
-# def standardize_data_for_pchmm(X_train, y_train, X_test, y_test):
-def convert_to_categorical(y):
-    C = len(np.unique(y))
-    N = len(y)
-    y_cat = np.zeros((N, C))
-    y_cat[:, 0] = (y==0)*1.0
-    y_cat[:, 1] = (y==1)*1.0
     
-    return y_cat
-
-def save_loss_plots(model, save_file, data_dict):
-    model_hist = model.history.history
-    epochs = range(len(model_hist['loss']))
-    hmm_model_loss = model_hist['hmm_model_loss']
-    predictor_loss = model_hist['predictor_loss']
-    model_hist['epochs'] = epochs
-    model_hist['n_train'] = len(data_dict['train'][1])
-    model_hist['n_valid'] = len(data_dict['valid'][1])
-    model_hist['n_test'] = len(data_dict['test'][1])
-    model_hist_df = pd.DataFrame(model_hist)
-    
-    # save to file
-    model_hist_df.to_csv(save_file, index=False)
-    print('Training plots saved to %s'%save_file)
-    
-    
-if __name__ == '__main__':
-    main()
+# if __name__ == '__main__':
+#     main()
     
     '''
     Debugging code

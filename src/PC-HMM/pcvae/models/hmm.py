@@ -3,7 +3,6 @@ from tensorflow.keras.layers import Lambda, Dropout, Add, Input, Dense, Concaten
     LeakyReLU, Activation
 from tensorflow.keras.models import Model
 from .base import BaseVAE
-from pcvae.third_party.keras_patch import ConsistantKModel
 import numpy as np
 from ..util.distributions import *
 from ..util.optimizers import get_optimizer
@@ -137,8 +136,8 @@ class HMM(BaseVAE):
         self.model = Model(inputs=[input_x, input_y], outputs=[hmm, prediction],
                            name='training_model')
 
-        self.model.compile(optimizer=self.optimizer, loss=[nll(prior_weight=self.prior_weight),
-                                                           nll(self.lam)], run_eagerly=self.debug, 
+        self.model.compile(optimizer=self.optimizer, loss=[nll_data(prior_weight=self.prior_weight),
+                                                           nll_labels(self.lam)], run_eagerly=self.debug, 
                            metrics=[[None], self.metric], experimental_run_tf_function=True)
 
 

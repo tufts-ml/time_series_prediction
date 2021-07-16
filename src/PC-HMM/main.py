@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 #     os.environ.get('PROJECT_REPO_DIR', DEFAULT_PROJECT_REPO))
 PROJECT_REPO_DIR = os.path.abspath(os.path.join(__file__, '../../../'))
 sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src', 'rnn'))
-sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src', 'PC-VAE'))
+sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src', 'PC-HMM'))
 
 from dataset_loader import TidySequentialDataCSVLoader
 from feature_transformation import (parse_id_cols, parse_feature_cols)
@@ -35,6 +35,8 @@ from sklearn.model_selection import train_test_split
 from pcvae.util.optimizers import get_optimizer
 from sklearn.linear_model import LogisticRegression
 import tensorflow as tf
+import numpy.ma as ma
+from sklearn.cluster import KMeans
 
 def get_sequence_lengths(X_NTF, pad_val):
     N = X_NTF.shape[0]
@@ -44,8 +46,34 @@ def get_sequence_lengths(X_NTF, pad_val):
         seq_lens_N[n] = np.searchsorted(bmask_T, 1)
     return seq_lens_N
 
+# def standardize_data_for_pchmm(X_train, y_train, X_test, y_test):
+def convert_to_categorical(y):
+    C = len(np.unique(y))
+    N = len(y)
+    y_cat = np.zeros((N, C))
+    y_cat[:, 0] = (y==0)*1.0
+    y_cat[:, 1] = (y==1)*1.0
+    
+    return y_cat
 
-def main():
+def save_loss_plots(model, save_file, data_dict):
+    model_hist = model.history.history
+    epochs = range(len(model_hist['loss']))
+    hmm_model_loss = model_hist['hmm_model_loss']
+    predictor_loss = model_hist['predictor_loss']
+    model_hist['epochs'] = epochs
+    model_hist['n_train'] = len(data_dict['train'][1])
+    model_hist['n_valid'] = len(data_dict['valid'][1])
+    model_hist['n_test'] = len(data_dict['test'][1])
+    model_hist_df = pd.DataFrame(model_hist)
+    
+    # save to file
+    model_hist_df.to_csv(save_file, index=False)
+    print('Training plots saved to %s'%save_file)
+    
+
+
+if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='pchmm fitting')
     parser.add_argument('--outcome_col_name', type=str, required=True)
     parser.add_argument('--train_csv_files', type=str, required=True)
@@ -65,6 +93,8 @@ def main():
                         help='directory where trained model and loss curves over epochs are saved')
     parser.add_argument('--output_filename_prefix', type=str, default=None, 
                         help='prefix for the training history jsons and trained classifier')
+    parser.add_argument('--lamb', type=int, default=1111,
+                        help='langrange multiplier')
     args = parser.parse_args()
 
     rs = RandomState(args.seed)
@@ -114,6 +144,23 @@ def main():
     # split train into train and validation
     X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=args.validation_size, random_state=213)
     
+    # get the init means and covariances of the observation distribution by clustering
+    print('Initializing cluster means with kmeans...')
+    prng = np.random.RandomState(args.seed)
+    N = len(X_train)
+    init_inds = prng.permutation(N)# select random samples from training set
+    X_flat = X_train.reshape(N*T, X_train.shape[-1])# flatten across time
+    X_flat = np.where(np.isnan(X_flat), ma.array(X_flat, mask=np.isnan(X_flat)).mean(axis=0), X_flat)
+        
+    # get cluster means
+    n_states = 12
+    kmeans = KMeans(n_clusters=n_states, random_state=42).fit(X_flat)
+    init_means = kmeans.cluster_centers_
+    
+    # get cluster covariance in each cluster
+    init_covs = np.stack([np.zeros(F) for i in range(n_states)])
+    
+    
     X_train = np.expand_dims(X_train, 1)
     X_val = np.expand_dims(X_val, 1)
     X_test = np.expand_dims(X_test, 1)
@@ -127,11 +174,10 @@ def main():
     
     
     # train model
-    n_states = 12
     spacing = 5
     optimizer = get_optimizer('adam', lr = args.lr)
-    init_means = np.zeros((n_states, F))
-    init_means[:, 0] = np.arange(0, n_states*spacing, spacing)
+#     init_means = np.zeros((n_states, F))
+#     init_means[:, 0] = np.arange(0, n_states*spacing, spacing)
 #     init_means[0, :] = [0, .75]
 #     init_means[10, :] = [0, -.75]
 #     init_means[3, :] = [15, .75]
@@ -165,7 +211,7 @@ def main():
 
     model = HMM(
             states=n_states,                                     
-            lam=1000,                                      
+            lam=args.lamb,                                      
             prior_weight=0.01,
             observation_dist='NormalWithMissing',
             observation_initializer=dict(loc=init_means, 
@@ -250,34 +296,8 @@ def main():
     save_file = os.path.join(args.output_dir, args.output_filename_prefix+'.csv')
     save_loss_plots(model, save_file, data_dict)
 
-# def standardize_data_for_pchmm(X_train, y_train, X_test, y_test):
-def convert_to_categorical(y):
-    C = len(np.unique(y))
-    N = len(y)
-    y_cat = np.zeros((N, C))
-    y_cat[:, 0] = (y==0)*1.0
-    y_cat[:, 1] = (y==1)*1.0
-    
-    return y_cat
 
-def save_loss_plots(model, save_file, data_dict):
-    model_hist = model.history.history
-    epochs = range(len(model_hist['loss']))
-    hmm_model_loss = model_hist['hmm_model_loss']
-    predictor_loss = model_hist['predictor_loss']
-    model_hist['epochs'] = epochs
-    model_hist['n_train'] = len(data_dict['train'][1])
-    model_hist['n_valid'] = len(data_dict['valid'][1])
-    model_hist['n_test'] = len(data_dict['test'][1])
-    model_hist_df = pd.DataFrame(model_hist)
     
-    # save to file
-    model_hist_df.to_csv(save_file, index=False)
-    print('Training plots saved to %s'%save_file)
-    
-    
-if __name__ == '__main__':
-    main()
     
     '''
     Debugging code

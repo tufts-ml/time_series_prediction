@@ -56,29 +56,54 @@ def get_best_model(clf_models_dir, filename_aka):
     return training_files[best_model_ind]
     
 
+def get_best_model_after_threshold_search(clf_models_dir, filename_aka):
+    ''' Get the best model from training history'''
+    training_files = glob.glob(os.path.join(clf_models_dir, filename_aka))
+    valid_losses_np = np.zeros(len(training_files))
+    precision_valid_np = np.zeros(len(training_files))
+    recall_valid_np = np.zeros(len(training_files))
+    for i, f in enumerate(training_files):
+        training_hist_df = pd.read_csv(f)
+        # get the model with lowest validation loss
+        precision_valid_np[i] = training_hist_df.precision_train.values[-1]
+        recall_valid_np[i] = training_hist_df.recall_train.values[-1]
+    precision_valid_np[np.isnan(precision_valid_np)]=0
+    recall_valid_np[np.isnan(recall_valid_np)]=0
+    best_model_ind = np.argmax(precision_valid_np)
+#     best_model_ind = np.argmin(valid_losses_np)
+    return training_files[best_model_ind]
+
+
+    
 def plot_best_model_training_plots(best_model_history_file, plt_name):
     
-    metrics = ['precision', 'recall', 'loss']
+    metrics = ['precision', 'recall', 'bce_loss', 'surr_loss', 'fpu_bound', 'tpl_bound']
     training_hist_df = pd.DataFrame(json.load(open(best_model_history_file))) 
     f, axs = plt.subplots(len(metrics), 1, figsize=(8,8), sharex=True)
     
-    
     for i, metric in enumerate(metrics): 
         # plot epochs vs precision on train and validation
-        try:
-            axs[i].plot(training_hist_df.epoch, training_hist_df['%s_train'%metric], label='%s(train)'%metric)
-            axs[i].plot(training_hist_df.epoch, training_hist_df['%s_valid'%metric], label='%s(validation)'%metric) 
-            axs[i].set_ylim([0.1, 1])
-        except:
-            axs[i].plot(training_hist_df.epoch, training_hist_df['train_%s'%metric], label='%s(train)'%metric)
-            axs[i].plot(training_hist_df.epoch, training_hist_df['valid_%s'%metric], label='%s(validation)'%metric)             
-        axs[i].set_ylabel(metric)
+        if (metric == 'fpu_bound'):
+            axs[i].plot(training_hist_df.epoch, training_hist_df['fpu_bound_train'], color='r', label='FP upper bound')
+            axs[i].plot(training_hist_df.epoch, training_hist_df['fp_train'], color='b', label='FP train')
+        elif (metric == 'tpl_bound'):
+            axs[i].plot(training_hist_df.epoch, training_hist_df['tpl_bound_train'], color='r', label='TP lower bound')
+            axs[i].plot(training_hist_df.epoch, training_hist_df['tp_train'], color='b', label='TP train')            
+        else:
+            try:
+                axs[i].plot(training_hist_df.epoch, training_hist_df['%s_train'%metric], color='b', label='%s(train)'%metric)
+                axs[i].plot(training_hist_df.epoch, training_hist_df['%s_valid'%metric], color='k', label='%s(validation)'%metric) 
+#                 axs[i].set_ylim([0.1, 1])
+            except:
+                axs[i].plot(training_hist_df.epoch, training_hist_df['train_%s'%metric], color='b', label='%s(train)'%metric)
+                axs[i].plot(training_hist_df.epoch, training_hist_df['valid_%s'%metric], color='k', label='%s(validation)'%metric)             
+            axs[i].set_ylabel(metric)
         axs[i].legend()
         axs[i].grid(True)   
     axs[i].set_xlabel('epochs')
     plt.suptitle(plt_name)
     f.savefig(plt_name+'.png')
-    
+#     from IPython import embed; embed()
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--clf_models_dir', default=None, type=str,
@@ -124,7 +149,7 @@ if __name__ == '__main__':
     tslice_folders = os.path.join(args.tslice_folder, 'TSLICE=')
     collapsed_tslice_folders = os.path.join(args.collapsed_tslice_folder, 'TSLICE=')
     outcome_col = args.outcome_column_name
-    tslices_list = args.evaluation_tslices.split(' ')
+    tslices_list = ['24','48','72']
     y_test_ids_df = y_test_df[id_cols].drop_duplicates(subset=id_cols).reset_index(drop=True)
     
     
@@ -167,10 +192,14 @@ if __name__ == '__main__':
             
             # get the best model minimizining bce loss
             bce_filename_aka = 'skorch_logistic_regression*cross_entropy_loss*history.json'
+            bce_plus_thresh_filename_aka = 'skorch_logistic_regression*cross_entropy_loss*perf.csv'
+            
             best_model_file_bce = get_best_model(clf_models_dir, bce_filename_aka)
+            best_model_file_bce_plus_thresh = get_best_model_after_threshold_search(clf_models_dir, bce_plus_thresh_filename_aka)
             
             # plot training plots of best model
-            plot_best_model_training_plots(best_model_file_bce, 'logistic_regression_minimizing_cross_entropy')
+#             plot_best_model_training_plots(best_model_file_bce, 'logistic_regression_minimizing_cross_entropy')
+            plot_best_model_training_plots(best_model_file_bce_plus_thresh.replace('_perf.csv', 'history.json'), 'logistic_regression_minimizing_cross_entropy')
             
             best_model_prefix_bce = best_model_file_bce.split('/')[-1].replace('history.json', '') 
             
@@ -185,8 +214,12 @@ if __name__ == '__main__':
             
             # get the best model minimizining surrogate loss
             sl_filename_aka = 'skorch_logistic_regression*surrogate_loss_tight*history.json'
-            best_model_file_sl = get_best_model(clf_models_dir, sl_filename_aka)
-
+            sl_csv_aka = 'skorch_logistic_regression*surrogate_loss_tight*perf.csv'
+            
+#             best_model_file_sl = get_best_model(clf_models_dir, sl_filename_aka)
+            best_model_file_sl = get_best_model_after_threshold_search(clf_models_dir, sl_csv_aka)
+            best_model_file_sl = best_model_file_sl.replace('_perf.csv', 'history.json')
+            
             # plot training plots of best model
             plot_best_model_training_plots(best_model_file_sl, 'logistic_regression_minimizing_surrogate_loss_tight')
 

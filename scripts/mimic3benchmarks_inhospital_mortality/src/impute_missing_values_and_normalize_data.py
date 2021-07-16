@@ -110,8 +110,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
     
     # get the train test features
-    x_train_csv=os.path.join(args.train_test_split_dir, 'x_train.csv')
-    x_test_csv=os.path.join(args.train_test_split_dir, 'x_test.csv')
+    x_train_csv=os.path.join(args.train_test_split_dir, 'x_train_first_24_hours.csv')
+    x_test_csv=os.path.join(args.train_test_split_dir, 'x_test_first_24_hours.csv')
     x_dict_json=os.path.join(args.train_test_split_dir, 'x_dict.json')
     
     # impute values by carry forward and then pop mean on train and test sets separately

@@ -108,8 +108,10 @@ class classification_dataset(labeled_dataset):
         if unsupervised:
             return ynew
         for c in range(self.classes()):
-#             from IPython import embed; embed()
             ynew[np.squeeze(y) == c, c] = 1
+        
+        # leave the unlabelled data untouched
+        ynew[np.isnan(y)] = np.nan
         return ynew
 
     def get_metrics(self):
@@ -224,7 +226,8 @@ class dataset(labeled_dataset, remote_dataset, input_dataset):
         # Extract the relevant features
         as_supervised = self.xkey == 0 and self.ykey == 1
         train, test, labeled = self.data['train'], self.data['test'], None
-
+        
+        
         if not as_supervised:
             def mf(a):
                 x = a[self.xkey]
@@ -246,7 +249,7 @@ class dataset(labeled_dataset, remote_dataset, input_dataset):
         else:
             valid = self.data['valid'] if 'valid' in self.data else None
             extra = self.data['extra'] if 'extra' in self.data else None
-
+        
         # Get training data as numpy arrays
         (x_train, y_train) = (
             np.concatenate([as_np(d[0]) for d in train], axis=0),
@@ -256,7 +259,7 @@ class dataset(labeled_dataset, remote_dataset, input_dataset):
         inds = np.arange(x_train.shape[0])
         np.random.shuffle(inds)
         x_train, y_train = x_train[inds], y_train[inds]
-        print('Class dist', np.mean(y_train, axis=0))
+        print('Class dist', np.nanmean(y_train, axis=0))
 
         # Get validation data if needed
         if valid is None:

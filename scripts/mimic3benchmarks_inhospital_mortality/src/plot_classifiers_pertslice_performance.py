@@ -29,7 +29,7 @@ if __name__ == '__main__':
     # plot performance as a function of hours from admission, % data observed and hours from deterioration 
     tslices_list=perf_df.tslice.unique()
     
-    from IPython import embed; embed()
+#     from IPython import embed; embed()
     print('Saving plots to : \n%s'%(args.output_dir))
     neg_tslices_list = [i for i in tslices_list if '-' in i]
     perc_tslices_list = [i for i in tslices_list if '%' in i]

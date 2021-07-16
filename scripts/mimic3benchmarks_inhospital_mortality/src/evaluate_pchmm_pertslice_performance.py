@@ -15,14 +15,14 @@ PROJECT_REPO_DIR = os.path.abspath(
 
 sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src'))
 sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src', 'rnn'))
-sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src', 'PC-VAE'))
+sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src', 'PC-HMM'))
 
 #import LR model before importing other packages because joblib files act weird when certain packages are loaded
 from feature_transformation import *
 import matplotlib.pyplot as plt
 from sklearn.metrics import (accuracy_score, balanced_accuracy_score, f1_score,
                              average_precision_score, confusion_matrix, log_loss,
-                             roc_auc_score, roc_curve, precision_recall_curve)
+                             roc_auc_score, roc_curve, precision_recall_curve, recall_score, precision_score)
 from utils import load_data_dict_json
 from dataset_loader import TidySequentialDataCSVLoader
 # from RNNBinaryClassifier import RNNBinaryClassifier
@@ -32,7 +32,36 @@ import random
 from pcvae.datasets.toy import toy_line, custom_dataset
 from pcvae.models.hmm import HMM
 from scipy.special import softmax
+import glob
 
+def get_best_model_file(saved_model_files_aka):
+    
+    training_files = glob.glob(saved_model_files_aka)
+    aucroc_per_fit_list = []
+    loss_per_fit_list = []
+    
+    for i, training_file in enumerate(training_files):
+        train_perf_df = pd.read_csv(training_file)
+        aucroc_per_fit_list.append(train_perf_df['val_predictor_AUC'].values[-1])
+        loss_per_fit_list.append(train_perf_df['val_predictor_loss'].values[-1])
+    
+    aucroc_per_fit_np = np.array(aucroc_per_fit_list)
+    aucroc_per_fit_np[np.isnan(aucroc_per_fit_np)]=0
+    
+    loss_per_fit_np = np.array(loss_per_fit_list)
+    loss_per_fit_np[np.isnan(loss_per_fit_np)]=10^8
+    
+#     best_model_ind = np.argmax(aucroc_per_fit_np)
+    best_model_ind = np.argmin(loss_per_fit_np)
+    
+    best_model_file = training_files[best_model_ind]
+    
+    # get the number of states of best file
+    best_fit_params = best_model_file.split('-')
+    n_states_param = [s for s in best_fit_params if 'n_states' in s][0]
+    n_states = int(n_states_param.split('=')[-1])
+    
+    return best_model_file, n_states
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -106,30 +135,6 @@ if __name__ == '__main__':
         
 #         print('Adding missing values mask as features...')
         feature_cols = parse_feature_cols(features_dict)
-#         for feature_col in feature_cols:
-#             test_features_df.loc[:, 'mask_'+feature_col] = (~test_features_df[feature_col].isna())*1.0
-            
-#         print('Adding time since last missing value is observed as features...')
-#         test_features_df = get_time_since_last_observed_features(test_features_df, id_cols, time_col, feature_cols)
-        
-        # impute missing values in the test features
-#         test_features_df = test_features_df.groupby(id_cols).apply(lambda x: x.fillna(method='pad')).copy()
-
-#         for feature_col in feature_cols:
-#             test_features_df[feature_col].fillna(test_features_df[feature_col].mean(), inplace=True)  
-        
-        
-        # normalize the data
-#         for feature_col in feature_cols_with_mask_features:
-#             feat_ind = normalization_estimates_df.feature==feature_col 
-#             numerator_scaling = np.asarray(normalization_estimates_df[feat_ind]['numerator_scaling'])
-#             denominator_scaling = np.asarray(normalization_estimates_df[feat_ind]['denominator_scaling'])
-#             test_features_df[feature_col] = (test_features_df[feature_col] - numerator_scaling)/denominator_scaling
-            
-#             if test_features_df[feature_col].isna().sum()>0:
-#                 test_features_df[feature_col]=numerator_scaling[0]
-#         test_features_df = test_features_df[id_cols + [time_col] + feature_cols_with_mask_features].copy()
-        
     
         # load test data with TidySequentialDataLoader
         test_vitals = TidySequentialDataCSVLoader(
@@ -156,53 +161,67 @@ if __name__ == '__main__':
         data = custom_dataset(data_dict=data_dict)
         
         
-        # load classifier
-        n_states = 12 
-        model = HMM(states=n_states,
-                    observation_dist='NormalWithMissing',
-                    predictor_dist='Categorical')
+        for states in ['20', '30', '50']:
+            saved_model_files_aka = os.path.join(clf_models_dir, "pchmm*n_states=%s*lamb=50000*.csv"%states)
+            best_model_file, n_states = get_best_model_file(saved_model_files_aka)
+            best_model_weights = best_model_file.replace('.csv', '-weights.h5')
+            # load classifier
+            model = HMM(states=n_states,
+                        observation_dist='NormalWithMissing',
+                        predictor_dist='Categorical')
 
-        model.build(data)
-        model_filename = 'pchmm-lr=0.001-seed=890-batch_size=128-weights.h5'
-        model.model.load_weights(os.path.join(args.clf_models_dir, model_filename))
-        
-        
-        x_test, y_test = data.test().numpy()
-        # get the beliefs of the test set
-        z_test = model.hmm_model.predict(x_test)
-        y_test_pred_proba = softmax(model._predictor(z_test).distribution.logits.numpy(), axis=1)
-        
-        print('Evaluating PCHMM on tslice=%s'%(tslice))
-        roc_auc_np = np.zeros(len(random_seed_list))
-        balanced_accuracy_np = np.zeros(len(random_seed_list))
-        log_loss_np = np.zeros(len(random_seed_list))
-        avg_precision_np = np.zeros(len(random_seed_list))
-        for k, seed in enumerate(random_seed_list):
-            random.seed(int(seed))
-            rnd_inds = random.sample(range(x_test.shape[0]), int(0.8*x_test.shape[0])) 
-            curr_y_test = y_test[rnd_inds]
-            curr_x_test = x_test[rnd_inds, :]
-            curr_y_pred = np.argmax(y_test_pred_proba[rnd_inds], -1)
-            curr_y_pred_proba = y_test_pred_proba[rnd_inds]
+            model.build(data)
+            model.model.load_weights(best_model_weights)
+
+
+            x_test, y_test = data.test().numpy()
+            # get the beliefs of the test set
+            z_test = model.hmm_model.predict(x_test)
+            y_test_pred_proba = model._predictor.predict(z_test)
             
-            roc_auc_np[k] = roc_auc_score(curr_y_test, curr_y_pred_proba)
-            balanced_accuracy_np[k] = balanced_accuracy_score(np.argmax(curr_y_test,-1), curr_y_pred)
-            log_loss_np[k] = log_loss(curr_y_test, curr_y_pred_proba, normalize=True) / np.log(2)
-            avg_precision_np[k] = average_precision_score(curr_y_test, curr_y_pred_proba)
-        
-        print('tslice : %s, ROC-AUC : %.2f'%(tslice, np.percentile(roc_auc_np, 50)))
-        
-        for prctile in prctile_vals:
-            row_dict = dict()
-            row_dict['model'] = 'PCHMM'
-            row_dict['percentile'] = prctile
-            row_dict['tslice'] = tslice
-            row_dict['roc_auc'] = np.percentile(roc_auc_np, prctile)
-            row_dict['balanced_accuracy'] = np.percentile(balanced_accuracy_np, prctile)
-            row_dict['log_loss'] = np.percentile(log_loss_np, prctile)
-            row_dict['average_precision'] = np.percentile(avg_precision_np, prctile)
+            print('Evaluating PCHMM on tslice=%s with model %s'%(tslice, best_model_file))
+            roc_auc_np = np.zeros(len(random_seed_list))
+            balanced_accuracy_np = np.zeros(len(random_seed_list))
+            log_loss_np = np.zeros(len(random_seed_list))
+            avg_precision_np = np.zeros(len(random_seed_list))
+            precision_np = np.zeros(len(random_seed_list))
+            recall_np = np.zeros(len(random_seed_list))
 
-            perf_df = perf_df.append(row_dict, ignore_index=True)      
+            for k, seed in enumerate(random_seed_list):
+                random.seed(int(seed))
+                rnd_inds = random.sample(range(x_test.shape[0]), int(0.8*x_test.shape[0])) 
+                curr_y_test = y_test[rnd_inds]
+                curr_x_test = x_test[rnd_inds, :]
+                curr_y_pred = np.argmax(y_test_pred_proba[rnd_inds], -1)
+                curr_y_pred_proba = y_test_pred_proba[rnd_inds]
+
+                roc_auc_np[k] = roc_auc_score(curr_y_test, curr_y_pred_proba)
+                balanced_accuracy_np[k] = balanced_accuracy_score(np.argmax(curr_y_test,-1), curr_y_pred)
+                precision_np[k] = precision_score(np.argmax(curr_y_test,-1), curr_y_pred)
+                recall_np[k] = recall_score(np.argmax(curr_y_test,-1), curr_y_pred)
+                log_loss_np[k] = log_loss(curr_y_test, curr_y_pred_proba, normalize=True) / np.log(2)
+                avg_precision_np[k] = average_precision_score(curr_y_test, curr_y_pred_proba)
+
+
+            print('tslice : %s, ROC-AUC : %.2f'%(tslice, np.percentile(roc_auc_np, 50)))
+            print('Median average precision : %.3f'%np.median(avg_precision_np))
+    #         print('Median precision score : %.3f'%np.median(precision_np))
+    #         print('Median recall score : %.3f'%np.median(recall_np))
+    #         print('Median balanced accuracy score : %.3f'%np.median(balanced_accuracy_np))
+
+            for prctile in prctile_vals:
+                row_dict = dict()
+                row_dict['model'] = 'PCHMM-n_states=%s'%states
+                row_dict['percentile'] = prctile
+                row_dict['tslice'] = tslice
+                row_dict['roc_auc'] = np.percentile(roc_auc_np, prctile)
+                row_dict['balanced_accuracy'] = np.percentile(balanced_accuracy_np, prctile)
+                row_dict['log_loss'] = np.percentile(log_loss_np, prctile)
+                row_dict['average_precision'] = np.percentile(avg_precision_np, prctile)
+                row_dict['precision'] = np.percentile(precision_np, prctile)
+                row_dict['recall'] = np.percentile(recall_np, prctile)
+
+                perf_df = perf_df.append(row_dict, ignore_index=True)      
     
     
     perf_csv = os.path.join(args.output_dir, 'pchmm_pertslice_performance.csv')

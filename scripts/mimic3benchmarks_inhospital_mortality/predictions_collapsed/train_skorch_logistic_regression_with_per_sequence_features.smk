@@ -10,7 +10,7 @@ snakemake --snakefile train_skorch_logistic_regression_with_per_sequence_feature
 '''
 
 
-configfile : "skorch_logistic_regression.json"
+configfile : "skorch_logistic_regression_single_config.json"
 
 from config_loader import (
     D_CONFIG,
@@ -33,7 +33,7 @@ print(RESULTS_COLLAPSED_FEAT_PER_SEQUENCE_PATH)
 
 rule train_and_evaluate_classifier_many_hyperparams:
     input:
-        [os.path.join(RESULTS_COLLAPSED_FEAT_PER_SEQUENCE_PATH, "skorch_logistic_regression_lr={lr}-weight_decay={weight_decay}-batch_size={batch_size}-scoring={scoring}-seed={seed}.json").format(lr=lr, weight_decay=weight_decay, batch_size=batch_size, scoring=scoring, seed=seed) for lr in config['lr'] for weight_decay in config['weight_decay'] for batch_size in config['batch_size'] for scoring in config['scoring'] for seed in config['seed']]
+        [os.path.join(RESULTS_COLLAPSED_FEAT_PER_SEQUENCE_PATH, "skorch_logistic_regression_lr={lr}-weight_decay={weight_decay}-batch_size={batch_size}-scoring={scoring}-seed={seed}-lamb={lamb}-warm_start={warm_start}-incremental_min_precision={incremental_min_precision}-initialization_gain={initialization_gain}.json").format(lr=lr, weight_decay=weight_decay, batch_size=batch_size, scoring=scoring, seed=seed, lamb=lamb, warm_start=warm_start, incremental_min_precision=incremental_min_precision, initialization_gain=initialization_gain) for lr in config['lr'] for weight_decay in config['weight_decay'] for batch_size in config['batch_size'] for scoring in config['scoring'] for seed in config['seed'] for lamb in config['lamb'] for warm_start in config['warm_start'] for incremental_min_precision in config['incremental_min_precision'] for initialization_gain in config['initialization_gain']]
 
 
 rule train_and_evaluate_classifier:
@@ -48,10 +48,10 @@ rule train_and_evaluate_classifier:
 
     params:
         output_dir=RESULTS_COLLAPSED_FEAT_PER_SEQUENCE_PATH,
-        fn_prefix="skorch_logistic_regression_lr={lr}-weight_decay={weight_decay}-batch_size={batch_size}-scoring={scoring}-seed={seed}"
+        fn_prefix="skorch_logistic_regression_lr={lr}-weight_decay={weight_decay}-batch_size={batch_size}-scoring={scoring}-seed={seed}-lamb={lamb}-warm_start={warm_start}-incremental_min_precision={incremental_min_precision}-initialization_gain={initialization_gain}"
 
     output:
-        os.path.join(RESULTS_COLLAPSED_FEAT_PER_SEQUENCE_PATH, "skorch_logistic_regression_lr={lr}-weight_decay={weight_decay}-batch_size={batch_size}-scoring={scoring}-seed={seed}.json")
+        os.path.join(RESULTS_COLLAPSED_FEAT_PER_SEQUENCE_PATH, "skorch_logistic_regression_lr={lr}-weight_decay={weight_decay}-batch_size={batch_size}-scoring={scoring}-seed={seed}-lamb={lamb}-warm_start={warm_start}-incremental_min_precision={incremental_min_precision}-initialization_gain={initialization_gain}.json")
 
     conda:
         PROJECT_CONDA_ENV_YAML
@@ -66,7 +66,7 @@ rule train_and_evaluate_classifier:
             --train_csv_files {input.x_train_csv},{input.y_train_csv} \
             --test_csv_files {input.x_test_csv},{input.y_test_csv} \
             --data_dict_files {input.x_dict_json},{input.y_dict_json} \
-            --validation_size 0.15 \
+            --validation_size 0.25 \
             --key_cols_to_group_when_splitting {{SPLIT_KEY_COL_NAMES}} \
             --scoring {wildcards.scoring} \
             --lr {wildcards.lr} \
@@ -74,6 +74,10 @@ rule train_and_evaluate_classifier:
             --batch_size {wildcards.batch_size} \
             --merge_x_y False \
             --seed {wildcards.seed} \
-            --n_splits 5 \
+            --n_splits 1 \
+            --lamb {wildcards.lamb} \
+            --warm_start {wildcards.warm_start} \
+            --incremental_min_precision {wildcards.incremental_min_precision}\
+            --initialization_gain {wildcards.initialization_gain}\
         '''.replace("{{OUTCOME_COL_NAME}}", D_CONFIG["OUTCOME_COL_NAME"])\
            .replace("{{SPLIT_KEY_COL_NAMES}}", D_CONFIG["SPLIT_KEY_COL_NAMES"])

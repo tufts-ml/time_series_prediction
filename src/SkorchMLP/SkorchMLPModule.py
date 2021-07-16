@@ -4,6 +4,11 @@ import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
 
+def init_weights(m, initialization_gain):
+    if type(m) == nn.Linear:
+        torch.nn.init.xavier_uniform_(m.weight, gain=initialization_gain)
+
+
 class SkorchMLPModule(nn.Module):
     ''' SkorchMLPModule
     NeuralNet module for linear layer plus softmax
@@ -17,11 +22,12 @@ class SkorchMLPModule(nn.Module):
                  n_features=0, 
                  n_hiddens=32,
                  dropout=0.0,
+                 initialization_gain=1.0
             ):
         super(SkorchMLPModule, self).__init__()
         self.n_features = n_features
         self.dropout = nn.Dropout(dropout)
-        
+        self.initialization_gain=initialization_gain
         # Define the neural net layer 
         self.hidden_layer = nn.Linear(in_features=n_features,
                                  out_features=n_hiddens,
@@ -32,6 +38,10 @@ class SkorchMLPModule(nn.Module):
         self.output_layer = nn.Linear(in_features=n_hiddens,
             out_features=1,
             bias=True)
+        
+        # initialize with Glorot
+        nn.init.xavier_uniform_(self.hidden_layer.weight, gain=initialization_gain)
+        nn.init.xavier_uniform_(self.output_layer.weight, gain=initialization_gain)
         
         # setup activation
         self.activation = F.relu

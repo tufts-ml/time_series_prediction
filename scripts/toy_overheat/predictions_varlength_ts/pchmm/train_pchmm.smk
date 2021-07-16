@@ -23,11 +23,11 @@ print("Results will be saved in : %s"%RESULTS_FEAT_PER_TSTEP_PATH)
 
 rule train_and_evaluate_classifier_many_hyperparams:
     input:
-        [os.path.join(RESULTS_FEAT_PER_TSTEP_PATH,"pchmm-lr={lr}-seed={seed}-batch_size={batch_size}.csv").format(lr=lr, seed=seed, batch_size=batch_size) for lr in config['lr'] for seed in config['seed'] for batch_size in config['batch_size']]
+        [os.path.join(RESULTS_FEAT_PER_TSTEP_PATH,"pchmm-lr={lr}-seed={seed}-batch_size={batch_size}-lamb={lamb}.csv").format(lr=lr, seed=seed, batch_size=batch_size, lamb=lamb) for lr in config['lr'] for seed in config['seed'] for batch_size in config['batch_size'] for lamb in config['lamb']]
         
 rule train_and_evaluate_classifier:
     input:
-        script=os.path.join(PROJECT_REPO_DIR, 'src', 'PC-VAE', 'main.py'),
+        script=os.path.join(PROJECT_REPO_DIR, 'src', 'PC-HMM', 'main.py'),
         x_train_csv=os.path.join(DATASET_SPLIT_PATH, 'x_train.csv'),
         x_test_csv=os.path.join(DATASET_SPLIT_PATH, 'x_test.csv'),
         y_train_csv=os.path.join(DATASET_SPLIT_PATH, 'y_train.csv'),
@@ -37,10 +37,10 @@ rule train_and_evaluate_classifier:
 
     params:
         output_dir=RESULTS_FEAT_PER_TSTEP_PATH,
-        fn_prefix="pchmm-lr={lr}-seed={seed}-batch_size={batch_size}"
+        fn_prefix="pchmm-lr={lr}-seed={seed}-batch_size={batch_size}-lamb={lamb}"
     
     output:
-        os.path.join(RESULTS_FEAT_PER_TSTEP_PATH, "pchmm-lr={lr}-seed={seed}-batch_size={batch_size}.csv")
+        os.path.join(RESULTS_FEAT_PER_TSTEP_PATH, "pchmm-lr={lr}-seed={seed}-batch_size={batch_size}-lamb={lamb}.csv")
         
     conda:
         PROJECT_CONDA_ENV_YAML
@@ -59,4 +59,5 @@ rule train_and_evaluate_classifier:
             --seed {wildcards.seed} \
             --batch_size {wildcards.batch_size} \
             --output_filename_prefix {params.fn_prefix} \
+            --lamb {wildcards.lamb} \
         '''
