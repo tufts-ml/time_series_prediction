@@ -5,7 +5,7 @@ Produce a collapsed feature representation on Madrid Transfer to ICU Prediction
 TRAIN COLLAPSED FEATURES AND OUTCOMES DYNAMICICALLY TO MIMIC REAL TIME DEPLOYMENT 
 ----------------------------------------------------------------------------------------------------------------------------------------
 
-Usage : Collapsing features and saving to slice specific folders
+Usage : Collapsing features in multiple patient stay slices, with their corresponding outputs, dynamically
 ----------------------------------------------------------------
 >> snakemake --cores 1 --snakefile make_collapsed_dataset_dynamic_input_output_and_split_train_test.smk make_collapsed_features_for_dynamic_output_prediction
 
@@ -15,16 +15,16 @@ MERGE ALL VITALS, LABS AND MEDICATIONS INTO A SINGLE FEATURE MATRIX
 
 Usage : Merge all the collapsed features across tslices into a single features table
 ----------------------------------------------------------------------------------------
->> snakemake --cores 1 --snakefile make_collapsed_dataset_dynamic_input_output_and_split_train_test.smk merge_collapsed_features_all_tslices
+>> snakemake --cores 1 --snakefile make_collapsed_dataset_dynamic_input_output_and_split_train_test.smk merge_dynamic_collapsed_features
 
 
 Usage : Split the features table into train - test. A single classifier will be trained on this training fold
 -------------------------------------------------------------------------------------------------------------
->> snakemake --cores 1 --snakefile make_collapsed_dataset_per_tslice_and_split_train_test.smk split_into_train_and_test
+>> snakemake --cores 1 --snakefile make_collapsed_dataset_dynamic_input_output_and_split_train_test.smk split_into_train_and_test
 
-Usage : Do every step above in squence
+Usage : Do every step above in sequence
 -------------------------------------
->> snakemake --cores all --snakefile make_collapsed_dataset_per_tslice_and_split_train_test.smk all
+>> snakemake --cores all --snakefile make_collapsed_dataset_dynamic_input_output_and_split_train_test.smk  all
 '''
 
 # Default environment variables
@@ -73,10 +73,12 @@ rule make_collapsed_features_for_dynamic_output_prediction:
         "CollapsedMedicationsDynamic.csv.gz"),
         collapsed_medications_dynamic_json=os.path.join(DATASET_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH,
         "Spec_CollapsedMedicationsDynamic.json"),
-        outputs_dynamic_csv=os.path.join(DATASET_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH,
-        "OutputsDynamic.csv.gz"),
-        outputs_dynamic_json=os.path.join(DATASET_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH,
-        "Spec_OutputsDynamic.json")
+        outputs_dynamic_vitals_csv=os.path.join(DATASET_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH,
+        "OutputsDynamicVitals.csv.gz"),
+        outputs_dynamic_labs_csv=os.path.join(DATASET_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH,
+        "OutputsDynamicLabs.csv.gz"),
+        outputs_dynamic_medications_csv=os.path.join(DATASET_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH,
+        "OutputsDynamicMedications.csv.gz")
 
     conda:
         PROJECT_CONDA_ENV_YAML
@@ -90,8 +92,7 @@ rule make_collapsed_features_for_dynamic_output_prediction:
             --data_dict_outcomes {input.outcomes_spec_json} \
             --dynamic_collapsed_features_csv "{output.collapsed_vitals_dynamic_csv}" \
             --dynamic_collapsed_features_data_dict "{output.collapsed_vitals_dynamic_json}" \
-            --dynamic_outcomes_csv "{output.outputs_dynamic_csv}" \
-            --dynamic_outcomes_data_dict "{output.outputs_dynamic_json}" \
+            --dynamic_outcomes_csv "{output.outputs_dynamic_vitals_csv}" \
             --collapse_range_features "std hours_since_measured present slope median min max" \
             --range_pairs "[('0%','100%')]" \
 
@@ -102,8 +103,7 @@ rule make_collapsed_features_for_dynamic_output_prediction:
             --data_dict_outcomes {input.outcomes_spec_json} \
             --dynamic_collapsed_features_csv "{output.collapsed_labs_dynamic_csv}" \
             --dynamic_collapsed_features_data_dict "{output.collapsed_labs_dynamic_json}" \
-            --dynamic_outcomes_csv "{output.outputs_dynamic_csv}" \
-            --dynamic_outcomes_data_dict "{output.outputs_dynamic_json}" \
+            --dynamic_outcomes_csv "{output.outputs_dynamic_labs_csv}" \
             --collapse_range_features "std hours_since_measured present median min max" \
             --range_pairs "[('0%','100%')]" \
 
@@ -114,49 +114,24 @@ rule make_collapsed_features_for_dynamic_output_prediction:
             --data_dict_outcomes {input.outcomes_spec_json} \
             --dynamic_collapsed_features_csv "{output.collapsed_medications_dynamic_csv}" \
             --dynamic_collapsed_features_data_dict "{output.collapsed_medications_dynamic_json}" \
-            --dynamic_outcomes_csv "{output.outputs_dynamic_csv}" \
-            --dynamic_outcomes_data_dict "{output.outputs_dynamic_json}" \
+            --dynamic_outcomes_csv "{output.outputs_dynamic_medications_csv}" \
             --collapse_range_features "std median min max" \
             --range_pairs "[('0%','100%')]" \
         '''
 
-rule compute_mews_score:
+
+rule merge_dynamic_collapsed_features:
     input:
-        script=os.path.join(os.path.abspath('../'), 'src', 'compute_mews_score.py'),
-        x_csv=os.path.join(DATASET_SITE_PATH, "vitals_before_icu.csv.gz"),
-        x_spec_json=os.path.join(DATASET_SITE_PATH, 'Spec-Vitals.json')
+        script=os.path.join(os.path.abspath('../'), 'src', 'merge_dynamic_collapsed_features.py')
     
     params:
-        output_dir=DATASET_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH
-
-    output:
-        mews_dynamic_csv=os.path.join(DATASET_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH, "MewsScoresDynamic.csv.gz"),
-        mews_dynamic_json=os.path.join(DATASET_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH, "Spec_MewsScoresDynamic.json")
-
-    conda:
-        PROJECT_CONDA_ENV_YAML
-
-    shell:
-        '''
-        python -u {input.script} \
-            --input {input.x_csv} \
-            --data_dict {input.x_spec_json} \
-            --output  "{output.mews_dynamic_csv}" \
-            --data_dict_output "{output.mews_dynamic_json}" \
-        '''
-
-rule merge_collapsed_features_all_tslices:
-    input:
-        script=os.path.join(os.path.abspath('../'), 'src', 'merge_features_all_tslices.py')
-    
-    params:
-        collapsed_tslice_folder=DATASET_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH,
+        dynamic_collapsed_features_folder=DATASET_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH,
         static_data_dict_dir=DATASET_SITE_PATH,
         output_dir=CLF_TRAIN_TEST_SPLIT_PATH
     
     output:
-        features_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "features.csv.gz"),
-        outcomes_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "outcomes.csv.gz")
+        features_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "dynamic_features.csv.gz"),
+        outcomes_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "dynamic_outcomes.csv.gz")
 
     conda:
         PROJECT_CONDA_ENV_YAML
@@ -165,18 +140,16 @@ rule merge_collapsed_features_all_tslices:
         '''
         mkdir -p {{params.output_dir}} && \
         python -u {input.script} \
-            --collapsed_tslice_folder {params.collapsed_tslice_folder} \
-            --tslice_folder {params.tslice_folder} \
-            --tslice_list "{params.tslice_list}" \
+            --dynamic_collapsed_features_folder {params.dynamic_collapsed_features_folder} \
             --static_data_dict_dir {params.static_data_dict_dir} \
             --output_dir {params.output_dir}\
         '''
 
 rule split_into_train_and_test:
     input:
-        script=os.path.join(PROJECT_REPO_DIR, 'src', 'split_dataset.py'),
-        features_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "features.csv.gz"),
-        outcomes_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "outcomes.csv.gz"),
+        script=os.path.join(os.path.abspath('../'), 'src', 'split_dataset_by_timestamp.py'),
+        features_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "dynamic_features.csv.gz"),
+        outcomes_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "dynamic_outcomes.csv.gz"),
         features_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "Spec_features.json"),
         outcomes_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "Spec_outcomes.json"),
 
@@ -185,8 +158,10 @@ rule split_into_train_and_test:
  
     output:  
         x_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_train.csv.gz'),
+        x_valid_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_valid.csv.gz'),
         x_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_test.csv.gz'),
         y_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_train.csv.gz'),
+        y_valid_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_valid.csv.gz'),
         y_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_test.csv.gz'),
         x_dict_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_dict.json'),
         y_dict_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_dict.json')
@@ -200,24 +175,20 @@ rule split_into_train_and_test:
             python -u {{input.script}} \
                 --input {{input.features_csv}} \
                 --data_dict {{input.features_json}} \
-                --random_state {split_random_state} \
                 --test_size {split_test_size} \
-                --group_cols {split_key_col_names} \
                 --train_csv_filename {{output.x_train_csv}} \
+                --valid_csv_filename {{output.x_valid_csv}} \
                 --test_csv_filename {{output.x_test_csv}} \
                 --output_data_dict_filename {{output.x_dict_json}} \
 
             python -u {{input.script}} \
                 --input {{input.outcomes_csv}} \
                 --data_dict {{input.outcomes_json}} \
-                --random_state {split_random_state} \
                 --test_size {split_test_size} \
-                --group_cols {split_key_col_names} \
                 --train_csv_filename {{output.y_train_csv}} \
+                --valid_csv_filename {{output.y_valid_csv}} \
                 --test_csv_filename {{output.y_test_csv}} \
                 --output_data_dict_filename {{output.y_dict_json}} \
         '''.format(
-            split_random_state=D_CONFIG['SPLIT_RANDOM_STATE'],
             split_test_size=D_CONFIG['SPLIT_TEST_SIZE'],
-            split_key_col_names=D_CONFIG['SPLIT_KEY_COL_NAMES'],
             )

@@ -3,6 +3,28 @@ import torch
 import torch.nn as nn
 import numpy as np
 
+def calculate_fan_in_and_fan_out(tensor):
+    dimensions = tensor.dim()
+    if dimensions < 2:
+        raise ValueError("Fan in and fan out can not be computed for tensor with fewer than 2 dimensions")
+    
+    num_input_fmaps = tensor.size(1)
+    num_output_fmaps = tensor.size(0)
+    receptive_field_size = 1
+    if tensor.dim() > 2:
+        receptive_field_size = tensor[0][0].numel()
+    fan_in = num_input_fmaps * receptive_field_size
+    fan_out = num_output_fmaps * receptive_field_size
+    return fan_in, fan_out
+        
+        
+def init_weights(m, initialization_gain):
+    if type(m) == nn.Linear:
+        fan_in, fan_out = calculate_fan_in_and_fan_out(m.weight)
+        torch.nn.init.xavier_uniform_(m.weight, gain=initialization_gain)
+#         m.bias.data.fill_(0.01)
+
+
 class SkorchLogisticRegressionModule(nn.Module):
     ''' SkorchLogisticRegressionModule
     NeuralNet module for linear layer plus softmax
@@ -14,14 +36,20 @@ class SkorchLogisticRegressionModule(nn.Module):
     '''
     def __init__(self,
             n_features=0, 
+            initialization_gain=1.0,
             ):
         super(SkorchLogisticRegressionModule, self).__init__()
         self.n_features = n_features
+        self.initialization_gain=initialization_gain
         # Define linear weight for each feature, plus bias
         self.linear_transform_layer = nn.Linear(
             in_features=n_features,
             out_features=1,
             bias=True)
+        
+        nn.init.xavier_uniform_(self.linear_transform_layer.weight, gain=initialization_gain)
+#         self.linear_transform_layer.apply(init_weights)
+        
         # Setup to use double-precision floats (like np.float64)
         self.double()
 

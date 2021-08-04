@@ -1,7 +1,7 @@
 '''
 Train collapsed feature classifier on Madrid transfer to ICU task
 
->> snakemake --cores 1 --snakefile skorch_logistic_regression.smk
+>> snakemake --cores 1 --snakefile skorch_logistic_regression_dynamic.smk
 '''
 
 # Default environment variables
@@ -12,20 +12,18 @@ configfile:"skorch_logistic_regression.json"
 from config_loader import (
     D_CONFIG,
     DATASET_SPLIT_PATH, PROJECT_CONDA_ENV_YAML,
-    DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH,
+    DATASET_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH,
     RESULTS_SPLIT_PATH, PROJECT_REPO_DIR,
-    RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH)
-#tstep_hours_list=D_CONFIG['TIMESTEP_LIST']
+    RESULTS_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH)
+
 random_seed_list=D_CONFIG['CLF_RANDOM_SEED_LIST']
 
-RESULTS_SPLIT_PATH=os.path.join(RESULTS_SPLIT_PATH, 'skorch_logistic_regression')
-RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH = os.path.join(RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH, 'skorch_logistic_regression')
-CLF_TRAIN_TEST_SPLIT_PATH=os.path.join(DATASET_COLLAPSED_FEAT_PER_TSLICE_PATH, 'classifier_train_test_split')
-
+RESULTS_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH = os.path.join(RESULTS_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH, 'skorch_logistic_regression')
+CLF_TRAIN_TEST_SPLIT_PATH=os.path.join(DATASET_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH, 'classifier_train_test_split')
 
 rule train_and_evaluate_classifier_many_hyperparams:
     input:
-        [os.path.join(RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH, "skorch_logistic_regression_lr={lr}-weight_decay={weight_decay}-batch_size={batch_size}-scoring={scoring}-seed={seed}-lamb={lamb}.json").format(lr=lr, weight_decay=weight_decay, batch_size=batch_size, scoring=scoring, seed=seed, lamb=lamb) for lr in config['lr'] for weight_decay in config['weight_decay'] for batch_size in config['batch_size'] for scoring in config['scoring'] for seed in config['seed'] for lamb in config['lamb']]
+        [os.path.join(RESULTS_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH, "skorch_logistic_regression_lr={lr}-weight_decay={weight_decay}-batch_size={batch_size}-scoring={scoring}-seed={seed}-lamb={lamb}.json").format(lr=lr, weight_decay=weight_decay, batch_size=batch_size, scoring=scoring, seed=seed, lamb=lamb) for lr in config['lr'] for weight_decay in config['weight_decay'] for batch_size in config['batch_size'] for scoring in config['scoring'] for seed in config['seed'] for lamb in config['lamb']]
 
 rule train_and_evaluate_classifier:
     input:
@@ -40,11 +38,11 @@ rule train_and_evaluate_classifier:
         y_dict_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_dict.json')
 
     params:
-        output_dir=RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH,
+        output_dir=RESULTS_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH,
         fn_prefix="skorch_logistic_regression_lr={lr}-weight_decay={weight_decay}-batch_size={batch_size}-scoring={scoring}-seed={seed}-lamb={lamb}"
 
     output:
-        os.path.join(RESULTS_COLLAPSED_FEAT_PER_TSLICE_PATH, "skorch_logistic_regression_lr={lr}-weight_decay={weight_decay}-batch_size={batch_size}-scoring={scoring}-seed={seed}-lamb={lamb}.json")
+        os.path.join(RESULTS_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH, "skorch_logistic_regression_lr={lr}-weight_decay={weight_decay}-batch_size={batch_size}-scoring={scoring}-seed={seed}-lamb={lamb}.json")
 
     conda:
         PROJECT_CONDA_ENV_YAML

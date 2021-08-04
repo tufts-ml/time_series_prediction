@@ -55,7 +55,7 @@ def main():
     parser.add_argument('--dynamic_collapsed_features_csv', type=str, required=False, default=None)
     parser.add_argument('--dynamic_collapsed_features_data_dict', type=str, required=False, default=None)
     parser.add_argument('--dynamic_outcomes_csv', type=str, required=False, default=None)    
-    parser.add_argument('--dynamic_outcomes_data_dict', type=str, required=False, default=None) 
+#     parser.add_argument('--dynamic_outcomes_data_dict', type=str, required=False, default=None) 
     parser.add_argument('--collapse_features', type=str, required=False,
                         default='count mean median std min max', 
                         help="Enclose options with 's, choose "
@@ -86,48 +86,30 @@ def main():
 
     # transform data
     t1 = time.time()
-    ts_df = collapse_dynamic(ts_df=ts_df, data_dict=data_dict, 
-                             collapse_range_features=args.collapse_range_features, 
-                             range_pairs=args.range_pairs, outcomes_df=outcomes_df, 
-                             data_dict_outcomes=data_dict_outcomes)
+    dynamic_collapsed_df, dynamic_outcomes_df = collapse_dynamic(ts_df=ts_df, data_dict=data_dict,                                           
+                                                                 collapse_range_features=args.collapse_range_features, 
+                                                                 range_pairs=args.range_pairs, outcomes_df=outcomes_df, 
+                                                                 data_dict_outcomes=data_dict_outcomes)
     
     
-    data_dict = update_data_dict_collapse(data_dict, args.collapse_range_features, args.range_pairs)
+    dynamic_collapsed_features_data_dict = update_data_dict_collapse(data_dict, args.collapse_range_features, args.range_pairs)
     t2 = time.time()
     print('done collapsing data..')
     print('time taken to collapse data : {} seconds'.format(t2-t1))
-   
+    
     # save data to file
-    '''
-    print('saving data to output...')
-    if args.output is None:
-        file_name = args.input.split('/')[-1].split('.')[0]
-        data_output = '{}_transformed.csv'.format(file_name)
-    elif args.output[-4:] == '.csv':
-        data_output = args.output
-    elif args.output[-7:] == '.csv.gz':
-        data_output = args.output
-    else:
-        data_output = '{}.csv'.format(args.output)
-        
-    if data_output[-3:] == '.gz':
-        ts_df.to_csv(data_output, index=False, compression='gzip')
-        print("Wrote to output compressed CSV:\n%s" % (data_output))
-    else:
-        ts_df.to_csv(data_output, index=False)
-        print("Wrote to output CSV:\n%s" % (data_output))
-    '''
+    dynamic_collapsed_df.to_csv(args.dynamic_collapsed_features_csv, index=False, compression='gzip')
+    print('Saved dynamic collapsed features to :\n%s'%args.dynamic_collapsed_features_csv)
+    
+    dynamic_outcomes_df.to_csv(args.dynamic_outcomes_csv, index=False, compression='gzip')
+    print('Saved dynamic outcomes to :\n%s'%args.dynamic_outcomes_csv)
+    
     
     # save data dictionary to file
-    if args.data_dict_output is None:
-        file_name = args.data_dict_path.split('/')[-1].split('.')[0]
-        dict_output = '{}_transformed.json'.format(file_name)
-    elif args.data_dict_output[-5:] == '.json':
-        dict_output = args.data_dict_output
-    else:
-        dict_output = '{}.json'.format(args.data_dict_output)
-    with open(dict_output, 'w') as f:
-        json.dump(data_dict, f, indent=4)
+    with open(args.dynamic_collapsed_features_data_dict, 'w') as f:
+        json.dump(dynamic_collapsed_features_data_dict, f, indent=4)
+
+    print ('Saved dynamic collapsed features dict to :\n%s'%args.dynamic_collapsed_features_data_dict)
     
 
 def collapse_dynamic(ts_df, data_dict, collapse_range_features, range_pairs, outcomes_df, data_dict_outcomes):
@@ -168,14 +150,16 @@ def collapse_dynamic(ts_df, data_dict, collapse_range_features, range_pairs, out
     timestamp_arr = np.asarray(ts_df[time_col].values.copy(), dtype=np.float32)
     features_arr = ts_df[feature_cols].values
     ids_arr = ts_df[id_cols].values
-    ts_with_max_tstop_df = ts_df[id_cols + [time_col]].groupby(id_cols, as_index=False).max().rename(columns={time_col:'max_tstop'})
-    tstops_arr = np.asarray(pd.merge(ts_df, ts_with_max_tstop_df, on=id_cols, how='left')['max_tstop'], dtype=np.float32)
-    prediction_window = 24
-    prediction_horizon= 24
+#     ts_with_max_tstop_df = ts_df[id_cols + [time_col]].groupby(id_cols, as_index=False).max().rename(columns={time_col:'max_tstop'})
+#     tstops_arr = np.asarray(pd.merge(ts_df, ts_with_max_tstop_df, on=id_cols, how='left')['max_tstop'], dtype=np.float32)
+    prediction_window = 12
+    prediction_horizon = 24
+    max_hrs_data_observed = 504
     t_start=-24 # start time 
     dynamic_collapsed_feat_id_list = list()
     dynamic_outcomes_list = list()
     dynamic_window_list = list()
+    dynamic_stay_lengths_list = list()
     for op_ind, op in enumerate(collapse_range_features.split(' ')):
         print('Collapsing with func %s'%op)
         t1=time.time()
@@ -194,16 +178,18 @@ def collapse_dynamic(ts_df, data_dict, collapse_range_features, range_pairs, out
             empty_arrays = 0
             pbar=ProgressBar()
             
-#             for p in pbar(range(n_rows)):
-            for p in pbar(range(1000)):
+            # potentially extract the list of all unique ids and avoid using merge
+            
+            for p in pbar(range(n_rows)):
+#             for p in pbar(range(100)):
                 # Get features and times for the current fencepost
                 fp_start = fp[p]
                 fp_end = fp[p+1]
                 cur_feat_arr = features_arr[fp_start:fp_end,:].copy()
                 cur_timestamp_arr = timestamp_arr[fp_start:fp_end]
-                cur_tstops_arr = tstops_arr[fp_start:fp_end]
+#                 cur_tstops_arr = tstops_arr[fp_start:fp_end]
                 
-                # get the current stay id
+                # get the current stay id (Do this outside the loop)
                 cur_id_df = ts_df[id_cols].iloc[fp[p]:fp[p+1]].drop_duplicates(subset=id_cols)
                 
                 # get the stay length of the current 
@@ -212,11 +198,12 @@ def collapse_dynamic(ts_df, data_dict, collapse_range_features, range_pairs, out
                 cur_final_outcome = int(cur_outcomes_df[outcome_col].values[0])
                 
                 # create windows from start to length of stay (0-prediction_window, 0-2*prediction_window, ... 0-length_of_stay)
-                window_ends = np.arange(t_start+prediction_window, cur_stay_length+prediction_window, prediction_window)
+                t_end = min(cur_stay_length, max_hrs_data_observed)
+                window_ends = np.arange(t_start+prediction_window, t_end+prediction_window, prediction_window)
                 
                 # collapse features in each window
-#                 cur_dynamic_collapsed_feat_arr = np.zeros([len(window_ends), n_feats], dtype=np.float32)
-                cur_dynamic_collapsed_feat_list = list()
+                cur_dynamic_collapsed_feat_arr = np.zeros([len(window_ends), n_feats], dtype=np.float32)
+#                 cur_dynamic_collapsed_feat_list = list()
                 
                 for q, window_end in enumerate(window_ends):
                     cur_dynamic_idx = (cur_timestamp_arr>t_start)&(cur_timestamp_arr<=window_end)
@@ -229,35 +216,37 @@ def collapse_dynamic(ts_df, data_dict, collapse_range_features, range_pairs, out
                             cur_dynamic_timestamp_arr,
                             start_percentile=int(low[:-1]),
                             end_percentile=int(high[:-1]))
-
-#                         cur_dynamic_collapsed_feat_arr[q,:] = COLLAPSE_FUNCTIONS_np[op](cur_dynamic_feat_arr, start, stop,
-#                                                                                         cur_timestamp_arr=cur_dynamic_timestamp_arr)
-                        cur_dynamic_collapsed_feat_list.append(COLLAPSE_FUNCTIONS_np[op](cur_dynamic_feat_arr, start, stop,
-                                                                                         cur_timestamp_arr=cur_dynamic_timestamp_arr))
+                            
+                        cur_dynamic_collapsed_feat_arr[q,:] = COLLAPSE_FUNCTIONS_np[op](cur_dynamic_feat_arr, start, stop,
+                                                                                        cur_timestamp_arr=cur_dynamic_timestamp_arr)
+#                         cur_dynamic_collapsed_feat_list.append(COLLAPSE_FUNCTIONS_np[op](cur_dynamic_feat_arr, start, stop,
+#                                                                                          cur_timestamp_arr=cur_dynamic_timestamp_arr))
                     
-                        if (op_ind==0) & (rp_ind==0):
-                            # keep track of stay ids
-                            dynamic_collapsed_feat_id_list.append(cur_id_df.values[0])
-                            
-                            # keep track of windows
-                            dynamic_window_list.append(np.array([t_start, window_end]))
-                            
-                            # if the length of stay is within the prediction horizon, set the outcome as the clinical deterioration outcome, else set 0
-                            if window_end>=cur_stay_length-prediction_horizon:
-                                dynamic_outcomes_list.append(cur_final_outcome)
-                            else:
-                                dynamic_outcomes_list.append(0)
-#                 cur_dynamic_collapsed_feat_arr = np.vstack(cur_dynamic_collapsed_feat_list)
+                    if (op_ind==0) & (rp_ind==0):
+                        # keep track of stay ids
+                        dynamic_collapsed_feat_id_list.append(cur_id_df.values[0])
+
+                        # keep track of windows
+                        dynamic_window_list.append(np.array([t_start, window_end]))
+
+                        # keep track of the stay lengths
+                        dynamic_stay_lengths_list.append(cur_stay_length)
+
+                        # if the length of stay is within the prediction horizon, set the outcome as the clinical deterioration outcome, else set 0
+                        if window_end>=cur_stay_length-prediction_horizon:
+                            dynamic_outcomes_list.append(cur_final_outcome)
+                        else:
+                            dynamic_outcomes_list.append(0)
                 
 #             if op_ind==0:
 #                 print('Percentage of empty slices in %s to %s is %.2f'%(
 #                     low, high, (empty_arrays/n_rows)*100))
-
-                list_of_dynamic_collapsed_feat_cur_op_range_pair.append(np.vstack(cur_dynamic_collapsed_feat_list))
                 
-                # vertically stack collapsed features for this op and range pair across all stays
-                dynamic_collapsed_feat_cur_op_range_pair = np.vstack(list_of_dynamic_collapsed_feat_cur_op_range_pair)
-                
+                list_of_dynamic_collapsed_feat_cur_op_range_pair.append(cur_dynamic_collapsed_feat_arr)
+                               
+            # vertically stack collapsed features for this op and range pair across all stays
+            dynamic_collapsed_feat_cur_op_range_pair = np.vstack(list_of_dynamic_collapsed_feat_cur_op_range_pair)
+            
             # get the collapsed feature for all range pairs for current op
             list_of_dynamic_collapsed_feat_cur_op.append(dynamic_collapsed_feat_cur_op_range_pair)
 #             del dynamic_collapsed_feat_cur_op_range_pair
@@ -282,13 +271,14 @@ def collapse_dynamic(ts_df, data_dict, collapse_range_features, range_pairs, out
     
     # add the window start and ends
     dynamic_window_df = pd.DataFrame(np.vstack(dynamic_window_list), columns=['window_start','window_end'])
+    dynamic_stay_lengths_df = pd.DataFrame(np.vstack(dynamic_stay_lengths_list), columns=['stay_length'])
     
     dynamic_collapsed_df = pd.concat([ids_df, dynamic_collapsed_df, dynamic_window_df], axis=1)
     
     dynamic_outcomes_df = pd.DataFrame(np.array(dynamic_outcomes_list), columns=[outcome_col])
-    dynamic_outcomes_df = pd.concat([ids_df, dynamic_outcomes_df, dynamic_window_df], axis=1)    
-    from IPython import embed; embed()
-
+    dynamic_outcomes_df = pd.concat([ids_df, dynamic_outcomes_df, dynamic_window_df, dynamic_stay_lengths_df], axis=1)  
+    
+    return dynamic_collapsed_df, dynamic_outcomes_df
 
 def calc_start_and_stop_indices_from_percentiles(
         timestamp_arr, start_percentile, end_percentile, max_timestamp=None):
@@ -359,20 +349,6 @@ def calc_start_and_stop_indices_from_percentiles(
     #    upper_bound = (len(df)*end_percentile)//100
 
 
-def all_id_combinations(cols, df, combos, ids=[]):
-    if len(cols) == 0:
-        combos.append(ids)
-        return
-
-    for i in df[cols[0]].unique():
-        ids_copy = list(ids)
-        ids_copy.append(i)
-        all_id_combinations(cols[1:], df.loc[df[cols[0]] == i], 
-                            combos, ids_copy)
-
-
-
-
 
 # DATA DICTIONARY STUFF: PARSING FUNCTIONS AND DICT UPDATING
 def update_data_dict_collapse(data_dict, collapse_range_features, range_pairs): 
@@ -404,21 +380,6 @@ def update_data_dict_collapse(data_dict, collapse_range_features, range_pairs):
 
     return new_data_dict
 
-def update_data_dict_add_feature(args): 
-    data_dict = args.data_dict
-
-    new_fields = []
-    for col in data_dict['fields']:
-        if 'name' in col and col['name'] == args.add_from:
-            new_dict = dict(col)
-            new_dict['name'] = '{}_{}'.format(args.new_feature, col['name'])
-            new_fields.append(new_dict)
-        else: 
-            new_fields.append(col)
-
-    new_data_dict = dict()
-    new_data_dict['fields'] = new_fields
-    return new_data_dict
 
 def parse_id_cols(data_dict):
     cols = []

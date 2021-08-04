@@ -1,7 +1,7 @@
 {
     "lr": [0.001],
-    "batch_size": [5192, 10384],
-    "weight_decay": [1e-5, 1e-3, 10, 100, 1e+5],
+    "batch_size": [5192],
+    "weight_decay": [1e-3],
     "lamb" : [100],
     "scoring" : ["cross_entropy_loss"],
     "seed" : [1111]

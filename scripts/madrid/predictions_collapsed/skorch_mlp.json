@@ -1,9 +1,10 @@
 {
-    "lr": [0.001, 0.005, 0.01, 0.1],
-    "batch_size": [-1],
-    "weight_decay": [1e-5, 1e-3, 0.01],
+    "lr": [0.001],
+    "batch_size": [5192, 10384],
+    "weight_decay": [1e-5, 1e-3, 10, 100, 1e+5],
     "n_hiddens" : [32],
+    "n_layers" : [1, 2],
     "lamb" : [100],
     "scoring" : ["cross_entropy_loss"],
-    "seed" : [111, 9764, 46788, 745, 7542]
+    "seed" : [111, 9764]
 }
