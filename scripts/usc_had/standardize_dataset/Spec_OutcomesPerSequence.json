@@ -1,0 +1,88 @@
+{
+    "name": "OutcomesPerSequence",
+    "path": "outcomes_per_sequence.csv",
+    "format": "csv",
+    "mediatype": "text/csv",
+    "profile": "tabular-data-resource",
+    "$schema": "https://frictionlessdata.io/schemas/table-schema.json",
+    "schema": {
+        "fields": [
+            {
+                "name": "subject_id",
+                "type": "integer",
+                "role": "key",
+                "description": "Unique identifier per subject of the experiment",
+                "units": "NONE",
+                "constraints": {
+                    "required": "TRUE",
+                    "minimum": "1",
+                    "maximum": "14"
+                }
+            },
+            {
+                "name": "trial",
+                "type": "integer",
+                "role": "key",
+                "description": "Indicator for trial performed per activity per subject.",
+                "units": "NONE",
+                "constraints": {
+                    "required": "TRUE",
+                    "minimum": "1",
+                    "maximum": "5"
+                }
+            },
+            {
+                "name": "seq_id",
+                "type": "integer",
+                "role": "key",
+                "description": "In data files organized by subject>trial&activity",
+                "units": "NONE",
+                "constraints": {
+                    "required": "TRUE",
+                    "minimum": "1",
+                    "maximum": "12"
+                }
+            },
+            {
+                "name": "act_no",
+                "type": "integer",
+                "role": "outcome",
+                "description": "Indicator for activity performed by a subject.",
+                "units": "NONE",
+                "constraints": {
+                    "required": "TRUE",
+                    "minimum": "1",
+                    "maximum": "12"
+                }
+            },
+            {
+                "name": "act_binary",
+                "type": "category_indicator",
+                "role": "outcome",
+                "description": "Test binary classification task, 0 for inactive movements: (8-12), 1 for active movements (1-7).",
+                "units": "NONE",
+                "constraints": {
+                    "required": "TRUE",
+                    "minimum": "0",
+                    "maximum": "1"
+                }
+            },
+            {
+                "name": "act_three_classes",
+                "type": "integer",
+                "role": "outcome",
+                "description": "Indicator for activities. 1-5 mapped to 1, 6-7 mapped to 2, 8-12 mapped to 3",
+                "units": "NONE",
+                "constraints": {
+                    "required": "TRUE",
+                    "minimum": "1",
+                    "maximum": "3"
+                }
+            }
+        ],
+        "missingValues": [
+            "",
+            "nan"
+        ]
+    }
+}

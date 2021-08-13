@@ -20,7 +20,7 @@ class ThresholdClassifier(BaseEstimator, ClassifierMixin):
                 self.classes_ = classes
             else:
                 self.classes_ = [0, 1]
-        assert len(self.classes_) == 2
+        #assert len(self.classes_) == 2
 
         if cache is not None:
             self._cached_clf = cache
