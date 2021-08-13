@@ -64,12 +64,16 @@ def get_sorted_list_of_kwargs_specific_to_group_parser(group_parser):
     return [k for k in sorted(keys)]
 
 DEFAULT_PROJECT_REPO = os.path.sep.join(__file__.split(os.path.sep)[:-2])
+
 PROJECT_REPO_DIR = os.path.abspath(
     os.environ.get('PROJECT_REPO_DIR', DEFAULT_PROJECT_REPO))
 
 default_json_dir = os.path.join(PROJECT_REPO_DIR, 'src', 'default_hyperparameters')
 if not os.path.exists(default_json_dir):
     raise ValueError("Could not read default hyperparameters from file")
+
+dir_path = os.path.dirname(os.path.realpath(__file__))
+print(dir_path)
 
 DEFAULT_SETTINGS_JSON_FILES = glob.glob(os.path.join(default_json_dir, '*.json'))
 if len(DEFAULT_SETTINGS_JSON_FILES) == 0:
@@ -79,6 +83,23 @@ try:
     TEMPLATE_HTML_PATH = os.path.join(PROJECT_REPO_DIR, 'src', 'template.html')
 except KeyError:
     TEMPLATE_HTML_PATH = None
+
+# Try catch for USC-HAD data descriptions, would like to modify to ignore when not using this dataset
+try:
+    config_file = os.path.join(PROJECT_REPO_DIR, 'scripts', 'usc_had', 'config.json')
+    with open(config_file) as config_json:
+        config_data = json.load(config_json)
+        data_desc_file_name = config_data['DATA_DESC_FILE_NAME']
+
+    print("--------------------------------")
+    print(data_desc_file_name)
+    data_desc_file = os.path.join(PROJECT_REPO_DIR, 'datasets', 'usc_had', data_desc_file_name)
+    print(data_desc_file)
+    print("--------------------------------")
+
+except KeyError:
+    print("No data descriptions found")
+    data_desc_file = None
 
 FIG_KWARGS = dict(
     figsize=(4, 4),
@@ -95,6 +116,7 @@ def load_data_dict_json(data_dict_file):
 
 
 if __name__ == '__main__':
+
 
     # Parse pre-specified command line arguments
     parser = argparse.ArgumentParser()
@@ -149,7 +171,6 @@ if __name__ == '__main__':
                     default_group.add_argument("--%s" % key, default=val, type=type(val))
         subparsers_by_name[clf_name] = clf_parser
 
-
     # Create dataset-specific and experimental design options for the parser
     for p in subparsers_by_name.values():
         data_group = p.add_argument_group('data')
@@ -166,9 +187,15 @@ if __name__ == '__main__':
         protocol_group.add_argument('--standardize_numeric_features', type=bool, default=True)
         protocol_group.add_argument('--key_cols_to_group_when_splitting', type=str,
             default=None, nargs='*')
+ 
+        # Scoring binary case
         protocol_group.add_argument('--scoring', type=str, default='roc_auc_score+0.001*cross_entropy_base2_score')
+        # Scoring multi-class case
+        #protocol_group.add_argument('--scoring', type=str, default='cross_entropy_base2_score')
+
         protocol_group.add_argument('--random_seed', type=int, default=8675309)
         protocol_group.add_argument('--n_splits', type=int, default=1)
+        # Comment this out ? BELOW
         protocol_group.add_argument('--threshold_scoring', type=str,
             default=None, choices=[None, 'None'] + THRESHOLD_SCORING_OPTIONS)
 
@@ -269,7 +296,12 @@ if __name__ == '__main__':
     x_test = df_by_split['test'][feature_cols].values.astype(np.float32)
     y_test = np.ravel(df_by_split['test'][outcome_col_name])
     is_multiclass = len(np.unique(y_train)) > 2
-    
+    num_classes = len(np.unique(y_train))
+
+    #print("--------------------------------")
+    #print(RESULTS_PATH)
+    #print("--------------------------------")
+
     fixed_args = {}
     fixed_group = None
     for g in subparsers_by_name[args.clf_name]._action_groups:
@@ -333,6 +365,7 @@ if __name__ == '__main__':
             else:
                 # Safe to use filtered grid for this parameter
                 pipeline_param_grid_dict['classifier__' + key] = filtered_grid
+
 
     # Create classifier pipeline
     # --------------------------
@@ -455,109 +488,116 @@ if __name__ == '__main__':
     # Refit the best estimator with these hypers!
     hyper_searcher.best_estimator_.fit(x_train, y_train)
 
-    # Threshold search
-    # TODO cast wider net at nearby settings to the best estimator??
-    if str(args.threshold_scoring) != 'None':
-        # hyper_searcher search on validation over possible threshold values
-        # Make sure all candidates at least provide
-        # one instance of each class (positive and negative)
-        yproba_class1_vals = list()
-        for tr_inds, va_inds in splitter.split(x_train, groups=key_train):
-            x_valid = x_train[va_inds]
-            yproba_valid = hyper_searcher.best_estimator_.predict_proba(x_valid)[:,1]
-            yproba_class1_vals.extend(yproba_valid)
+    # Added this if statement to account for multi-class case
+    if not is_multiclass:
 
-        # Try all thr values that would give at least one pos and one neg decision
-        nontrivial_thr_vals = np.unique(yproba_class1_vals)
+        # Threshold search
+        # TODO cast wider net at nearby settings to the best estimator??
+        if str(args.threshold_scoring) != 'None':
+            # hyper_searcher search on validation over possible threshold values
+            # Make sure all candidates at least provide
+            # one instance of each class (positive and negative)
+            yproba_class1_vals = list()
+            for tr_inds, va_inds in splitter.split(x_train, groups=key_train):
+                x_valid = x_train[va_inds]
+                yproba_valid = hyper_searcher.best_estimator_.predict_proba(x_valid)[:,1]
+                yproba_class1_vals.extend(yproba_valid)
 
-        if nontrivial_thr_vals.size > 100:
-            # Too many for possible thr values for typical compute power
-            # Cover the space of typical computed values well
-            # But also include some extreme values
-            dense_thr_grid = np.linspace(
-                np.percentile(nontrivial_thr_vals, 5),
-                np.percentile(nontrivial_thr_vals, 95),
-                90)
-            extreme_thr_grid = np.linspace(
-                nontrivial_thr_vals[0],
-                nontrivial_thr_vals[-1],
-                10)
-            thr_grid = np.unique(np.hstack([
-                np.min(extreme_thr_grid) - 0.0001,
-                np.max(extreme_thr_grid) + 0.0001,
-                extreme_thr_grid, dense_thr_grid]))
+            # Try all thr values that would give at least one pos and one neg decision
+            nontrivial_thr_vals = np.unique(yproba_class1_vals)
+
+            if nontrivial_thr_vals.size > 100:
+                # Too many for possible thr values for typical compute power
+                # Cover the space of typical computed values well
+                # But also include some extreme values
+                dense_thr_grid = np.linspace(
+                    np.percentile(nontrivial_thr_vals, 5),
+                    np.percentile(nontrivial_thr_vals, 95),
+                    90)
+                extreme_thr_grid = np.linspace(
+                    nontrivial_thr_vals[0],
+                    nontrivial_thr_vals[-1],
+                    10)
+                thr_grid = np.unique(np.hstack([
+                    np.min(extreme_thr_grid) - 0.0001,
+                    np.max(extreme_thr_grid) + 0.0001,
+                    extreme_thr_grid, dense_thr_grid]))
+            else:
+                # Seems feasible to just look at all possible thresholds
+                # that give distinct operating points.
+                extreme_thr_grid = np.linspace(
+                    nontrivial_thr_vals[0],
+                    nontrivial_thr_vals[-1],
+                    5)
+                thr_grid = np.unique(np.hstack([
+                    np.min(extreme_thr_grid) - 0.0001,
+                    np.max(extreme_thr_grid) + 0.0001,
+                    extreme_thr_grid, nontrivial_thr_vals]))
+
+            print("Searching thresholds...")
+            if thr_grid.shape[0] >= 5:
+                print("thr_grid = %.4f, %.4f, %.4f ... %.4f, %.4f" % (
+                    thr_grid[0], thr_grid[1], thr_grid[2], thr_grid[-2], thr_grid[-1]))
+            else:
+                print("thr_grid = %s" % (
+                    ', '.join(['%.4f' % a for a in thr_grid])))
+
+            score_grid_SG = np.zeros((splitter.n_splits, thr_grid.size))
+            for ss, (tr_inds, va_inds) in enumerate(
+                    splitter.split(x_train, y_train, groups=key_train)):
+                x_tr = x_train[tr_inds].copy()
+                y_tr = y_train[tr_inds].copy()
+                x_va = x_train[va_inds]
+                y_va = y_train[va_inds]
+
+                tmp_clf = ThresholdClassifier(hyper_searcher.best_estimator_)
+                tmp_clf.fit(x_tr, y_tr)
+                for gg, thr in enumerate(thr_grid):
+                    tmp_clf = tmp_clf.set_params(threshold=thr)
+                    yhat = tmp_clf.predict(x_va)
+                    score_grid_SG[ss, gg] = calc_score_for_binary_predictions(
+                        y_va, yhat, scoring=args.threshold_scoring)
+
+            avg_score_G = np.mean(score_grid_SG, axis=0)
+
+            # Do a 2nd order quadratic fit to the scores
+            # Focusing weight on points near the maximizer
+            # This gives us a "smoothed" function mapping thresholds to scores
+            # Avoids issues if scores are "wiggly" and don't want to rely on max
+            # Also will do right thing when there are many thresholds that work
+            # Smoothed scores guarantees we get maximizer in middle of that range
+            weights_G = np.exp(-10.0 * np.abs(avg_score_G - np.max(avg_score_G)))
+            poly_coefs = np.polyfit(thr_grid, avg_score_G, 2, w=weights_G)
+            smoothed_score_G = np.polyval(poly_coefs, thr_grid)
+
+            # Keep best scoring estimator 
+            gg = np.argmax(smoothed_score_G)
+            best_thr = thr_grid[gg]
+            thr_perf_df = pd.DataFrame(np.vstack([
+                    thr_grid[np.newaxis,:],
+                    avg_score_G[np.newaxis,:],
+                    smoothed_score_G[np.newaxis,:]]).T,
+                columns=['thr', 'score', 'smoothed_score'])
+            G = thr_perf_df.shape[0]
+            disp_ids = np.unique(np.hstack([
+                [0,1,2], [gg-2, gg-1, gg, gg+1, gg+2], [G-3, G-2, G-1]]))
+
+            print(thr_perf_df.loc[disp_ids].to_string(index=False))
+            print("Chosen Threshold: %.4f" % best_thr)
+            best_clf = ThresholdClassifier(
+                hyper_searcher.best_estimator_, threshold=best_thr)
         else:
-            # Seems feasible to just look at all possible thresholds
-            # that give distinct operating points.
-            extreme_thr_grid = np.linspace(
-                nontrivial_thr_vals[0],
-                nontrivial_thr_vals[-1],
-                5)
-            thr_grid = np.unique(np.hstack([
-                np.min(extreme_thr_grid) - 0.0001,
-                np.max(extreme_thr_grid) + 0.0001,
-                extreme_thr_grid, nontrivial_thr_vals]))
+            best_clf = hyper_searcher.best_estimator_
+        
+        # save model to disk
+        print('saving %s model to disk' % args.clf_name)
+        model_file = os.path.join(
+            args.output_dir, args.clf_name+'_trained_model.joblib')
+        dump(best_clf, model_file)
 
-        print("Searching thresholds...")
-        if thr_grid.shape[0] >= 5:
-            print("thr_grid = %.4f, %.4f, %.4f ... %.4f, %.4f" % (
-                thr_grid[0], thr_grid[1], thr_grid[2], thr_grid[-2], thr_grid[-1]))
-        else:
-            print("thr_grid = %s" % (
-                ', '.join(['%.4f' % a for a in thr_grid])))
-
-        score_grid_SG = np.zeros((splitter.n_splits, thr_grid.size))
-        for ss, (tr_inds, va_inds) in enumerate(
-                splitter.split(x_train, y_train, groups=key_train)):
-            x_tr = x_train[tr_inds].copy()
-            y_tr = y_train[tr_inds].copy()
-            x_va = x_train[va_inds]
-            y_va = y_train[va_inds]
-
-            tmp_clf = ThresholdClassifier(hyper_searcher.best_estimator_)
-            tmp_clf.fit(x_tr, y_tr)
-            for gg, thr in enumerate(thr_grid):
-                tmp_clf = tmp_clf.set_params(threshold=thr)
-                yhat = tmp_clf.predict(x_va)
-                score_grid_SG[ss, gg] = calc_score_for_binary_predictions(
-                    y_va, yhat, scoring=args.threshold_scoring)
-
-        avg_score_G = np.mean(score_grid_SG, axis=0)
-
-        # Do a 2nd order quadratic fit to the scores
-        # Focusing weight on points near the maximizer
-        # This gives us a "smoothed" function mapping thresholds to scores
-        # Avoids issues if scores are "wiggly" and don't want to rely on max
-        # Also will do right thing when there are many thresholds that work
-        # Smoothed scores guarantees we get maximizer in middle of that range
-        weights_G = np.exp(-10.0 * np.abs(avg_score_G - np.max(avg_score_G)))
-        poly_coefs = np.polyfit(thr_grid, avg_score_G, 2, w=weights_G)
-        smoothed_score_G = np.polyval(poly_coefs, thr_grid)
-
-        # Keep best scoring estimator 
-        gg = np.argmax(smoothed_score_G)
-        best_thr = thr_grid[gg]
-        thr_perf_df = pd.DataFrame(np.vstack([
-                thr_grid[np.newaxis,:],
-                avg_score_G[np.newaxis,:],
-                smoothed_score_G[np.newaxis,:]]).T,
-            columns=['thr', 'score', 'smoothed_score'])
-        G = thr_perf_df.shape[0]
-        disp_ids = np.unique(np.hstack([
-            [0,1,2], [gg-2, gg-1, gg, gg+1, gg+2], [G-3, G-2, G-1]]))
-
-        print(thr_perf_df.loc[disp_ids].to_string(index=False))
-        print("Chosen Threshold: %.4f" % best_thr)
-        best_clf = ThresholdClassifier(
-            hyper_searcher.best_estimator_, threshold=best_thr)
+    # 07/22/21 ------- ELSE MULTICLASS, DO NOT PERFORM THRESHOLD SEARCH
     else:
         best_clf = hyper_searcher.best_estimator_
-    
-    # save model to disk
-    print('saving %s model to disk' % args.clf_name)
-    model_file = os.path.join(
-        args.output_dir, args.clf_name+'_trained_model.joblib')
-    dump(best_clf, model_file)
 
 
     # Evaluation of selected model
@@ -570,8 +610,20 @@ if __name__ == '__main__':
     for split_name, x, y in [
             ('train', x_train, y_train),
             ('test', x_test, y_test)]:
-        row_dict = dict(split_name=split_name, n_examples=x.shape[0], n_labels_positive=np.sum(y))
-        row_dict['frac_labels_positive'] = np.sum(y) / x.shape[0]
+
+
+        # Generalized row dictionary to support binary and varying number of classes
+        if not is_multiclass:
+            row_dict = dict(split_name=split_name, n_examples=x.shape[0], n_labels_positive=np.sum(y))
+            row_dict['frac_labels_positive'] = np.sum(y) / x.shape[0]
+        else:
+            row_dict = dict(split_name=split_name, n_examples=x.shape[0])
+
+            for i in range(num_classes):
+                row_dict['n_labels_class_'+str(i+1)] = len(np.argwhere(y==i+1))
+
+            for i in range(num_classes):
+                row_dict['frac_labels_class_'+str(i+1)] = row_dict['n_labels_class_'+str(i+1)] / x.shape[0]
 
         y_pred = best_clf.predict(x)
         y_pred_proba = best_clf.predict_proba(x)[:, 1]
@@ -579,19 +631,39 @@ if __name__ == '__main__':
         # Metrics that require a threshold
         # --------------------------------
         # (e.g. use y_pred not y_pred_proba)
-        confusion_arr = confusion_matrix(y, y_pred)
-        cm_df = pd.DataFrame(confusion_arr, columns=[0,1], index=[0,1])
+
+        if not is_multiclass:
+            confusion_arr = confusion_matrix(y, y_pred)
+            cm_df = pd.DataFrame(confusion_arr, columns=[0,1], index=[0,1])
+        else:
+            if num_classes == 3:
+                confusion_arr = confusion_matrix(y, y_pred)
+                cm_df = pd.DataFrame(confusion_arr, columns=[1,2,3], index=[1,2,3])
+            else:
+                confusion_arr = confusion_matrix(y, y_pred,normalize='true')
+                cm_df = pd.DataFrame(confusion_arr, columns=[1,2,3,4,5,6,7,8,9,10,11,12], index=[1,2,3,4,5,6,7,8,9,10,11,12])
+                cm_df = cm_df.round(2)    
+
         cm_df.columns.name = 'Predicted label'
         cm_df.index.name = 'True label'
         
         accuracy = accuracy_score(y, y_pred)
         balanced_accuracy = balanced_accuracy_score(y, y_pred)
 
-        row_dict.update(dict(
+        # Generalized to support multiple classes
+        if not is_multiclass:
+            row_dict.update(dict(
+                confusion_html=cm_df.to_html(),
+                accuracy=accuracy, 
+                f1_score=f1_score(y, y_pred),
+                balanced_accuracy=balanced_accuracy))
+        else:
+            row_dict.update(dict(
             confusion_html=cm_df.to_html(),
             accuracy=accuracy,
-            f1_score=f1_score(y, y_pred),
             balanced_accuracy=balanced_accuracy))
+
+        
 
 
         # Metrics that consume probabilities
@@ -671,7 +743,8 @@ if __name__ == '__main__':
 
 
     # Write HTML report
-    # ------------------
+    # ------------------   
+
     os.chdir(fig_dir)
     doc, tag, text = Doc().tagtext()
     pd.set_option('precision', 4)
@@ -692,51 +765,142 @@ if __name__ == '__main__':
                         text('Hyperparameters of best model')
                     with tag('pre'):
                         text(str(best_clf))
-                    with tag('h3'):
-                        with tag('a', name='results-data-summary'):
-                            text('Input Data Summary')
-                    doc.asis(perf_df[['n_examples', 'n_labels_positive', 'frac_labels_positive']].to_html())
 
-                    with tag('h3'):
-                        with tag('a', name='results-performance-plots'):
-                            text('Performance Plots')
+                    # Specific case for USC-HAD data descriptions, can generalize for different datasets
+                    # Will skip this chunk if not using USC-HAD dataset
 
-                    with tag('table'):
-                        with tag('tr'):
-                            with tag('th', **{'text-align':'center'}):
-                                text('Train')
-                            with tag('th', **{'text-align':'center'}):
-                                text('Test')
-                        with tag('tr'):
-                            with tag('td', align='center'):
-                                doc.stag('img', src=os.path.join(fig_dir, 'train_roc_curve.png'), width=400)
-                            with tag('td', align='center'):
-                                doc.stag('img', src=os.path.join(fig_dir, 'test_roc_curve.png'), width=400)
-                        with tag('tr'):
-                            with tag('td', align='center'):
-                                doc.stag('img', src=os.path.join(fig_dir, 'train_pr_curve.png'), width=400)
-                            with tag('td', align='center'):
-                                doc.stag('img', src=os.path.join(fig_dir, 'test_pr_curve.png'), width=400)
-                        with tag('tr'):
-                            with tag('td', align='center'):
-                                doc.stag('img', src=os.path.join(fig_dir, 'train_calibration_curve.png'), width=400)
-                            with tag('td', align='center'):
-                                doc.stag('img', src=os.path.join(fig_dir, 'test_calibration_curve.png'), width=400)
-                        with tag('tr'):
-                            with tag('td', align='center', **{'text-align':'center'}):
-                                doc.asis(str(perf_df.iloc[0][['confusion_html']].values[0]).replace('&lt;', '<').replace('&gt;', '>').replace('\\n', ''))
-                            with tag('td', align='center', **{'text-align':'center'}):
-                                doc.asis(str(perf_df.iloc[1][['confusion_html']].values[0]).replace('&lt;', '<').replace('&gt;', '>').replace('\\n', ''))
-                   
-                    with tag('h3'):
-                        with tag('a', name='results-performance-metrics-proba'):
-                            text('Performance Metrics using Probabilities')
-                    doc.asis(perf_df[['AUROC', 'AUPRC', 'average_precision', 'cross_entropy_base2']].to_html())
+                    if data_desc_file != None:
+                        data_desc_df = pd.read_csv(data_desc_file)
+                        if not is_multiclass:
+                            with tag('h3'):
+                                with tag('a', name='data-class-descriptions'):
+                                    text('Data Class Descriptions')
+                            doc.asis(data_desc_df[['activity_label','activity','act_binary']].to_html(index=False))
+                        else: 
+                            if num_classes == 3:
+                                data_desc_df['class_number'] = data_desc_df['act_three_classes']
+                                with tag('h3'):
+                                    with tag('a', name='data-class-descriptions'):
+                                        text('Data Class Descriptions')
+                                doc.asis(data_desc_df[['activity_label','activity','class_number']].to_html(index=False))
+                            else:
+                                with tag('h3'):
+                                    with tag('a', name='data-class-descriptions'):
+                                        text('Data Class Descriptions')
+                                doc.asis(data_desc_df[['activity_label','activity']].to_html(index=False))
 
-                    with tag('h3'):
-                        with tag('a', name='results-performance-metrics-thresh'):
-                            text('Performance Metrics using Thresholded Decisions')
-                    doc.asis(perf_df[['balanced_accuracy', 'accuracy', 'f1_score', 'TPR', 'TNR', 'PPV', 'NPV']].to_html())
+                    # This part is generalized for multiple problem cases: Binary, 3-class, all classes (12)
+                    if not is_multiclass:  
+                        with tag('h3'):
+                            with tag('a', name='results-data-summary'):
+                                text('Input Data Summary')
+                            
+                        doc.asis(perf_df[['n_examples', 'n_labels_positive', 'frac_labels_positive']].to_html())
+
+                        with tag('h3'):
+                            with tag('a', name='results-performance-plots'):
+                                text('Performance Plots')
+
+                        with tag('table'):
+                            with tag('tr'):
+                                with tag('th', **{'text-align':'center'}):
+                                    text('Train')
+                                with tag('th', **{'text-align':'center'}):
+                                    text('Test')
+                            with tag('tr'):
+                                with tag('td', align='center'):
+                                    doc.stag('img', src=os.path.join(fig_dir, 'train_roc_curve.png'), width=400)
+                                with tag('td', align='center'):
+                                    doc.stag('img', src=os.path.join(fig_dir, 'test_roc_curve.png'), width=400)
+                            with tag('tr'):
+                                with tag('td', align='center'):
+                                    doc.stag('img', src=os.path.join(fig_dir, 'train_pr_curve.png'), width=400)
+                                with tag('td', align='center'):
+                                    doc.stag('img', src=os.path.join(fig_dir, 'test_pr_curve.png'), width=400)
+                            with tag('tr'):
+                                with tag('td', align='center'):
+                                    doc.stag('img', src=os.path.join(fig_dir, 'train_calibration_curve.png'), width=400)
+                                with tag('td', align='center'):
+                                    doc.stag('img', src=os.path.join(fig_dir, 'test_calibration_curve.png'), width=400)
+                            with tag('tr'):
+                                with tag('td', align='center', **{'text-align':'center'}):
+                                    doc.asis(str(perf_df.iloc[0][['confusion_html']].values[0]).replace('&lt;', '<').replace('&gt;', '>').replace('\\n', ''))
+                                with tag('td', align='center', **{'text-align':'center'}):
+                                    doc.asis(str(perf_df.iloc[1][['confusion_html']].values[0]).replace('&lt;', '<').replace('&gt;', '>').replace('\\n', ''))
+
+                        with tag('h3'):
+                            with tag('a', name='results-performance-metrics-proba'):
+                                text('Performance Metrics using Probabilities')
+                        doc.asis(perf_df[['AUROC', 'AUPRC', 'average_precision', 'cross_entropy_base2']].to_html())
+
+                        with tag('h3'):
+                            with tag('a', name='results-performance-metrics-thresh'):
+                                text('Performance Metrics using Thresholded Decisions')
+                        doc.asis(perf_df[['balanced_accuracy', 'accuracy', 'f1_score', 'TPR', 'TNR', 'PPV', 'NPV']].to_html())
+
+                    else: 
+                        if num_classes == 3:
+                            with tag('h3'):
+                                with tag('a', name='results-data-summary'):
+                                    text('Input Data Summary')
+                            doc.asis(perf_df[['n_examples', 'n_labels_class_1', 'n_labels_class_2', 'n_labels_class_3']].to_html())
+
+                            with tag('h3'):
+                                with tag('a', name='results-performance-plots'):
+                                    text('Performance Plots')
+                            with tag('table'):
+                                with tag('tr'):
+                                    with tag('th', **{'text-align':'center'}):
+                                        text('Train')
+                                    with tag('th', **{'text-align':'center'}):
+                                        text('Test')      
+                                with tag('tr'):
+                                    with tag('td', align='center', **{'text-align':'center'}):
+                                        doc.asis(str(perf_df.iloc[0][['confusion_html']].values[0]).replace('&lt;', '<').replace('&gt;', '>').replace('\\n', ''))
+                                    with tag('td', align='center', **{'text-align':'center'}):
+                                        doc.asis(str(perf_df.iloc[1][['confusion_html']].values[0]).replace('&lt;', '<').replace('&gt;', '>').replace('\\n', ''))
+                            with tag('h3'):
+                                with tag('a', name='results-performance-metrics'):
+                                    text('Performance Metrics')
+                            doc.asis(perf_df[['balanced_accuracy', 'accuracy']].to_html())
+
+                        else:             
+                            with tag('h3'):
+                                with tag('a', name='results-data-summary'):
+                                    text('Input Data Summary')
+
+                            new_df = perf_df[['n_examples', 'n_labels_class_1', 'n_labels_class_2', 'n_labels_class_3','n_labels_class_4',
+                                'n_labels_class_5','n_labels_class_6','n_labels_class_7','n_labels_class_8','n_labels_class_9','n_labels_class_10',
+                                'n_labels_class_11','n_labels_class_12']].copy()
+
+                            new_df = new_df.transpose()
+                            doc.asis(new_df[['train', 'test']].to_html())
+
+                            with tag('h3'):
+                                with tag('a', name='results-performance-plots'):
+                                    text('Performance Plots')
+
+                            with tag('table'):
+                                with tag('th', **{'text-align':'center'}):
+                                    text('Train')
+                                    with tag('tr'):
+                                        with tag('td', align='center', **{'text-align':'center'}):
+
+                                            doc.asis(str(perf_df.iloc[0][['confusion_html']].values[0]).replace('&lt;', '<').replace('&gt;', '>').replace('\\n', ''))
+
+                            with tag('table'):
+                                with tag('th', **{'text-align':'center'}):
+                                    text('Test')
+                                    with tag('tr'):
+                                        with tag('td', align='center', **{'text-align':'center'}):
+
+                                            doc.asis(str(perf_df.iloc[1][['confusion_html']].values[0]).replace('&lt;', '<').replace('&gt;', '>').replace('\\n', ''))
+
+                            with tag('h3'):
+                                with tag('a', name='results-performance-metrics'):
+                                    text('Performance Metrics')
+                            doc.asis(perf_df[['balanced_accuracy', 'accuracy']].to_html())
+
 
                     with tag('h3'):
                         with tag('a', name='settings-hyperparameter'):
