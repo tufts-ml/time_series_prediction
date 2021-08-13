@@ -1,6 +1,6 @@
 {
 	"DATASET_SHORTNAME": "usc_had",
-    "DATASET_VERSION": "v20210308",
+    "DATASET_VERSION": "v20210813",
     "ALL_KEY_COL_NAMES": ["subject_id", "seq_id", "tstep"],
     "SPLIT_KEY_COL_NAMES": "subject_id",
     "OUTCOME_COL_NAME": "act_no",

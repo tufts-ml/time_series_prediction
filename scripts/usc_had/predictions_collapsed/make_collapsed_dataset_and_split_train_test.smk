@@ -30,7 +30,7 @@ rule all:
 rule collapse_features:
     input:
         script=os.path.join(PROJECT_REPO_DIR, 'src', 'feature_transformation.py'),
-        x_csv=os.path.join(DATASET_STD_PATH, 'features_per_tstep.csv'),
+        x_csv=os.path.join(DATASET_STD_PATH, 'features_per_timestep.csv'),
         x_spec_json=os.path.join(DATASET_STD_PATH, 'Spec_FeaturesPerTimestep.json')
 
     output:
@@ -58,7 +58,7 @@ rule split_into_train_and_test:
         script=os.path.join(PROJECT_REPO_DIR, 'src', 'split_dataset.py'),
         collapsedx_csv=os.path.join(DATASET_STD_PATH, 'features_per_seq.csv'),
         collapsedx_json=os.path.join(DATASET_STD_PATH, 'Spec_CollapsedFeaturesPerSequence.json'),
-        collapsedy_csv=os.path.join(DATASET_STD_PATH, 'outcomes_per_seq.csv'),
+        collapsedy_csv=os.path.join(DATASET_STD_PATH, 'outcomes_per_sequence.csv'),
         collapsedy_json=os.path.join(DATASET_STD_PATH, 'Spec_OutcomesPerSequence.json')
 
     output:
