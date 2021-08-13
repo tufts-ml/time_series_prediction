@@ -1,0 +1,169 @@
+'''
+Reproducible workflow for building toy dataset
+
+Usage
+-----
+$ snakemake --cores 1 all
+'''
+
+import json
+import glob
+
+# Default environment variables
+# Can override with:
+# -- local config file variables
+# -- current env variable settings
+PROJECT_REPO_DIR = os.environ.get("PROJECT_REPO_DIR", os.path.abspath("../../../"))
+
+PROJECT_SPEC_UTILS_DIR = os.path.join(PROJECT_REPO_DIR, 'scripts', 'utils_specs')
+PROJECT_CONDA_ENV_YAML = os.path.join(PROJECT_REPO_DIR, "ts_pred.yml")
+
+DATASET_SCRIPTS_ROOT = os.path.join(PROJECT_REPO_DIR, 'scripts', 'usc_had')
+
+# Dataset config file
+# Input/output paths, etc.
+with open(os.path.join(DATASET_SCRIPTS_ROOT, 'config.json'), 'r') as f:
+    D_CONFIG = json.load(f)
+# Store all config settings into environment variables 
+for key, val in list(globals().items()):
+    if key.startswith("PROJECT_") and isinstance(val, str):
+        os.environ[key] = val
+for key, val in D_CONFIG.items():
+    if isinstance(val, str):
+        os.environ[key] = val
+
+DATASET_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["DATASET_PATH_LIST"])))
+os.environ['DATASET_PATH'] = DATASET_PATH
+
+DATASET_STD_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["STD_PATH_LIST"])))
+os.environ['DATASET_STD_PATH'] = DATASET_STD_PATH
+
+print("Building standardized dataset")
+print("Output will go to folder:")
+print(DATASET_STD_PATH)
+
+# Spec config file
+with open('spec_config.json', 'r') as f:
+    SPEC_CONFIG = json.load(f)
+
+
+# Create directory where output will be stored
+rule create_output_dir:
+    output:
+        signal_file=touch(os.path.join(DATASET_STD_PATH, '.snakemake_create_output_dir_complete'))
+
+    params:
+        output_dir=DATASET_STD_PATH
+
+    conda:
+        PROJECT_CONDA_ENV_YAML
+
+    shell:
+        '''
+        python -c 'import pathlib; p = pathlib.Path("{params.output_dir}"); p.mkdir(parents=True, exist_ok=True)'
+        '''
+
+# Rule "all"
+# ----------
+# Equivalent of the following rules in order:
+# * create_output_dir
+# * build_csv_dataset
+# * build_spec_json_from_csv
+rule all:
+    input:
+        completed_create_output_dir=rules.create_output_dir.output.signal_file,
+        x_std_data_csv=os.path.join(DATASET_STD_PATH, 'features_per_timestep.csv'),
+        y_std_data_csv=os.path.join(DATASET_STD_PATH, 'outcomes_per_sequence.csv'),
+        spec_jsons=[os.path.join(
+                DATASET_STD_PATH,
+                SPEC_CONFIG['output_json_path_pattern'].replace(
+                    '{{sheet_name}}', sname))
+                for sname in SPEC_CONFIG['spec_sheet_name_list']]
+
+
+# Create this dataset as tidy CSV files
+rule build_csv_dataset:
+    input:
+        completed_create_output_dir=rules.create_output_dir.output.signal_file,
+        script=os.path.join(DATASET_SCRIPTS_ROOT, 'standardize_dataset', 'make_dataset.py')
+
+    output:
+        x_std_data_csv=os.path.join(DATASET_STD_PATH, 'features_per_timestep.csv'),
+        y_std_data_csv=os.path.join(DATASET_STD_PATH, 'outcomes_per_sequence.csv')
+
+    params:
+        output_dir=DATASET_STD_PATH
+
+    conda:
+        PROJECT_CONDA_ENV_YAML
+
+    shell:
+        '''
+        python -u {input.script} \
+            --output_dir {params.output_dir} \
+            --min_num_sequences_per_label 200 \
+            --max_num_sequences_per_label 400 \
+            --Nmax 5000 \
+            --Tmin 100 \
+            --Tmax 200
+        '''
+
+
+# Download google sheet as CSV
+rule download_spec_from_gsheet_as_csv:
+    input:
+        completed_create_output_dir=rules.create_output_dir.output.signal_file,
+        download_script=os.path.expandvars(os.path.join(PROJECT_REPO_DIR, 'scripts/utils_specs/download_spec_csv_from_gsheet.py')),
+        spec_config_path='spec_config.json'        
+
+    output:
+        spec_csvs=[os.path.join(
+                DATASET_STD_PATH,
+                SPEC_CONFIG['output_csv_path_pattern'].replace(
+                    '{{sheet_name}}', sname))
+                for sname in SPEC_CONFIG['spec_sheet_name_list']]
+
+    conda:
+        PROJECT_CONDA_ENV_YAML
+
+    shell:
+        '''
+        python {{input.download_script}} \
+            --config_json_path {{input.spec_config_path}} \
+            --output_dir {output_dir} \
+        '''.format(output_dir=DATASET_STD_PATH)
+
+
+# Transform downloaded CSV into a JSON file
+rule build_spec_json_from_csv:
+    input:
+        completed_create_output_dir=rules.create_output_dir.output.signal_file,
+        convert_script=os.path.expandvars(os.path.join(PROJECT_SPEC_UTILS_DIR, 'convert_spec_csv_to_json.py')),
+        sheet_template_json_path=os.path.expandvars(os.path.join(PROJECT_SPEC_UTILS_DIR, 'sheet_template.json')),
+        row_template_json_path=os.path.expandvars(os.path.join(PROJECT_SPEC_UTILS_DIR, 'row_template.json')),
+        spec_config_path='spec_config.json',
+        spec_csvs=[os.path.join(
+                DATASET_STD_PATH,
+                SPEC_CONFIG['output_csv_path_pattern'].replace(
+                    '{{sheet_name}}', sname))
+                for sname in SPEC_CONFIG['spec_sheet_name_list']]
+
+    output:
+        spec_jsons=[os.path.join(
+                DATASET_STD_PATH,
+                SPEC_CONFIG['output_json_path_pattern'].replace(
+                    '{{sheet_name}}', sname))
+                for sname in SPEC_CONFIG['spec_sheet_name_list']]
+
+    conda:
+        PROJECT_CONDA_ENV_YAML
+
+    shell:
+        '''
+        python {{input.convert_script}} \
+            --config_json_path {{input.spec_config_path}} \
+            --sheet_template_json {{input.sheet_template_json_path}} \
+            --row_template_json {{input.row_template_json_path}} \
+            --output_dir {output_dir}
+        '''.format(output_dir=DATASET_STD_PATH)
+

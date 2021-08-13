@@ -1,0 +1,64 @@
+{
+    "name": "FeaturesPerSubject",
+    "path": "features_per_subject.csv",
+    "format": "csv",
+    "mediatype": "text/csv",
+    "profile": "tabular-data-resource",
+    "$schema": "https://frictionlessdata.io/schemas/table-schema.json",
+    "schema": {
+        "fields": [
+            {
+                "name": "subject_id",
+                "type": "integer",
+                "role": "key",
+                "description": "Unique identifier per subject of the experiment",
+                "units": "NONE",
+                "constraints": {
+                    "required": "TRUE",
+                    "minimum": "1",
+                    "maximum": "14"
+                }
+            },
+            {
+                "name": "age",
+                "type": "numeric",
+                "role": "measurement",
+                "description": "Age of the subject",
+                "units": "years",
+                "constraints": {
+                    "required": "TRUE",
+                    "minimum": "10",
+                    "maximum": "50"
+                }
+            },
+            {
+                "name": "height",
+                "type": "numeric",
+                "role": "measurement",
+                "description": "Height of the subject",
+                "units": "centimeters",
+                "constraints": {
+                    "required": "TRUE",
+                    "minimum": "0",
+                    "maximum": "200"
+                }
+            },
+            {
+                "name": "weight",
+                "type": "numeric",
+                "role": "measurement",
+                "description": "Weight of the subject",
+                "units": "kilograms",
+                "constraints": {
+                    "required": "TRUE",
+                    "minimum": "0",
+                    "maximum": "200"
+                }
+            }
+        ],
+        "missingValues": [
+            "",
+            "nan"
+        ]
+    }
+}

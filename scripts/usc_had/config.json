@@ -1,0 +1,17 @@
+{
+	"DATASET_SHORTNAME": "usc_had",
+    "DATASET_VERSION": "v20210308",
+    "ALL_KEY_COL_NAMES": ["subject_id", "seq_id", "tstep"],
+    "SPLIT_KEY_COL_NAMES": "subject_id",
+    "OUTCOME_COL_NAME": "act_no",
+    "SPLIT_SUBPATH": "split-by=subject_id",
+	"DATASET_PATH_LIST": ["$PROJECT_REPO_DIR", "datasets", "$DATASET_SHORTNAME"],
+    "DATA_DESC_FILE_NAME": "usc_had_data_descriptions.csv",
+    "STD_PATH_LIST": ["$DATASET_PATH", "$DATASET_VERSION"],
+    "SPLIT_PATH_LIST_FEAT_PER_SEQUENCE": ["$DATASET_PATH", "$DATASET_VERSION", "$SPLIT_SUBPATH", "collapsed_features_per_sequence"],
+    "SPLIT_PATH_LIST_FEAT_PER_TIMESTEP": ["$DATASET_PATH", "$DATASET_VERSION", "$SPLIT_SUBPATH", "features_per_timestep"],
+    "SPLIT_RANDOM_STATE": 265,
+    "SPLIT_TEST_SIZE": 0.1,
+    "RESULTS_TOP_PATH_LIST": ["/tmp/", "results", "$DATASET_SHORTNAME"],
+    "RESULTS_PATH_LIST_FEAT_PER_SEQUENCE": ["$RESULTS_TOP_PATH", "$DATASET_VERSION", "$SPLIT_SUBPATH", "collapsed_features_per_sequence"]
+}
