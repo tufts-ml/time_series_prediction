@@ -50,6 +50,8 @@ Assuming you cloned the current repository, you should have the file 'spec_confi
 
 Now, you can run the rules 'download_spec_from_gsheet_as_csv' and 'build_spec_json_from_csv' in that order using the shell commands within 'Snakefile' to get json specs for each of your csv files.
 
+PLEASE NOTE: You will need to move these spec files into your dataset folder before running experiments.
+
 -----------------------------------------------------
 Step 3: Preprocess the data using the script provided
 -----------------------------------------------------

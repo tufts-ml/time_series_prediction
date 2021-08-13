@@ -50,6 +50,8 @@ PLEASE NOTE: You will need to change the variable "DATASET_SCRIPTS_ROOT" in orde
 
 If you have a custom script to preprocess your data into these three files, you can store it within your standardize_dataset folder, and alter the input of the rule 'build_csv_dataset' within the 'Snakefile'. Then, you could run this file in order to perform steps 2 and 3 simultaneously.
 
+PLEASE NOTE: You will need to move these spec files into your dataset folder before running experiments.
+
 --------------------------------------------------------------------------
 Step 3: Preprocess the data, organizing it into the format that you desire
 --------------------------------------------------------------------------
