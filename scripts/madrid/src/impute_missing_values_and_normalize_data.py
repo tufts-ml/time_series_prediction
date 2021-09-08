@@ -114,12 +114,14 @@ if __name__ == '__main__':
     
     # get the train test features
     x_train_csv=os.path.join(args.train_test_split_dir, 'x_train.csv.gz')
+    x_valid_csv=os.path.join(args.train_test_split_dir, 'x_valid.csv.gz')
     x_test_csv=os.path.join(args.train_test_split_dir, 'x_test.csv.gz')
     x_dict_json=os.path.join(args.train_test_split_dir, 'x_dict.json')
     
     # impute values by carry forward and then pop mean on train and test sets separately
     x_data_dict = load_data_dict_json(x_dict_json)
     x_train_df = pd.read_csv(x_train_csv)
+    x_valid_df = pd.read_csv(x_valid_csv)
     x_test_df = pd.read_csv(x_test_csv)
     
     id_cols = parse_id_cols(x_data_dict)
@@ -133,20 +135,24 @@ if __name__ == '__main__':
     print('Adding missing values mask as features...')
     for feature_col in non_medication_feature_cols:
         x_train_df.loc[:, 'mask_'+feature_col] = (~x_train_df[feature_col].isna())*1.0
+        x_valid_df.loc[:, 'mask_'+feature_col] = (~x_valid_df[feature_col].isna())*1.0
         x_test_df.loc[:, 'mask_'+feature_col] = (~x_test_df[feature_col].isna())*1.0
     print('Adding time since last missing value is observed as features...')
     x_train_df = get_time_since_last_observed_features(x_train_df, id_cols, time_col, non_medication_feature_cols)
+    x_valid_df = get_time_since_last_observed_features(x_valid_df, id_cols, time_col, non_medication_feature_cols)
     x_test_df = get_time_since_last_observed_features(x_test_df, id_cols, time_col, non_medication_feature_cols)
     
     
     # impute values
-    print('Imputing values in train and test sets separately..')
+    print('Imputing values in train, valid and test sets by forward filling, and then with training set mean estimates..')
     x_train_df = x_train_df.groupby(id_cols).apply(lambda x: x.fillna(method='pad')).copy()
+    x_valid_df = x_valid_df.groupby(id_cols).apply(lambda x: x.fillna(method='pad')).copy()
     x_test_df = x_test_df.groupby(id_cols).apply(lambda x: x.fillna(method='pad')).copy()
     for feature_col in feature_cols:
         x_train_df[feature_col].fillna(x_train_df[feature_col].mean(), inplace=True)
         
         # impute population mean of training set to test set
+        x_valid_df[feature_col].fillna(x_train_df[feature_col].mean(), inplace=True)
         x_test_df[feature_col].fillna(x_train_df[feature_col].mean(), inplace=True)
     
     # Update data dict with missing value features
@@ -157,11 +163,13 @@ if __name__ == '__main__':
     
     # normalize the data
     x_train_normalized_df, scaling_df = normalize_df(x_train_df, feature_cols_with_mask_features, scaling=args.normalization)
+    x_valid_normalized_df, scaling_df = normalize_df(x_valid_df, feature_cols_with_mask_features, scaling=args.normalization, train_df=x_train_df)
     x_test_normalized_df, scaling_df = normalize_df(x_test_df, feature_cols_with_mask_features, scaling=args.normalization, train_df=x_train_df)
     
     
-    print('Saving imputed and normalized train-test splits to :\n%s \n%s'%(x_train_csv, x_test_csv))
+    print('Saving imputed and normalized train-valid-test splits to :\n%s \n%s \n%s'%(x_train_csv, x_valid_csv, x_test_csv))
     x_train_normalized_df.to_csv(x_train_csv, index=False, compression='gzip') 
+    x_valid_normalized_df.to_csv(x_valid_csv, index=False, compression='gzip') 
     x_test_normalized_df.to_csv(x_test_csv, index=False, compression='gzip')
     
     norm_estimates_csv = os.path.join(args.output_dir, 'normalization_estimates.csv') 

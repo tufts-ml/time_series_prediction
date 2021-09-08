@@ -1,10 +1,11 @@
 {
     "lr": [0.001],
-    "batch_size": [5192, 10384],
+    "batch_size": [-1],
     "weight_decay": [1e-5, 1e-3, 10, 100, 1e+5],
     "n_hiddens" : [32],
     "n_layers" : [1, 2],
+    "initialization_gain" : [1.0],
     "lamb" : [100],
-    "scoring" : ["cross_entropy_loss"],
+    "scoring" : ["surrogate_loss_tight"],
     "seed" : [111, 9764]
 }

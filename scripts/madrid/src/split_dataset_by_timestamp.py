@@ -20,6 +20,12 @@ import numpy as np
 import copy
 import datetime
 from sklearn.model_selection import GroupShuffleSplit
+DEFAULT_PROJECT_REPO = os.path.sep.join(__file__.split(os.path.sep)[:-2])
+PROJECT_REPO_DIR = os.path.abspath(
+    os.environ.get('PROJECT_REPO_DIR', DEFAULT_PROJECT_REPO))
+import sys
+sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src'))
+from feature_transformation import (parse_id_cols, parse_time_cols, parse_feature_cols)
 
 if __name__ == '__main__':
     # Parse command line arguments
@@ -54,7 +60,11 @@ if __name__ == '__main__':
                       if c['role'] in ('id', 'key') and c['name'] in df.columns]
     '''  
     # sort the dataframe by timestamp
-    df_timesorted = df.sort_values(by=['admission_timestamp', 'window_start', 'window_end']) 
+    if 'window_start' in df.columns:
+        df_timesorted = df.sort_values(by=['admission_timestamp', 'window_start', 'window_end']) 
+    else:
+        id_cols = parse_id_cols(data_dict)       
+        df_timesorted = df.sort_values(by=['admission_timestamp'] + id_cols + ['hours_since_admission']) 
     
     # set the first 3 years of admissions for training
     train_admission_ts_start = df_timesorted['admission_timestamp'].min()

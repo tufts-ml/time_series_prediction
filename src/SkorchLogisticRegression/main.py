@@ -127,11 +127,11 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int, default=1111)
     parser.add_argument('--n_splits', type=int, default=2)
     parser.add_argument('--lamb', type=int, default=1000)
-    parser.add_argument('--warm_start', type=str, default='true')
+    parser.add_argument('--warm_start', type=str, default='false')
     parser.add_argument('--merge_x_y', default=True,
                                 type=lambda x: (str(x).lower() == 'true'), required=False)
     parser.add_argument('--initialization_gain', type=float, default=1.0)
-    parser.add_argument('--incremental_min_precision', type=str, default='true')
+    parser.add_argument('--incremental_min_precision', type=str, default='false')
 
     args = parser.parse_args()
     
@@ -171,6 +171,8 @@ if __name__ == '__main__':
         df_by_split[split_name] = cur_df
  
     outcome_col_name = args.outcome_col_name
+    
+#     feature_cols = [col for col in feature_cols if ('blood_pressure' in col)|('heart_rate' in col)|('body_temperature' in col)]
     
     # Prepare data for classification
     x_train = df_by_split['train'][feature_cols].values.astype(np.float32)
@@ -236,7 +238,7 @@ if __name__ == '__main__':
     torch.manual_seed(args.seed)
     
     # set max_epochs 
-    max_epochs=100
+    max_epochs=500
     
     # define callbacks 
     epoch_scoring_precision_train = EpochScoring('precision', lower_is_better=False, on_train=True,
@@ -257,8 +259,8 @@ if __name__ == '__main__':
     epoch_scoring_auprc_valid = EpochScoring('average_precision', lower_is_better=False, on_train=False,
                                                   name='auprc_valid')
     
-    early_stopping_cp = EarlyStopping(monitor='precision_valid',
-                                          patience=30, threshold=1e-10, threshold_mode='rel', 
+    precision_early_stopping_cp = EarlyStopping(monitor='precision_train',
+                                          patience=15, threshold=1e-10, threshold_mode='rel', 
                                           lower_is_better=False)
     
     loss_early_stopping_cp = EarlyStopping(monitor='valid_loss',
@@ -313,7 +315,7 @@ if __name__ == '__main__':
     
     
     
-    fixed_precision = 0.3
+    fixed_precision = 0.2
     thr_list = [0.5]
     ## start training
     if args.scoring == 'cross_entropy_loss':
@@ -362,7 +364,7 @@ if __name__ == '__main__':
         precision_scores_G, recall_scores_G = [np.zeros(thr_grid.size), np.zeros(thr_grid.size)]
         for gg, thr in enumerate(thr_grid): 
 #             logistic_clf.module_.linear_transform_layer.bias.data = torch.tensor(thr_grid[gg]).double()
-            curr_thr_y_preds = logistic_clf.predict_proba(x_train_valid_transformed)[:,1]>=thr_grid[gg] 
+            curr_thr_y_preds = y_train_valid_proba_vals[:,1]>=thr_grid[gg] 
             precision_scores_G[gg] = precision_score(y_train_valid, curr_thr_y_preds)
             recall_scores_G[gg] = recall_score(y_train_valid, curr_thr_y_preds) 
         
@@ -503,7 +505,7 @@ if __name__ == '__main__':
                                                            calc_tp_valid,
                                                            calc_fp_train,
                                                            calc_fp_valid,
-#                                                            early_stopping_cp,
+                                                           precision_early_stopping_cp,
                                                            cp, train_end_cp],
                                                optimizer=torch.optim.Adam)
             

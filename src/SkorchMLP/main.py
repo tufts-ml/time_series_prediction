@@ -132,9 +132,9 @@ if __name__ == '__main__':
     parser.add_argument('--lamb', type=int, default=1000)
     parser.add_argument('--merge_x_y', default=True,
                                 type=lambda x: (str(x).lower() == 'true'), required=False)
-    parser.add_argument('--warm_start', type=str, default='true')
+    parser.add_argument('--warm_start', type=str, default='false')
     parser.add_argument('--initialization_gain', type=float, default=1.0)
-    parser.add_argument('--incremental_min_precision', type=str, default='true')
+    parser.add_argument('--incremental_min_precision', type=str, default='false')
     
     args = parser.parse_args()
     
@@ -316,7 +316,7 @@ if __name__ == '__main__':
     
 #     n_cv_folds = int(np.floor(1/args.validation_size))
     ## start training
-    fixed_precision = 0.3
+    fixed_precision = 0.2
     thr_list = [0.5]
     if args.scoring == 'cross_entropy_loss':
         mlp = SkorchMLP(n_features=len(feature_cols),
@@ -362,8 +362,9 @@ if __name__ == '__main__':
         thr_grid = np.linspace(np.percentile(unique_probas,1), np.percentile(unique_probas, 99), 100)
         
         precision_scores_G, recall_scores_G = [np.zeros(thr_grid.size), np.zeros(thr_grid.size)]
+#         y_train_valid_pred_probas = mlp_clf.predict_proba(x_train_valid_transformed)
         for gg, thr in enumerate(thr_grid): 
-            curr_thr_y_preds = mlp_clf.predict_proba(x_train_valid_transformed)[:,1]>=thr_grid[gg] 
+            curr_thr_y_preds = y_train_valid_proba_vals[:,1]>=thr_grid[gg] 
             precision_scores_G[gg] = precision_score(y_train_valid, curr_thr_y_preds)
             recall_scores_G[gg] = recall_score(y_train_valid, curr_thr_y_preds) 
                 

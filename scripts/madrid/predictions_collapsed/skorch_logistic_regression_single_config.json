@@ -1,8 +1,9 @@
 {
-    "lr": [0.001],
-    "batch_size": [5192],
+    "lr": [0.01],
+    "batch_size": [50000],
     "weight_decay": [1e-3],
-    "lamb" : [100],
-    "scoring" : ["cross_entropy_loss"],
-    "seed" : [1111]
+    "lamb" : [10000],
+    "scoring" : ["surrogate_loss_tight"],
+    "initialization_gain" : [1.5],
+    "seed" : [1235]
 }

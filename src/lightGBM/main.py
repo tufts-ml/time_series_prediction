@@ -166,8 +166,9 @@ if __name__ == '__main__':
     thr_grid = np.linspace(np.percentile(unique_probas,1), np.percentile(unique_probas, 99), 100)
 
     precision_scores_G, recall_scores_G = [np.zeros(thr_grid.size), np.zeros(thr_grid.size)]
+#     y_train_valid_pred_probas = lgb_clf.predict_proba(x_train_valid_transformed)
     for gg, thr in enumerate(thr_grid): 
-        curr_thr_y_preds = lgb_clf.predict_proba(x_train_valid_transformed)[:,1]>=thr_grid[gg] 
+        curr_thr_y_preds = y_train_valid_proba_vals[:,1]>=thr_grid[gg] 
         precision_scores_G[gg] = precision_score(y_train_valid, curr_thr_y_preds)
         recall_scores_G[gg] = recall_score(y_train_valid, curr_thr_y_preds) 
     

@@ -24,7 +24,7 @@ CLF_TRAIN_TEST_SPLIT_PATH=os.path.join(DATASET_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTP
 
 rule train_and_evaluate_classifier_many_hyperparams:
     input:
-        [os.path.join(RESULTS_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH, "skorch_mlp_lr={lr}-weight_decay={weight_decay}-batch_size={batch_size}-scoring={scoring}-seed={seed}-lamb={lamb}-n_hiddens={n_hiddens}-n_layers={n_layers}.json").format(lr=lr, weight_decay=weight_decay, batch_size=batch_size, scoring=scoring, seed=seed, lamb=lamb, n_hiddens=n_hiddens, n_layers=n_layers) for lr in config['lr'] for weight_decay in config['weight_decay'] for batch_size in config['batch_size'] for scoring in config['scoring'] for seed in config['seed'] for lamb in config['lamb'] for n_hiddens in config['n_hiddens'] for n_layers in config['n_layers']]
+        [os.path.join(RESULTS_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH, "skorch_mlp_lr={lr}-weight_decay={weight_decay}-batch_size={batch_size}-scoring={scoring}-seed={seed}-lamb={lamb}-initialization_gain={initialization_gain}-n_hiddens={n_hiddens}-n_layers={n_layers}_perf.csv").format(lr=lr, weight_decay=weight_decay, batch_size=batch_size, scoring=scoring, seed=seed, lamb=lamb, initialization_gain=initialization_gain, n_hiddens=n_hiddens, n_layers=n_layers) for lr in config['lr'] for weight_decay in config['weight_decay'] for batch_size in config['batch_size'] for scoring in config['scoring'] for seed in config['seed'] for lamb in config['lamb'] for initialization_gain in config['initialization_gain'] for n_hiddens in config['n_hiddens'] for n_layers in config['n_layers']]
 
 rule train_and_evaluate_classifier:
     input:
@@ -40,10 +40,10 @@ rule train_and_evaluate_classifier:
 
     params:
         output_dir=RESULTS_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH,
-        fn_prefix="skorch_mlp_lr={lr}-weight_decay={weight_decay}-batch_size={batch_size}-scoring={scoring}-seed={seed}-lamb={lamb}-n_hiddens={n_hiddens}-n_layers={n_layers}"
+        fn_prefix="skorch_mlp_lr={lr}-weight_decay={weight_decay}-batch_size={batch_size}-scoring={scoring}-seed={seed}-lamb={lamb}-initialization_gain={initialization_gain}-n_hiddens={n_hiddens}-n_layers={n_layers}"
 
     output:
-        os.path.join(RESULTS_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH, "skorch_mlp_lr={lr}-weight_decay={weight_decay}-batch_size={batch_size}-scoring={scoring}-seed={seed}-lamb={lamb}-n_hiddens={n_hiddens}-n_layers={n_layers}.json")
+        os.path.join(RESULTS_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH, "skorch_mlp_lr={lr}-weight_decay={weight_decay}-batch_size={batch_size}-scoring={scoring}-seed={seed}-lamb={lamb}-initialization_gain={initialization_gain}-n_hiddens={n_hiddens}-n_layers={n_layers}_perf.csv")
 
     conda:
         PROJECT_CONDA_ENV_YAML
@@ -68,6 +68,7 @@ rule train_and_evaluate_classifier:
             --merge_x_y False \
             --seed {wildcards.seed} \
             --lamb {wildcards.lamb} \
+            --initialization_gain {wildcards.initialization_gain} \
             --n_hiddens {wildcards.n_hiddens} \
             --n_layers {wildcards.n_layers} \
             --n_splits 1 \

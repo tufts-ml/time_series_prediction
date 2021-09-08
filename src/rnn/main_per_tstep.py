@@ -8,12 +8,12 @@ import skorch
 from sklearn.model_selection import GridSearchCV, cross_validate, ShuffleSplit
 from sklearn.metrics import (roc_curve, accuracy_score, log_loss, 
                              balanced_accuracy_score, confusion_matrix, 
-                             roc_auc_score, make_scorer, precision_score, recall_score)
+                             roc_auc_score, make_scorer, precision_score, recall_score, average_precision_score)
 from yattag import Doc
 import matplotlib.pyplot as plt
 
 from dataset_loader import TidySequentialDataCSVLoader
-from RNNBinaryClassifier import RNNBinaryClassifier
+from RNNPerTStepBinaryClassifier import RNNPerTStepBinaryClassifier
 from feature_transformation import (parse_id_cols, parse_feature_cols)
 from utils import load_data_dict_json
 from joblib import dump
@@ -29,19 +29,20 @@ from sklearn.preprocessing import StandardScaler
 from skorch.utils import noop
 import glob
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+from skorch.dataset import Dataset
+from skorch.helper import predefined_split
 
-# define precision recall callbacks
-def calc_precision(net, X, y):
-    thr=0.5
-    y_pred_probas = net.predict(X)
-    return precision_score(y, y_pred_probas[:,1]>=0.5)
-    
+# define AUPRC callback
 
-def calc_recall(net, X, y):
-    thr=0.5
-    y_pred_probas = net.predict(X)
-    return recall_score(y, y_pred_probas[:,1]>=0.5)
+def calc_auprc(net, X, y):
+    y_pred_probas_NT2 = net.predict_proba(X)
+    keep_inds = torch.logical_not(torch.all(torch.isnan(torch.FloatTensor(X.X)), dim=-1))
+    return average_precision_score(y[keep_inds], y_pred_probas_NT2[keep_inds][:,1].detach().numpy())
 
+def calc_auroc(net, X, y):
+    y_pred_probas_NT2 = net.predict_proba(X)
+    keep_inds = torch.logical_not(torch.all(torch.isnan(torch.FloatTensor(X.X)), dim=-1))
+    return roc_auc_score(y[keep_inds], y_pred_probas_NT2[keep_inds][:,1].detach().numpy())
 
 def main():
     parser = argparse.ArgumentParser(description='PyTorch RNN with variable-length numeric sequences wrapper')
@@ -104,7 +105,7 @@ def main():
         x_col_names=feature_cols,
         idx_col_names=id_cols,
         y_col_name=args.outcome_col_name,
-        y_label_type='per_sequence'
+        y_label_type='per_tstep'
     )
     
     test_vitals = TidySequentialDataCSVLoader(
@@ -113,7 +114,7 @@ def main():
         x_col_names=feature_cols,
         idx_col_names=id_cols,
         y_col_name=args.outcome_col_name,
-        y_label_type='per_sequence'
+        y_label_type='per_tstep'
     )
 
     X_train, y_train = train_vitals.get_batch_data(batch_id=0)
@@ -121,8 +122,12 @@ def main():
     X_test, y_test = test_vitals.get_batch_data(batch_id=0)
     N,T,F = X_train.shape
     
-    X_train[np.isnan(X_train)]=0.0
-    X_test[np.isnan(X_test)]=0.0
+#     from IPython import embed; embed()
+#     X_train = (X_train - np.min(X_train))/(np.max(X_train)-np.min(X_train))
+#     X_valid = (X_valid - np.min(X_train))/(np.max(X_train)-np.min(X_train))
+#     X_test = (X_test - np.min(X_train))/(np.max(X_train)-np.min(X_train))
+    
+    valid_ds = Dataset(X_valid, y_valid) 
     
     print('number of time points : %s\nnumber of features : %s\n'%(T,F))
     
@@ -150,29 +155,37 @@ def main():
         
     print('RNN parameters : '+ output_filename_prefix)
     
-    rnn = RNNBinaryClassifier(
-              max_epochs=120,
+    loss_early_stopping_cp =  EarlyStopping(monitor='valid_loss', patience=15, threshold=0.002, threshold_mode='rel',
+                                            lower_is_better=True)
+    
+    rnn = RNNPerTStepBinaryClassifier(
+              max_epochs=250,
               batch_size=args.batch_size,
               device=device,
               lr=args.lr,
               callbacks=[
-              EpochScoring(calc_precision, lower_is_better=False, on_train=True, name='precision_train'),
-              EpochScoring(calc_precision, lower_is_better=False, on_train=False, name='precision_valid'),
-              EpochScoring(calc_recall, lower_is_better=False, on_train=True, name='recall_train'),
-              EpochScoring(calc_recall, lower_is_better=False, on_train=False, name='recall_valid'),
-              EpochScoring('roc_auc', lower_is_better=False, on_train=True, name='aucroc_score_train'),
-              EpochScoring('roc_auc', lower_is_better=False, on_train=False, name='aucroc_score_valid'),
-              EarlyStopping(monitor='aucroc_score_valid', patience=5, threshold=0.002, threshold_mode='rel',
-                                             lower_is_better=False),
+                  EpochScoring(calc_auprc, lower_is_better=False, on_train=True, name='auprc_train'),
+                  EpochScoring(calc_auprc, lower_is_better=False, on_train=False, name='auprc_valid'),
+                  EpochScoring(calc_auroc, lower_is_better=False, on_train=True, name='auroc_train'),
+                  EpochScoring(calc_auroc, lower_is_better=False, on_train=False, name='auroc_valid'),
+#               EpochScoring(calc_precision, lower_is_better=False, on_train=True, name='precision_train'),
+#               EpochScoring(calc_precision, lower_is_better=False, on_train=False, name='precision_valid'),
+#               EpochScoring(calc_recall, lower_is_better=False, on_train=True, name='recall_train'),
+#               EpochScoring(calc_recall, lower_is_better=False, on_train=False, name='recall_valid'),
+#               EpochScoring('roc_auc', lower_is_better=False, on_train=True, name='aucroc_score_train'),
+#               EpochScoring('roc_auc', lower_is_better=False, on_train=False, name='aucroc_score_valid'),
+#                   EarlyStopping(monitor='auprc_valid', patience=5, threshold=0.002, threshold_mode='rel',
+#                                                  lower_is_better=False),
 #               LRScheduler(policy=ReduceLROnPlateau, mode='max', monitor='aucroc_score_valid', patience=10),
-                  compute_grad_norm,
+#                   compute_grad_norm,
 #               GradientNormClipping(gradient_clip_value=0.5, gradient_clip_norm_type=2),
-              Checkpoint(monitor='aucroc_score_valid', f_history=os.path.join(args.output_dir, output_filename_prefix+'.json')),
+              loss_early_stopping_cp,
+              Checkpoint(monitor='auprc_valid', f_history=os.path.join(args.output_dir, output_filename_prefix+'.json')),
               TrainEndCheckpoint(dirname=args.output_dir, fn_prefix=output_filename_prefix),
               ],
-              criterion=torch.nn.CrossEntropyLoss,
-              criterion__weight=class_weights,
-              train_split=skorch.dataset.CVSplit(args.validation_size, random_state=41),
+#               criterion=torch.nn.CrossEntropyLoss,
+#               criterion__weight=class_weights,
+              train_split=predefined_split(valid_ds),
               module__rnn_type='GRU',
               module__n_layers=args.hidden_layers,
               module__n_hiddens=args.hidden_units,
@@ -182,28 +195,30 @@ def main():
               optimizer__weight_decay=args.weight_decay
                          ) 
     
-    N=len(X_train)
-    X_train = X_train[:N]
-    y_train = y_train[:N]
+#     N=len(X_train)
+#     X_train = X_train[:N]
+#     y_train = y_train[:N]
     
+
     clf = rnn.fit(X_train, y_train)
     
     # get threshold with max recall at fixed precision
-    fixed_precision=0.35
-    x_tr, x_va = [np.asarray(i) for i in rnn.train_split(X_train)]
-    y_tr, y_va = [np.asarray(i) for i in rnn.train_split(y_train)]
+    fixed_precision=0.1
     
     # get predict probas for y=1 on validation set
-    G = 1000
-    y_va_pred_proba = rnn.predict(x_va)[:,1]
-    thresh_start, thresh_end = np.percentile(y_va_pred_proba, [1, 99])
-    thr_grid_G = np.linspace(thresh_start, thresh_end, G)
+    keep_inds_va = torch.logical_not(torch.all(torch.isnan(torch.FloatTensor(X_valid)), dim=-1))
+    y_va_pred_proba = clf.predict_proba(X_valid)[keep_inds_va][:,1].detach().numpy()
     
-    precision_scores_G, recall_scores_G = [np.zeros(G), np.zeros(G)]
-    for i, gg in enumerate(thr_grid_G):
-        y_va_pred = (y_va_pred_proba>=gg)*1
-        precision_scores_G[i] = precision_score(y_va, y_va_pred)
-        recall_scores_G[i] = recall_score(y_va, y_va_pred)
+    unique_probas = np.unique(y_va_pred_proba)
+    thr_grid_G = np.linspace(np.percentile(unique_probas,1), max(unique_probas), 100)
+        
+    precision_scores_G, recall_scores_G = [np.zeros(thr_grid_G.size), np.zeros(thr_grid_G.size)]
+    for gg, thr in enumerate(thr_grid_G): 
+#             logistic_clf.module_.linear_transform_layer.bias.data = torch.tensor(thr_grid[gg]).double()
+        curr_thr_y_preds = clf.predict_proba(torch.FloatTensor(X_valid))[keep_inds_va][:,1]>=thr_grid_G[gg] 
+        precision_scores_G[gg] = precision_score(y_valid[keep_inds_va], curr_thr_y_preds)
+        recall_scores_G[gg] = recall_score(y_valid[keep_inds_va], curr_thr_y_preds) 
+    
     
     keep_inds = precision_scores_G>=fixed_precision
 
@@ -229,21 +244,26 @@ def main():
     print('chosen threshold : %.3f'%best_thr)
     
     splits = ['train', 'valid', 'test']
-    data_splits = ((x_tr, y_tr), (x_va, y_va), (X_test, y_test))
-    auroc_per_split, precisions_per_split, recalls_per_split = [np.zeros(len(splits)),
+#     data_splits = ((x_tr, y_tr), (x_va, y_va), (X_test, y_test))
+    auroc_per_split,  auprc_per_split, precisions_per_split, recalls_per_split = [np.zeros(len(splits)),
+                                                                np.zeros(len(splits)),
                                                                 np.zeros(len(splits)),
                                                                 np.zeros(len(splits))]
     
-    for ii, (X, y) in enumerate(data_splits):
-        y_pred_proba = clf.predict_proba(X)
-        y_pred_proba_neg, y_pred_proba_pos = zip(*y_pred_proba)
-        auroc_per_split[ii] = roc_auc_score(y, y_pred_proba_pos)
-        y_pred_proba_pos = np.asarray(y_pred_proba_pos)
+    
+    for ii, (X, y) in enumerate([(X_train, y_train), (X_valid, y_valid), (X_test, y_test)]):
+        keep_inds = torch.logical_not(torch.all(torch.isnan(torch.FloatTensor(X)), dim=-1))
+        y_pred_proba_pos = clf.predict_proba(X)[keep_inds][:,1].detach().numpy()
+#         y_pred_proba_neg, y_pred_proba_pos = zip(*y_pred_proba)
+        auroc_per_split[ii] = roc_auc_score(y[keep_inds], y_pred_proba_pos)
+#         y_pred_proba_pos = np.asarray(y_pred_proba_pos)
+        auprc_per_split[ii] = average_precision_score(y[keep_inds], y_pred_proba_pos)
         y_pred = y_pred_proba_pos>=best_thr
-        precisions_per_split[ii] = precision_score(y, y_pred)
-        recalls_per_split[ii] = recall_score(y, y_pred)
+        precisions_per_split[ii] = precision_score(y[keep_inds], y_pred)
+        recalls_per_split[ii] = recall_score(y[keep_inds], y_pred)
     
     auroc_train, auroc_valid, auroc_test = auroc_per_split
+    auprc_train, auprc_valid, auprc_test = auprc_per_split
     precision_train, precision_valid, precision_test = precisions_per_split
     recall_train, recall_valid, recall_test = recalls_per_split
     
@@ -251,6 +271,9 @@ def main():
     perf_dict = {'auroc_train':auroc_train,
                 'auroc_valid':auroc_valid,
                 'auroc_test':auroc_test,
+                'auprc_train':auprc_train,
+                'auprc_valid':auprc_valid,
+                'auprc_test':auprc_test,
                 'precision_train':precision_train,
                 'precision_valid':precision_valid,
                 'precision_test':precision_test,
@@ -268,8 +291,6 @@ def main():
     perf_df.to_csv(perf_csv, index=False)
     
 
-def convert_proba_to_binary(probabilites):
-    return [0 if probs[0] > probs[1] else 1 for probs in probabilites]
 
 def get_paramater_gradient_l2_norm(net,**kwargs):
     parameters = [i for  _,i in net.module_.named_parameters()]
