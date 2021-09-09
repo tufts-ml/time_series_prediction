@@ -26,19 +26,13 @@ from scipy.stats import skew
 DEFAULT_PROJECT_REPO = os.path.sep.join(__file__.split(os.path.sep)[:-2])
 PROJECT_REPO_DIR = os.path.abspath(
     os.environ.get('PROJECT_REPO_DIR', DEFAULT_PROJECT_REPO))
+from feature_transformation import (get_fenceposts, parse_time_cols, parse_feature_cols, update_data_dict_collapse) 
+
 
 sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src'))
 from utils import load_data_dict_json
 from progressbar import ProgressBar
 
-def get_fenceposts(ts_df, id_cols):
-    keys_df = ts_df[id_cols].copy()
-    for col in id_cols:
-        if not pd.api.types.is_numeric_dtype(keys_df[col].dtype):
-            keys_df[col] = keys_df[col].astype('category')
-            keys_df[col] = keys_df[col].cat.codes
-    fp = np.hstack([0, 1 + np.flatnonzero(np.diff(keys_df.values, axis=0).any(axis=1)), keys_df.shape[0]]) 
-    return fp
 
 def main():
     parser = argparse.ArgumentParser(description="Script for collapsing"
@@ -365,92 +359,6 @@ def calc_start_and_stop_indices_from_percentiles(
 
 
 
-# DATA DICTIONARY STUFF: PARSING FUNCTIONS AND DICT UPDATING
-def update_data_dict_collapse(data_dict, collapse_range_features, range_pairs): 
-
-    id_cols = parse_id_cols(data_dict)
-    feature_cols = parse_feature_cols(data_dict)
-
-    new_fields = []
-    for name in id_cols:
-        for col in data_dict['fields']:
-            if col['name'] == name: 
-                new_fields.append(col)
-                
-    for op in collapse_range_features.split(' '):
-        for low, high in ast.literal_eval(range_pairs):
-            for name in feature_cols:
-                for col in data_dict['fields']:
-                    if col['name'] == name: 
-                        new_dict = dict(col)
-                        new_dict['name'] = '{}_{}_{}_to_{}'.format(name, op, low, high)
-                        new_fields.append(new_dict)
-
-    new_data_dict = copy.deepcopy(data_dict)
-    if 'schema' in new_data_dict:
-        new_data_dict['schema']['fields'] = new_fields
-        del new_data_dict['fields']
-    else:
-        new_data_dict['fields'] = new_fields
-
-    return new_data_dict
-
-
-def parse_id_cols(data_dict):
-    cols = []
-    for col in data_dict['fields']:
-        if 'role' in col and (col['role'] == 'id' or 
-                              col['role'] == 'key'):
-            cols.append(col['name'])
-    return cols
-
-def parse_output_cols(data_dict):
-    cols = []
-    for col in data_dict['fields']:
-        if 'role' in col and (col['role'] == 'outcome' or 
-                              col['role'] == 'output'):
-            cols.append(col['name'])
-    return cols
-
-def parse_feature_cols(data_dict):
-    non_time_cols = []
-    for col in data_dict['fields']:
-        if 'role' in col and col['role'] in ('feature', 'measurement', 'covariate'):
-            non_time_cols.append(col['name'])
-    non_time_cols.sort()
-    return non_time_cols
-
-def parse_time_cols(data_dict):
-    time_cols = []
-    for col in data_dict['fields']:
-        # TODO avoid hardcoding a column name
-        if (col['name'] == 'hours' or col['role'].count('time') > 0):
-            time_cols.append(col['name'])
-    return time_cols
-            
-def parse_time_col(data_dict):
-    time_cols = []
-    for col in data_dict['fields']:
-        # TODO avoid hardcoding a column name
-        if (col['name'] == 'hours' or col['role']=='timestamp_relative'):
-            time_cols.append(col['name'])
-    return time_cols[-1]
-
-def remove_col_names_from_list_if_not_in_df(col_list, df):
-    ''' Remove column names from provided list if not in dataframe
-
-    Examples
-    --------
-    >>> df = pd.DataFrame(np.eye(3), columns=['a', 'b', 'c'])
-    >>> remove_col_names_from_list_if_not_in_df(['q', 'c', 'a', 'e', 'f'], df)
-    ['c', 'a']
-    '''
-    assert isinstance(col_list, list)
-    for cc in range(len(col_list))[::-1]:
-        col = col_list[cc]
-        if col not in df.columns:
-            col_list.remove(col)
-    return col_list
 
 def collapse_mean(data_arr, timestamp_arr, isfinite_arr, tstart, tstop):
     '''
@@ -504,38 +412,6 @@ def collapse_slope_multivariate(data_arr, timestamp_arr, isfinite_arr, tstart, t
             collapsed_slope[col] = 0
     return collapsed_slope  
 
-def collapse_slope(data_arr, timestamp_arr, isfinite_arr, tstart, tstop):
-    ''' Compute slope within current window of time
-
-    Treat time as *relative* between 0 and 1 within the window
-
-    Examples
-    --------
-    >>> ts = np.asarray([0., 1., 2., 3.])
-    >>> ys = np.asarray([0., 1., 2., 3.])
-    >>> fs = np.ones(4, dtype=np.bool)
-    >>> "%.5f" % collapse_slope(ys, ts, fs, 0.0, 3.0)
-    '3.00000'
-
-    >>> B = 77.7
-    >>> "%.5f" % collapse_slope(ys, ts + B, fs, 0.0 + B, 3.0 + B)
-    '3.00000'
-    '''
-    ys = data_arr[isfinite_arr]
-    ts = (timestamp_arr[isfinite_arr] - tstart) / float(tstop - tstart)
-
-    ymean = np.mean(ys)
-    tmean = np.mean(ts)
-    ys -= ymean
-    ts -= tmean
-
-    numer = np.sum(ts * ys)
-    denom = np.sum(np.square(ts))
-    slope = numer / (1e-10 + denom)
-    return slope
-    #intercept = ymean - slope * tmean
-    #return slope, intercept
-
     
 def collapse_elapsed_time_since_last_measured_multivariate(data_arr, timestamp_arr, isfinite_arr, tstart, tstop):
     '''
@@ -559,26 +435,6 @@ def collapse_elapsed_time_since_last_measured_multivariate(data_arr, timestamp_a
         else: # set to large value if no measurement is observed in the sequence
             collapsed_hours_since_missing[col] = -1.0
     return collapsed_hours_since_missing
-
-def collapse_elapsed_time_since_last_measured(data_arr, timestamp_arr, isfinite_arr, tstart, tstop):
-    '''
-    Computes the time since last value was observed from the last stamps
-
-    Example
-    -------
-    >>> data = np.asarray([0, 1 , np.nan, 4, 5, np.nan, np.nan])
-    >>> times = np.asarray([30, 32, 36, 40, 45, 51, 60])
-    >>> collapse_elapsed_time_since_last_measured(data, times, None, 0, 60)
-    15.0
-    '''
-    if isfinite_arr is None:
-        isfinite_arr = np.isfinite(data_arr)
-    
-    if np.sum(isfinite_arr) == 0:
-        tlast = tstart
-    else:
-        tlast = timestamp_arr[np.flatnonzero(isfinite_arr)[-1]]
-    return float(tstop - tlast)
 
 
 # Map each desired summary function to
