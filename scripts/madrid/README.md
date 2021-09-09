@@ -115,7 +115,7 @@ $ snakemake --cores 1 --snakefile make_features_and_outcomes_and_split_train_tes
 ```
 $ snakemake --cores 1 --snakefile make_features_and_outcomes_and_split_train_test.smk impute_missing_values
 ```
-### 5) Predict with RNN with hyperparams specified in rnn.json
+### 5) Train with RNN with hyperparams specified in rnn.json
 ----------------------------------------------------------------------------------------------------------------
 ```
 $ snakemake --cores all --snakefile rnn.smk train_and_evaluate_classifier_many_hyperparams
