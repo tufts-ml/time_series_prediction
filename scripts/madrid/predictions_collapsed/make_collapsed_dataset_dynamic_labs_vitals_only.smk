@@ -60,7 +60,7 @@ train_test_split_csvs=[os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "{file}_{split}.c
 
 rule make_collapsed_features_for_dynamic_output_prediction:
     input:
-        script=os.path.join(os.path.abspath('../'), 'src', 'dynamic_feature_transformation.py'),
+        script=os.path.join(os.path.abspath('../'), 'src', 'dynamic_feature_transformation_deployment.py'),
         vitals_csv=os.path.join(DATASET_SITE_PATH, "vitals_before_icu.csv.gz"),
         vitals_spec_json=os.path.join(DATASET_SITE_PATH, 'Spec-Vitals.json'),
         labs_csv=os.path.join(DATASET_SITE_PATH, "labs_before_icu.csv.gz"),
@@ -95,7 +95,7 @@ rule make_collapsed_features_for_dynamic_output_prediction:
             --dynamic_collapsed_features_csv "{output.collapsed_vitals_dynamic_csv}" \
             --dynamic_collapsed_features_data_dict "{output.collapsed_vitals_dynamic_json}" \
             --dynamic_outcomes_csv "{output.outputs_dynamic_vitals_csv}" \
-            --collapse_range_features "std hours_since_measured present slope median min max" \
+            --collapse_range_features "std hours_since_measured count slope median min max" \
             --range_pairs "[('0%','100%')]" \
 
         python -u {input.script} \

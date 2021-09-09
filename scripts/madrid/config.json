@@ -1,6 +1,6 @@
 {
     "DATASET_SHORTNAME": "madrid",
-    "DATASET_VERSION": "v20210729",
+    "DATASET_VERSION": "v20210909",
     "SPLIT_KEY_COL_NAMES": "patient_id",
     "OUTCOME_COL_NAME": "clinical_deterioration_outcome",
     "SPLIT_SUBPATH": "split-by=patient_id",
