@@ -29,9 +29,14 @@ class TidySequentialDataCSVLoader(object):
         --------------
         Updates internal attribute .batches
         '''
+        if type(x_csv_path) == pd.DataFrame :
+            x_csv_df = x_csv_path.copy()
+        elif x_csv_path is not None and os.path.exists(x_csv_path):
+            x_csv_df = pd.read_csv(x_csv_path)
         
-        x_csv_df = pd.read_csv(x_csv_path)
-        if y_csv_path is not None and os.path.exists(y_csv_path):
+        if type(y_csv_path) == pd.DataFrame :
+            y_csv_df = y_csv_path.copy()        
+        elif y_csv_path is not None and os.path.exists(y_csv_path):
             y_csv_df = pd.read_csv(y_csv_path)
 
         ## Parse sequence ids and compute fenceposts
@@ -65,17 +70,25 @@ class TidySequentialDataCSVLoader(object):
             self.max_seq_len = int(max_seq_len)
 
         ## Parse y
+        self.y_label_type = y_label_type
         if y_label_type == 'per_tstep':
             y_P = y_csv_df[y_col_name].values.copy()
             del y_csv_df[y_col_name]
             # TODO load full seq labels when needed
             laststep_N = np.cumsum(self.seq_lens_N) - 1
-            self.y_N = np.asarray(y_P[laststep_N], dtype=np.int64)
+            self.y_N = np.zeros((self.n_sequences, self.max_seq_len), dtype=np.int64)
+            for n, laststep in enumerate(laststep_N):
+                if n==0:
+                    self.y_N[n, :self.seq_lens_N[n]] = y_P[:laststep+1]
+                else:
+                    self.y_N[n, :self.seq_lens_N[n]] = y_P[laststep_N[n-1]+1:laststep+1]
+            
+#             self.y_N = np.asarray(y_P[laststep_N], dtype=np.int64)
         else:
             y_N = y_csv_df[y_col_name].values.copy()
             del y_csv_df[y_col_name]
             self.y_N = np.asarray(y_N, dtype=np.int64)
-
+        
         ## Parse x
         if x_col_names == '__all__':
             x_PF = x_csv_df.values.copy()
@@ -109,7 +122,7 @@ class TidySequentialDataCSVLoader(object):
             randorder_N = np.arange(N)
         else:
             randorder_N = random_state.permutation(N)
-
+        
         n_per_batch = [batch_size for _ in range(n_batch)]
         n_total = np.sum(n_per_batch)
         assert n_total >= N
@@ -154,15 +167,19 @@ class TidySequentialDataCSVLoader(object):
         batchy : 1D array, size n_seqs 
         '''
         seq_ids = self.seq_ids_per_batch[batch_id]
-        batch_x = np.zeros((seq_ids.size, self.max_seq_len, self.x_PF.shape[1]), dtype=np.float64)
-        batch_y = np.zeros(seq_ids.size, dtype=np.int64)
+        batch_x = np.nan*np.ones((seq_ids.size, self.max_seq_len, self.x_PF.shape[1]), dtype=np.float32)
+        if self.y_label_type=='per_sequence':
+            batch_y = np.zeros(seq_ids.size, dtype=np.int64)
+        elif self.y_label_type=='per_tstep':
+            batch_y = np.zeros((seq_ids.size, self.max_seq_len), dtype=np.int64)
         for ii, n in enumerate(seq_ids):
             start = self.seq_fp[n]
             stop = self.seq_fp[n+1]
+            stop = min(stop, start + self.max_seq_len)
             T = stop - start
             batch_x[ii, :T] = self.x_PF[start:stop]
             batch_y[ii] = self.y_N[n]
-
+            
         if not to_pytorch_tensor:
             return batch_x, batch_y
         else:

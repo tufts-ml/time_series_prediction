@@ -108,6 +108,28 @@ rule build_csv_dataset:
             --Tmax 200
         '''
 
+rule build_csv_dataset_for_pertstep_rnn:
+    input:
+        completed_create_output_dir=rules.create_output_dir.output.signal_file,
+        script=os.path.join(DATASET_SCRIPTS_ROOT, 'standardize_dataset', 'make_dataset_for_rnn_per_tstep.py')
+
+    output:
+        x_std_data_csv=os.path.join(DATASET_STD_PATH, 'rnn_features_per_tstep.csv.gz'),
+        y_std_data_csv=os.path.join(DATASET_STD_PATH, 'rnn_outcomes_per_tstep.csv.gz')
+
+    params:
+        output_dir=DATASET_STD_PATH
+
+    conda:
+        PROJECT_CONDA_ENV_YAML
+
+    shell:
+        '''
+        python -u {input.script} \
+            --output_dir {params.output_dir} \
+            --Nmax 500 \
+            --Tmax 200
+        '''
 
 # Download google sheet as CSV
 rule download_spec_from_gsheet_as_csv:

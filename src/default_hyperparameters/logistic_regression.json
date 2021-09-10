@@ -4,6 +4,6 @@
     "solver": "lbfgs",
     "C": "1.0",
     "penalty": "l2",
-    "grid__C": [1e-7, 1e-5, 0.001, 0.01, 0.1, 1.0, 10, 100, 1000, 1e5, 1e7, 1e9],
+    "grid__C": [1e-7, 1e-5, 0.001, 0.1, 1, 10],
     "simplicity_score_func": "lambda d, n_examples, n_features: -np.log10(d['C'])"
 }

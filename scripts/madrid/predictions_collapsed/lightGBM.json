@@ -1,0 +1,7 @@
+{
+    "min_samples_per_leaf": [128, 1024, 4096],
+    "max_leaves": [8, 32, 128],
+    "n_estimators" : [100],
+    "frac_features_for_clf": [0.33, 0.66],
+    "frac_training_samples_per_tree" : [0.33, 0.66],
+}

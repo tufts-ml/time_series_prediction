@@ -24,86 +24,73 @@ $ cd summary_statistics
 $ snakemake --cores 1 --snakefile report_summary_statisitics.smk compute_summary_statistics
 ```
 
-## C) Prediction of clinical deterioration with collapsed features using shallow models
+## C) Creating Collapsing Representations for Training Shallow Classifiers
 ---------------------------------------------------------------------------------------------------------------------
 
-### As a part of the prediction of clinical deterioration workflow, we make collapsed representation of EHR data for multiple patient-stay-slices for prediction with shallow models (LR, RF, MEWS)
-
-### 1) Filter admissions by patient-stay-slice (For eg, first 4 hrs, last 4hrs, first 30%)
+### 1) Collapsing features in multiple patient stay slices, with their corresponding outputs, dynamically
 ---------------------------------------------------------------------------
-Note : For eg. If we predict using first 4 hours of data, we ensure that every patient in the cohort has atleast 4 hours of data.
 ```
 $ cd predictions_collapsed
-$ snakemake --cores all --snakefile make_collapsed_dataset_per_tslice_and_split_train_test.smk filter_admissions_by_tslice_many_tslices
-```
-### 2) Collapsing features and saving to slice specific folders
-----------------------------------------------------------------
-```
-$ snakemake --cores all --snakefile make_collapsed_dataset_per_tslice_and_split_train_test.smk collapse_features_many_tslices
-```
-### 3) Computing slice specific MEWS scores
---------------------------------------------
-```
-$ snakemake --cores all --snakefile make_collapsed_dataset_per_tslice_and_split_train_test.smk compute_mews_score_many_tslices
+$ snakemake --cores 1 --snakefile make_collapsed_dataset_dynamic_input_output_and_split_train_test.smk make_collapsed_features_for_dynamic_output_prediction
 ```
 
-### 4) Merge all the collapsed features across tslices into a single features table
+### 2) Merge all the dynamic collapsed features and static features into a single features table
 ----------------------------------------------------------------------------------------
 ```
-$ snakemake --cores 1 --snakefile make_collapsed_dataset_per_tslice_and_split_train_test.smk merge_collapsed_features_all_tslices
+$ snakemake --cores 1 --snakefile make_collapsed_dataset_dynamic_input_output_and_split_train_test.smk merge_dynamic_collapsed_features
 ```
 
-### 5) Split the features table into train - test. A single classifier will be trained on this training fold
+### 3) Split the features table into train\valid\test based on the year of admission. Trian on first 3 years of admission. Vlaidate and test on the 4th and 5th years of admission
 -------------------------------------------------------------------------------------------------------------
 ```
-$ snakemake --cores 1 --snakefile make_collapsed_dataset_per_tslice_and_split_train_test.smk split_into_train_and_test
+$ snakemake --cores 1 --snakefile make_collapsed_dataset_dynamic_input_output_and_split_train_test.smk split_into_train_and_test
 ```
 
-### 6) Do every step above in squence
--------------------------------------------
-```
-$ snakemake --cores all --snakefile make_collapsed_dataset_per_tslice_and_split_train_test.smk all
-```
-
-### 7) Perform prediction of clinical deterioration with shallow models (LR, RF, MEWS) on multiple patient-stay-slices
----------------------------------------------------------------------------------------------------------------------------------
+## D) Training Classifiers Perform prediction of clinical deterioration with shallow models (LR, RF, MLP, SVM, lightGBM) 
+---------------------------------------------------------------------------------------------------------------------
 ```
 $ cd predictions_collapsed
 ```
 
-### 8) Predict with Logistic Regression
+### Predict with Logistic Regression
 ----------------------------------------
 ```
-$ snakemake --cores 1 --snakefile logistic_regression.smk
+$ snakemake --cores 1 --snakefile skorch_logistic_regression_dynamic.smk
 ```
-### 9) Predict with Random Forest
+
+### Predict with Random Forest
 ----------------------------------------
 ```
-$ snakemake --cores 1 --snakefile random_forest.smk
+$ snakemake --cores 1 --snakefile random_forest_dynamic.smk
 ```
 
-### 10) Predict with MEWS
--------------------------------
+### Predict with MLP
+----------------------------------------
 ```
-$ snakemake --cores 1 --snakefile eval_mews_score.smk
+$ snakemake --cores 1 --snakefile skorch_mlp_dynamic.smk
 ```
 
-### 11) Visualize prediction performance
+### Predict with Linear SVM
+----------------------------------------
+```
+$ snakemake --cores 1 --snakefile SVC_dynamic.smk
+```
+### Predict with lightGBM
+----------------------------------------
+```
+$ snakemake --cores 1 --snakefile lightGBM_dynamic.smk
+```
+
+## E) Evaluate and Visualize Performance
 ---------------------------------------------
+
+### Choose hyperparameter, plot precision-recall curves, alarm m distributions etc.
+----------------------------------------
 ```
 $ cd predictions_collapsed
-```
-#### 11a) Plotting performance metrics such as AUROC, average precision, balanced accuracy on patient-stay-slice cohorts  
--------------------------------------------------------------------------------------------------------------
-```
-$ snakemake --cores 1 --snakefile evaluate_classifier_pertslice_performance.smk evaluate_performance
+$ snakemake --cores 1 --snakefile evaluate_dynamic_prediction_performance.smk
 ```
 
-#### 11b) Plotting probability of deterioration over time for individual patient-stays
---------------------------------------------------------------------------------------------
-```
-$ snakemake --cores 1 --snakefile evaluate_proba_deterioration_over_time.smk evaluate_proba_deterioration
-```
 
 ## D) Prediction of clinical deterioration with full sequences using RNN's
 
@@ -128,7 +115,7 @@ $ snakemake --cores 1 --snakefile make_features_and_outcomes_and_split_train_tes
 ```
 $ snakemake --cores 1 --snakefile make_features_and_outcomes_and_split_train_test.smk impute_missing_values
 ```
-### 5) Predict with RNN with hyperparams specified in rnn.json
+### 5) Train with RNN with hyperparams specified in rnn.json
 ----------------------------------------------------------------------------------------------------------------
 ```
 $ snakemake --cores all --snakefile rnn.smk train_and_evaluate_classifier_many_hyperparams

@@ -60,6 +60,7 @@ if __name__ == '__main__':
     parser.add_argument('--test_size', required=True, type=float)
     parser.add_argument('--output_dir', default=None)
     parser.add_argument('--train_csv_filename', default='train.csv')
+    parser.add_argument('--valid_csv_filename', default=None)    
     parser.add_argument('--test_csv_filename', default='test.csv')
     parser.add_argument('--output_data_dict_filename', required=False, type=str, default=None)
     parser.add_argument('--group_cols', nargs='*', default=[None])
@@ -85,6 +86,10 @@ if __name__ == '__main__':
     train_df, test_df = split_dataframe_by_keys(
         df, cols_to_group=group_cols, size=args.test_size, random_state=args.random_state)
     
+    if args.valid_csv_filename is not None:
+        train_df, valid_df = split_dataframe_by_keys(
+            train_df, cols_to_group=group_cols, size=args.test_size, random_state=args.random_state)    
+    
     # Write split data frames to CSV
     fdir_train_test = args.output_dir
     if fdir_train_test is not None:
@@ -92,12 +97,26 @@ if __name__ == '__main__':
             os.mkdir(fdir_train_test)
         args.train_csv_filename = os.path.join(fdir_train_test, args.train_csv_filename)
         args.test_csv_filename = os.path.join(fdir_train_test, args.test_csv_filename)
+        
+        if args.valid_csv_filename is not None:
+            args.valid_csv_filename = os.path.join(fdir_train_test, args.valid_csv_filename)
+            
         if args.output_data_dict_filename is not None:
             args.output_data_dict_filename = os.path.join(fdir_train_test, args.output_data_dict_filename)    
     
-    print('saving train test files to :\n%s\n%s'%(args.train_csv_filename, args.test_csv_filename))
-    train_df.to_csv(args.train_csv_filename, index=False)
-    test_df.to_csv(args.test_csv_filename, index=False)
+    if args.train_csv_filename[-3:] == '.gz':
+        print('saving compressed train test files to :\n%s\n%s\n%s'%(args.train_csv_filename, args.test_csv_filename, args.valid_csv_filename))
+        train_df.to_csv(args.train_csv_filename, index=False, compression='gzip')
+        if args.valid_csv_filename is not None:
+            valid_df.to_csv(args.valid_csv_filename, index=False, compression='gzip')
+        
+        test_df.to_csv(args.test_csv_filename, index=False, compression='gzip')
+    else:
+        print('saving train test files to :\n%s\n%s\n%s'%(args.train_csv_filename, args.test_csv_filename, args.valid_csv_filename))
+        train_df.to_csv(args.train_csv_filename, index=False)
+        if args.valid_csv_filename is not None:
+            valid_df.to_csv(args.valid_csv_filename, index=False)
+        test_df.to_csv(args.test_csv_filename, index=False)
     
     if args.output_data_dict_filename is not None:
         with open(args.output_data_dict_filename, 'w') as f:
