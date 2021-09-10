@@ -40,58 +40,60 @@ def main():
                                                  "new features.")
     parser.add_argument('--input', type=str, required=True, 
                         help='Path to csv dataframe of readings')
-    parser.add_argument('--ts_data_dict', type=str, required=True,
+    parser.add_argument('--ts_data_dict', type=str, required=False,
                         help='Path to json data dictionary file')
-    parser.add_argument('--outcomes', type=str, required=True, 
+    parser.add_argument('--outcomes', type=str, required=False, 
                         help='Path to csv dataframe of outcomes')
-    parser.add_argument('--outcomes_data_dict', type=str, required=True,
+    parser.add_argument('--outcomes_data_dict', type=str, required=False,
                         help='Path to json data dictionary file for outcomes')
     parser.add_argument('--dynamic_collapsed_features_csv', type=str, required=False, default=None)
     parser.add_argument('--dynamic_collapsed_features_data_dict', type=str, required=False, default=None)
     parser.add_argument('--dynamic_outcomes_csv', type=str, required=False, default=None)    
-#     parser.add_argument('--dynamic_outcomes_data_dict', type=str, required=False, default=None) 
-    parser.add_argument('--collapse_features', type=str, required=False,
-                        default='count mean median std min max', 
-                        help="Enclose options with 's, choose "
-                             "from mean, std, min, max, "
-                             "median, slope, count, present")
-    parser.add_argument('--features_to_summarize', type=str, required=False,
-                        default='slope std', 
-                        help="Enclose options with 's, choose "
+
+    parser.add_argument('--features_to_summarize',
+        type=str, required=False,
+        default='slope std', 
+        help="Enclose options with 's, choose "
                              "from mean, std, min, max, "
                              "median, slope, count, present, hours_since_measured")
     parser.add_argument('--percentile_ranges_to_summarize', type=str, required=False,
                         default='[(0, 10), (0, 25), (0, 50), (50, 100), (75, 100), (90, 100), (0, 100)]',
                         help="Enclose pairs list with 's and [], list all desired ranges in "
                              "parentheses like this: '[(0, 50), (25, 75), (50, 100)]'")
-
-
     args = parser.parse_args()
 
-    print('reading features...')
-    ts_df = pd.read_csv(args.input)
-    ts_data_dict = load_data_dict_json(args.ts_data_dict)
-    print('done reading features...')
+    if not os.path.exists(args.input):
+        is_fake = True
+        ts_df, ts_data_dict, outcomes_df, outcomes_data_dict = make_fake_input_data(
+            n_seqs=10, n_features=100, min_duration=24.0, max_duration=240.0)
+    else:
+        is_fake = False
+        print('reading features...')
+        ts_df = pd.read_csv(args.input)
+        ts_data_dict = load_data_dict_json(args.ts_data_dict)
+        print('done reading features...')
     
-    print('reading outcomes...')
-    outcomes_df = pd.read_csv(args.outcomes)
-    outcomes_data_dict = load_data_dict_json(args.outcomes_data_dict)
-    print('done reading outcomes...')    
+        print('reading outcomes...')
+        outcomes_df = pd.read_csv(args.outcomes)
+        outcomes_data_dict = load_data_dict_json(args.outcomes_data_dict)
+        print('done reading outcomes...')    
 
     # transform data
     t1 = time.time()
     dynamic_collapsed_df, dynamic_outcomes_df = featurize_stack_of_many_time_series(
         ts_df=ts_df, ts_data_dict=ts_data_dict,                                           
-        features_to_summarize=args.features_to_summarize, 
-        percentile_ranges_to_summarize=args.percentile_ranges_to_summarize, outcomes_df=outcomes_df, 
-        outcomes_data_dict=outcomes_data_dict)
-    
-    
-    dynamic_collapsed_features_data_dict = update_data_dict_collapse(ts_data_dict, args.features_to_summarize, args.percentile_ranges_to_summarize)
+        outcomes_df=outcomes_df, 
+        outcomes_data_dict=outcomes_data_dict,
+        summary_ops=args.features_to_summarize, 
+        percentile_slices_to_featurize=args.percentile_ranges_to_summarize,
+        )
     t2 = time.time()
     print('done collapsing data..')
     print('time taken to collapse data : {} seconds'.format(t2-t1))
-    
+
+    if is_fake:
+        sys.exit()
+
     # save data to file
     dynamic_collapsed_df.to_csv(args.dynamic_collapsed_features_csv, index=False, compression='gzip')
     print('Saved dynamic collapsed features to :\n%s'%args.dynamic_collapsed_features_csv)
@@ -99,12 +101,13 @@ def main():
     dynamic_outcomes_df.to_csv(args.dynamic_outcomes_csv, index=False, compression='gzip')
     print('Saved dynamic outcomes to :\n%s'%args.dynamic_outcomes_csv)
     
-    
     # save data dictionary to file
+    dynamic_collapsed_features_data_dict = update_data_dict_collapse(
+        ts_data_dict, args.features_to_summarize, args.percentile_ranges_to_summarize)
     with open(args.dynamic_collapsed_features_data_dict, 'w') as f:
         json.dump(dynamic_collapsed_features_data_dict, f, indent=4)
-
-    print ('Saved dynamic collapsed features dict to :\n%s'%args.dynamic_collapsed_features_data_dict)
+    print('Saved dynamic collapsed features dict to :\n%s' % (
+        args.dynamic_collapsed_features_data_dict))
 
 
 def featurize_stack_of_many_time_series(
@@ -208,19 +211,15 @@ def featurize_stack_of_many_time_series(
     durations_per_seq = list()
     missingness_density_per_seq = list()
     ids_per_seq = list()
-
-    dynamic_collapsed_feats_all_fps_list = []
-    dynamic_outcomes_all_fps_list = []
     
     # Total number of features we'll compute in each feature vector
     F = len(percentile_slices_to_featurize) * len(feature_cols) * len(summary_ops)
 
-    start_time_sec = time.time()
-    n_rows = len(fp) - 1
-    pbar = ProgressBar()
-
     # Loop over each sequence in the tall tidy-format dataset
-    for p in pbar(range(n_rows)):
+    start_time_sec = time.time()
+    n_seqs = len(fp) - 1
+    pbar = ProgressBar()
+    for p in pbar(range(n_seqs)):
         
         # Get features and times for the current fencepost
         fp_start = fp[p]
@@ -333,7 +332,7 @@ def featurize_stack_of_many_time_series(
     if verbose:
         print('-----------------------------------------')
         print('Processed %d sequences of duration %.1f-%.1f in %.1f sec' % (
-            n_rows,
+            n_seqs,
             np.percentile(seq_lengths, 5),
             np.percentile(seq_lengths, 95),
             elapsed_time_sec,
@@ -345,6 +344,7 @@ def featurize_stack_of_many_time_series(
             ))
         print('-----------------------------------------')    
     return all_features_df, all_outcomes_df
+
 
 def make_fake_input_data(
         n_seqs=10, n_features=10,
@@ -473,10 +473,6 @@ def make_fake_input_data(
     return tall_ts_df, ts_data_dict, tall_outcome_df, outcomes_data_dict
 
 
+
 if __name__ == '__main__':
-    args = make_fake_input_data(
-        n_seqs=10, n_features=100, min_duration=24.0, max_duration=240.0)
-    feat_df, outcome_df = featurize_stack_of_many_time_series(*args,
-        summary_ops=['mean', 'slope'],
-        start_time_of_each_sequence=0,
-        )
+    main()
