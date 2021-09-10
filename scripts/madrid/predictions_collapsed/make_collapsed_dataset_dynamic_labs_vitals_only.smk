@@ -95,8 +95,8 @@ rule make_collapsed_features_for_dynamic_output_prediction:
             --dynamic_collapsed_features_csv "{output.collapsed_vitals_dynamic_csv}" \
             --dynamic_collapsed_features_data_dict "{output.collapsed_vitals_dynamic_json}" \
             --dynamic_outcomes_csv "{output.outputs_dynamic_vitals_csv}" \
-            --collapse_range_features "std hours_since_measured count slope median min max" \
-            --range_pairs "[('0','100')]" \
+            --features_to_summarize "std hours_since_measured count slope median min max" \
+            --percentile_ranges_to_summarize "[('0','100')]" \
 
         python -u {input.script} \
             --input {input.labs_csv} \
@@ -106,8 +106,8 @@ rule make_collapsed_features_for_dynamic_output_prediction:
             --dynamic_collapsed_features_csv "{output.collapsed_labs_dynamic_csv}" \
             --dynamic_collapsed_features_data_dict "{output.collapsed_labs_dynamic_json}" \
             --dynamic_outcomes_csv "{output.outputs_dynamic_labs_csv}" \
-            --collapse_range_features "std hours_since_measured count slope median min max" \
-            --range_pairs "[(0, 100)]" \
+            --features_to_summarize "std hours_since_measured count slope median min max" \
+            --percentile_ranges_to_summarize "[(0, 100)]" \
         '''
 
 rule compute_mews_for_dynamic_output_prediction:
