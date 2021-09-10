@@ -57,12 +57,12 @@ def main():
                         help="Enclose options with 's, choose "
                              "from mean, std, min, max, "
                              "median, slope, count, present")
-    parser.add_argument('--collapse_range_features', type=str, required=False,
+    parser.add_argument('--features_to_summarize', type=str, required=False,
                         default='slope std', 
                         help="Enclose options with 's, choose "
                              "from mean, std, min, max, "
                              "median, slope, count, present, skew, hours_since_measured")
-    parser.add_argument('--range_pairs', type=str, required=False,
+    parser.add_argument('--percentile_ranges_to_summarize', type=str, required=False,
                         default='[(0, 10), (0, 25), (0, 50), (50, 100), (75, 100), (90, 100), (0, 100)]',
                         help="Enclose pairs list with 's and [], list all desired ranges in "
                              "parentheses like this: '[(0, 50), (25, 75), (50, 100)]'")
@@ -83,12 +83,12 @@ def main():
     # transform data
     t1 = time.time()
     dynamic_collapsed_df, dynamic_outcomes_df = collapse_dynamic(ts_df=ts_df, data_dict=data_dict,                                           
-                                                                 collapse_range_features=args.collapse_range_features, 
-                                                                 range_pairs=args.range_pairs, outcomes_df=outcomes_df, 
+                                                                 features_to_summarize=args.features_to_summarize, 
+                                                                 percentile_ranges_to_summarize=args.percentile_ranges_to_summarize, outcomes_df=outcomes_df, 
                                                                  data_dict_outcomes=data_dict_outcomes)
     
     
-    dynamic_collapsed_features_data_dict = update_data_dict_collapse(data_dict, args.collapse_range_features, args.range_pairs)
+    dynamic_collapsed_features_data_dict = update_data_dict_collapse(data_dict, args.features_to_summarize, args.percentile_ranges_to_summarize)
     t2 = time.time()
     print('done collapsing data..')
     print('time taken to collapse data : {} seconds'.format(t2-t1))
@@ -183,16 +183,16 @@ def featurize_ts(
 
     return feat_vec_1F, feat_names
 
-def collapse_dynamic(ts_df, data_dict, collapse_range_features, range_pairs, outcomes_df, data_dict_outcomes):
+def collapse_dynamic(ts_df, data_dict, features_to_summarize, percentile_ranges_to_summarize, outcomes_df, data_dict_outcomes):
     ''' Featurize multiple patient stays slices, and extract the outcome for each slice
 
     Args
     ----
     ts_df : Dataframe containing raw per-time-step features
     data_dict : dict of spec for every column in ts_df
-    collapse_range_features : list of strings
+    features_to_summarize : list of strings
         Indicates the list of all the summary functions
-    range_pairs : list of tuples (example : [(0, 100), (0, 50)])
+    percentile_ranges_to_summarize : list of tuples (example : [(0, 100), (0, 50)])
         Indicates numerical time value at which current window *starts*
     outcomes_df : Dataframe containing outcomes-per-sequence
     data_dict_outcomes : dict of spec for every column in outcomes_df
@@ -283,9 +283,9 @@ def collapse_dynamic(ts_df, data_dict, collapse_range_features, range_pairs, out
                 val_arr_by_var[feature_col] = np.array(list(res[feature_col].values()))
         
         # get the summary operations and the percentile ranges to collapse in to pre-allocate the collapsed feature matrix
-        percentile_slices_to_featurize=ast.literal_eval(range_pairs)
+        percentile_slices_to_featurize=ast.literal_eval(percentile_ranges_to_summarize)
         
-        summary_ops = collapse_range_features.split(' ')
+        summary_ops = features_to_summarize.split(' ')
         F = len(percentile_slices_to_featurize) * len(feature_cols) * len (summary_ops)
         
         cur_dynamic_collapsed_feat_arr = np.zeros([len(window_ends), F], dtype=np.float32)
