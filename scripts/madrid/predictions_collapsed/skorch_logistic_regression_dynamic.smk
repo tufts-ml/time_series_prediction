@@ -7,7 +7,7 @@ Train collapsed feature classifier on Madrid transfer to ICU task
 # Default environment variables
 # Can override with local env variables
 
-configfile:"skorch_logistic_regression.json"
+configfile:"skorch_logistic_regression_single_config.json"
 
 from config_loader import (
     D_CONFIG,

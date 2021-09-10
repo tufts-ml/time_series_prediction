@@ -174,8 +174,13 @@ if __name__ == '__main__':
     
 #     feature_cols = [col for col in feature_cols if ('blood_pressure' in col)|('heart_rate' in col)|('body_temperature' in col)]
     
-    # Prepare data for classification
-    x_train = df_by_split['train'][feature_cols].values.astype(np.float32)
+    # Prepare data for classification    
+    try:
+        x_train = df_by_split['train'][feature_cols].values.astype(np.float32)
+    except KeyError:
+        feature_cols = [col.replace('_to_', '-') for col in feature_cols]
+        x_train = df_by_split['train'][feature_cols].values.astype(np.float32)
+        
     y_train = np.ravel(df_by_split['train'][outcome_col_name])
     
     x_test = df_by_split['test'][feature_cols].values.astype(np.float32)

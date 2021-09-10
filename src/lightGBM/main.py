@@ -90,7 +90,11 @@ if __name__ == '__main__':
     outcome_col_name = args.outcome_col_name
     
     # Prepare data for classification
-    x_train = df_by_split['train'][feature_cols].values.astype(np.float32)
+    try:
+        x_train = df_by_split['train'][feature_cols].values.astype(np.float32)
+    except KeyError:
+        feature_cols = [col.replace('_to_', '-') for col in feature_cols]
+        x_train = df_by_split['train'][feature_cols].values.astype(np.float32)
     y_train = np.ravel(df_by_split['train'][outcome_col_name])
     
     x_test = df_by_split['test'][feature_cols].values.astype(np.float32)
@@ -142,7 +146,7 @@ if __name__ == '__main__':
     x_valid_transformed = scaler.transform(x_valid)
     x_test_transformed = scaler.transform(x_test) 
     
-    fixed_precision = 0.3
+    fixed_precision = 0.2
     thr_list = [0.5]
     ## start training
     
@@ -158,19 +162,23 @@ if __name__ == '__main__':
 
     # search multiple decision thresolds and pick the threshold that performs best on validation set
     print('Searching thresholds that maximize recall at fixed precision %.4f'%fixed_precision)
-    x_train_valid_transformed = np.vstack([x_train_transformed, x_valid_transformed])
-    y_train_valid = np.concatenate([y_train, y_valid])
+#     x_train_valid_transformed = np.vstack([x_train_transformed, x_valid_transformed])
+#     y_train_valid = np.concatenate([y_train, y_valid])
+#     y_train_valid_proba_vals = lgb_clf.predict_proba(x_train_valid_transformed)
+#     unique_probas = np.unique(y_train_valid_proba_vals)
 
-    y_train_valid_proba_vals = lgb_clf.predict_proba(x_train_valid_transformed)
-    unique_probas = np.unique(y_train_valid_proba_vals)
+    
+    
+    y_valid_proba_vals = lgb_clf.predict_proba(x_valid_transformed)
+    unique_probas = np.unique(y_valid_proba_vals)
     thr_grid = np.linspace(np.percentile(unique_probas,1), np.percentile(unique_probas, 99), 100)
 
     precision_scores_G, recall_scores_G = [np.zeros(thr_grid.size), np.zeros(thr_grid.size)]
 #     y_train_valid_pred_probas = lgb_clf.predict_proba(x_train_valid_transformed)
     for gg, thr in enumerate(thr_grid): 
-        curr_thr_y_preds = y_train_valid_proba_vals[:,1]>=thr_grid[gg] 
-        precision_scores_G[gg] = precision_score(y_train_valid, curr_thr_y_preds)
-        recall_scores_G[gg] = recall_score(y_train_valid, curr_thr_y_preds) 
+        curr_thr_y_preds = y_valid_proba_vals[:,1]>=thr_grid[gg] 
+        precision_scores_G[gg] = precision_score(y_valid, curr_thr_y_preds)
+        recall_scores_G[gg] = recall_score(y_valid, curr_thr_y_preds) 
     
     keep_inds = precision_scores_G>=fixed_precision
     if keep_inds.sum()>0:

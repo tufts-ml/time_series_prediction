@@ -1,0 +1,9 @@
+{
+    "lr": [0.005],
+    "batch_size": [-1],
+    "weight_decay": [10],
+    "lamb" : [1],
+    "scoring" : ["cross_entropy_loss"],
+    "initialization_gain" : [1.0],
+    "seed" : [901]
+}
