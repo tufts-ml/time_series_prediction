@@ -26,6 +26,7 @@ PROJECT_REPO_DIR = os.path.abspath(
 import sys
 sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src'))
 from feature_transformation import (parse_id_cols, parse_time_cols, parse_feature_cols)
+from utils import load_data_dict_json
 
 if __name__ == '__main__':
     # Parse command line arguments
@@ -45,7 +46,7 @@ if __name__ == '__main__':
     print('Creating train-test splits for %s'%args.input)
     # Import data
     df = pd.read_csv(args.input)
-    data_dict = json.load(open(args.data_dict))
+    data_dict = load_data_dict_json(args.data_dict)
     
     '''
     # Split dataset
@@ -60,8 +61,13 @@ if __name__ == '__main__':
                       if c['role'] in ('id', 'key') and c['name'] in df.columns]
     '''  
     # sort the dataframe by timestamp
+    
     if 'window_start' in df.columns:
-        df_timesorted = df.sort_values(by=['admission_timestamp', 'window_start', 'window_end']) 
+        df.rename(columns = {'window_start':'start',
+                            'window_end' : 'stop'}, inplace=True)
+    
+    if 'start' in df.columns:
+        df_timesorted = df.sort_values(by=['admission_timestamp', 'start', 'stop']) 
     else:
         id_cols = parse_id_cols(data_dict)       
         df_timesorted = df.sort_values(by=['admission_timestamp'] + id_cols + ['hours_since_admission']) 

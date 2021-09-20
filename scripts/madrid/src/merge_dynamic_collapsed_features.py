@@ -11,7 +11,7 @@ PROJECT_REPO_DIR = os.path.abspath(
 sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src'))
 from feature_transformation import (parse_id_cols, remove_col_names_from_list_if_not_in_df, parse_time_col, parse_feature_cols)
 from utils import load_data_dict_json
-from dynamic_feature_transformation_deployment import SUMMARY_OPERATIONS
+from featurize_single_time_series import make_summary_ops
 
 def read_csv_with_float32_dtypes(filename):
     # Sample 100 rows of data to determine dtypes.
@@ -54,7 +54,7 @@ if __name__ == '__main__':
             help='directory where data dict for demographics and outcomes')
     parser.add_argument('--output_dir',  type=str,
         help='folder to save merged features and outcomes from all tslices')
-    parser.add_argument('--include_medications',  type=str, default='false',
+    parser.add_argument('--include_medications',  type=str, default='true',
         help='indictor of whether or not to include medications')
 
     args = parser.parse_args()
@@ -89,7 +89,7 @@ if __name__ == '__main__':
     id_cols = parse_id_cols(vitals_dd)
 
     if args.include_medications=='true':
-        print('Merging labs, vitals. medications into a single table of dynamic collapsed features...')
+        print('Merging labs, vitals, medications into a single table of dynamic collapsed features...')
         
         dynamic_collapsed_medications_df = pd.read_csv(os.path.join(DATASET_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH,
                                                                     'CollapsedMedicationsDynamic.csv.gz'))
@@ -98,11 +98,11 @@ if __name__ == '__main__':
     
         medications_output =  pd.read_csv(os.path.join(DATASET_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH, 
                                                        'OutputsDynamicMedications.csv.gz'))
-    
+        
         # merge vitals, labs and medications
         dynamic_collapsed_feats_df = pd.merge(pd.merge(dynamic_collapsed_vitals_df, dynamic_collapsed_labs_df, 
-                                              on=id_cols+['window_start', 'window_end'], how='left'), 
-                                              dynamic_collapsed_medications_df, on=id_cols+['window_start', 'window_end'], 
+                                              on=id_cols+['start', 'stop'], how='left'), 
+                                              dynamic_collapsed_medications_df, on=id_cols+['start', 'stop'], 
                                               how='left')
         
         # merge the dynamic collapsed labs, vitals, medications and demographics into a single features data dict
@@ -112,7 +112,7 @@ if __name__ == '__main__':
         print('Merging labs and vitals into a single table of dynamic collapsed features...')
         # merge vitals, labs and medications
         dynamic_collapsed_feats_df = pd.merge(dynamic_collapsed_vitals_df, dynamic_collapsed_labs_df, 
-                                              on=id_cols+['window_start', 'window_end'], how='left')
+                                              on=id_cols+['start', 'stop'], how='left')
         
         
         # merge the dynamic collapsed labs, vitals, medications and demographics into a single features data dict
@@ -120,6 +120,7 @@ if __name__ == '__main__':
         
     
     # set the nan values to the fill value of the operation, since the those values are unobserved
+    SUMMARY_OPERATIONS = make_summary_ops()
     for summary_op, (_, fill_val) in SUMMARY_OPERATIONS.items():
         cur_summary_op_collapsed_df_columns = [col for col in dynamic_collapsed_feats_df.columns if '_'+summary_op+'_' in col]
         if len(cur_summary_op_collapsed_df_columns)>0:
@@ -133,11 +134,8 @@ if __name__ == '__main__':
     dynamic_outputs_df = vitals_output.copy()
     
     # add admission timestamp as a column for outputs for creating train-test splits based on timestamps later
-    dynamic_outputs_df=pd.merge(dynamic_outputs_df, dynamic_collapsed_feats_df[id_cols+['admission_timestamp', 'window_start', 'window_end']], on=id_cols+['window_start', 'window_end'], how='left')
+    dynamic_outputs_df=pd.merge(dynamic_outputs_df, dynamic_collapsed_feats_df[id_cols+['admission_timestamp', 'start', 'stop']], on=id_cols+['start', 'stop'], how='left')
     
-    
-
-        
     # save to disk
     features_csv = os.path.join(args.output_dir, 'dynamic_features.csv.gz')
     outcomes_csv = os.path.join(args.output_dir, 'dynamic_outcomes.csv.gz')

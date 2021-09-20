@@ -57,7 +57,6 @@ print(CLF_TRAIN_TEST_SPLIT_PATH)
 train_test_split_jsons=[os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "{file}_dict.json").replace("{file}",i) for i in ["x", "y", "mews"]]
 train_test_split_csvs=[os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "{file}_{split}.csv.gz").format(file=i, split=j) for i in ["x", "y", "mews"] for j in ["train", "test"]]
 
-
 rule make_collapsed_features_for_dynamic_output_prediction:
     input:
         script=os.path.join(os.path.abspath('../'), 'src', 'dynamic_feature_transformation_deployment.py'),
@@ -65,6 +64,8 @@ rule make_collapsed_features_for_dynamic_output_prediction:
         vitals_spec_json=os.path.join(DATASET_SITE_PATH, 'Spec-Vitals.json'),
         labs_csv=os.path.join(DATASET_SITE_PATH, "labs_before_icu.csv.gz"),
         labs_spec_json=os.path.join(DATASET_SITE_PATH, 'Spec-Labs.json'), 
+        medications_csv=os.path.join(DATASET_SITE_PATH, "medications_before_icu.csv.gz"),
+        medications_spec_json=os.path.join(DATASET_SITE_PATH, 'Spec-Medications.json'), 
         outcomes_csv=os.path.join(DATASET_SITE_PATH, "clinical_deterioration_outcomes.csv.gz"),
         outcomes_spec_json=os.path.join(DATASET_SITE_PATH, "Spec-Outcomes_TransferToICU.json")
 
@@ -77,10 +78,16 @@ rule make_collapsed_features_for_dynamic_output_prediction:
         "CollapsedLabsDynamic.csv.gz"),
         collapsed_labs_dynamic_json=os.path.join(DATASET_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH,
         "Spec_CollapsedLabsDynamic.json"),
+        collapsed_medications_dynamic_csv=os.path.join(DATASET_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH, 
+        "CollapsedMedicationsDynamic.csv.gz"),
+        collapsed_medications_dynamic_json=os.path.join(DATASET_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH,
+        "Spec_CollapsedMedicationsDynamic.json"),
         outputs_dynamic_vitals_csv=os.path.join(DATASET_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH,
         "OutputsDynamicVitals.csv.gz"),
         outputs_dynamic_labs_csv=os.path.join(DATASET_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH,
         "OutputsDynamicLabs.csv.gz"),
+        outputs_dynamic_medications_csv=os.path.join(DATASET_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH,
+        "OutputsDynamicMedications.csv.gz"),
 
     conda:
         PROJECT_CONDA_ENV_YAML
@@ -89,24 +96,35 @@ rule make_collapsed_features_for_dynamic_output_prediction:
         '''
         python -u {input.script} \
             --input {input.vitals_csv} \
-            --data_dict {input.vitals_spec_json} \
+            --ts_data_dict {input.vitals_spec_json} \
             --outcomes {input.outcomes_csv} \
-            --data_dict_outcomes {input.outcomes_spec_json} \
+            --outcomes_data_dict {input.outcomes_spec_json} \
             --dynamic_collapsed_features_csv "{output.collapsed_vitals_dynamic_csv}" \
             --dynamic_collapsed_features_data_dict "{output.collapsed_vitals_dynamic_json}" \
             --dynamic_outcomes_csv "{output.outputs_dynamic_vitals_csv}" \
-            --features_to_summarize "std hours_since_measured count slope median min max" \
+            --features_to_summarize "std time_since_measured count slope median min max" \
             --percentile_ranges_to_summarize "[('0','100')]" \
 
         python -u {input.script} \
             --input {input.labs_csv} \
-            --data_dict {input.labs_spec_json} \
+            --ts_data_dict {input.labs_spec_json} \
             --outcomes {input.outcomes_csv} \
-            --data_dict_outcomes {input.outcomes_spec_json} \
+            --outcomes_data_dict {input.outcomes_spec_json} \
             --dynamic_collapsed_features_csv "{output.collapsed_labs_dynamic_csv}" \
             --dynamic_collapsed_features_data_dict "{output.collapsed_labs_dynamic_json}" \
             --dynamic_outcomes_csv "{output.outputs_dynamic_labs_csv}" \
-            --features_to_summarize "std hours_since_measured count slope median min max" \
+            --features_to_summarize "std time_since_measured count slope median min max" \
+            --percentile_ranges_to_summarize "[(0, 100)]" \
+
+        python -u {input.script} \
+            --input {input.medications_csv} \
+            --ts_data_dict {input.medications_spec_json} \
+            --outcomes {input.outcomes_csv} \
+            --outcomes_data_dict {input.outcomes_spec_json} \
+            --dynamic_collapsed_features_csv "{output.collapsed_medications_dynamic_csv}" \
+            --dynamic_collapsed_features_data_dict "{output.collapsed_medications_dynamic_json}" \
+            --dynamic_outcomes_csv "{output.outputs_dynamic_medications_csv}" \
+            --features_to_summarize "std time_since_measured count slope median min max" \
             --percentile_ranges_to_summarize "[(0, 100)]" \
         '''
 

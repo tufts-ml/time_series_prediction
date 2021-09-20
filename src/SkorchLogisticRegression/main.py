@@ -28,6 +28,10 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from split_dataset import Splitter
 from skorch.dataset import Dataset
 from skorch.helper import predefined_split
+from sklearn.linear_model import LogisticRegression
+from skl2onnx.common.data_types import FloatTensorType
+from skl2onnx import convert_sklearn
+
 
 # define callbacks
 def calc_surrogate_loss_skorch_callback(net, X, y):
@@ -602,3 +606,28 @@ if __name__ == '__main__':
     perf_csv = os.path.join(args.output_dir, args.output_filename_prefix+'_perf.csv')
     print('Saving performance on train and test set to %s'%(perf_csv))
     perf_df.to_csv(perf_csv, index=False)
+    
+    
+    # save to onnx
+    
+    # initialize a dummy sklearn logistic regression clf 
+    sklearn_lr_clf = LogisticRegression() 
+    
+    # do some dummy fitting to initialize the classifier to access the coefficients
+    sklearn_lr_clf.fit(x_train[:500], y_train[:500])
+    
+    # save the skorch model weights to a sklearn Logistic regression object
+    sklearn_lr_clf.coef_ = logistic_clf.module_.linear_transform_layer.weight.detach().numpy()
+    sklearn_lr_clf.intercept_ = logistic_clf.module_.linear_transform_layer.bias.detach().numpy()
+    
+    
+    prediction_pipeline = Pipeline(steps=[('standardize', scaler), ('classifier', sklearn_lr_clf)])
+    
+    # save as onnx
+    initial_type = [('float_input', FloatTensorType([None, len(feature_cols)]))]
+    model_onnx = convert_sklearn(prediction_pipeline, initial_types=initial_type)
+    
+    onx_file = os.path.join(args.output_dir, args.output_filename_prefix+'.onnx')
+    with open(onx_file, "wb") as f:
+        f.write(model_onnx.SerializeToString())
+    

@@ -22,19 +22,17 @@ import ast
 import time
 import copy
 import os
-from scipy.stats import skew
+
+from progressbar import ProgressBar
+
 DEFAULT_PROJECT_REPO = os.path.sep.join(__file__.split(os.path.sep)[:-2])
 PROJECT_REPO_DIR = os.path.abspath(
     os.environ.get('PROJECT_REPO_DIR', DEFAULT_PROJECT_REPO))
 sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src'))
 from feature_transformation import (get_fenceposts, parse_time_cols, parse_id_cols, parse_feature_cols, 
                                     update_data_dict_collapse, remove_col_names_from_list_if_not_in_df) 
-
-
-sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src'))
 from utils import load_data_dict_json
-from progressbar import ProgressBar
-
+from featurize_single_time_series import featurize_ts
 
 def main():
     parser = argparse.ArgumentParser(description="Script for collapsing"
@@ -42,57 +40,60 @@ def main():
                                                  "new features.")
     parser.add_argument('--input', type=str, required=True, 
                         help='Path to csv dataframe of readings')
-    parser.add_argument('--data_dict', type=str, required=True,
+    parser.add_argument('--ts_data_dict', type=str, required=False,
                         help='Path to json data dictionary file')
-    parser.add_argument('--outcomes', type=str, required=True, 
+    parser.add_argument('--outcomes', type=str, required=False, 
                         help='Path to csv dataframe of outcomes')
-    parser.add_argument('--data_dict_outcomes', type=str, required=True,
+    parser.add_argument('--outcomes_data_dict', type=str, required=False,
                         help='Path to json data dictionary file for outcomes')
     parser.add_argument('--dynamic_collapsed_features_csv', type=str, required=False, default=None)
     parser.add_argument('--dynamic_collapsed_features_data_dict', type=str, required=False, default=None)
     parser.add_argument('--dynamic_outcomes_csv', type=str, required=False, default=None)    
-#     parser.add_argument('--dynamic_outcomes_data_dict', type=str, required=False, default=None) 
-    parser.add_argument('--collapse_features', type=str, required=False,
-                        default='count mean median std min max', 
-                        help="Enclose options with 's, choose "
+
+    parser.add_argument('--features_to_summarize',
+        type=str, required=False,
+        default='slope std', 
+        help="Enclose options with 's, choose "
                              "from mean, std, min, max, "
-                             "median, slope, count, present")
-    parser.add_argument('--features_to_summarize', type=str, required=False,
-                        default='slope std', 
-                        help="Enclose options with 's, choose "
-                             "from mean, std, min, max, "
-                             "median, slope, count, present, skew, hours_since_measured")
+                             "median, slope, count, present, hours_since_measured")
     parser.add_argument('--percentile_ranges_to_summarize', type=str, required=False,
                         default='[(0, 10), (0, 25), (0, 50), (50, 100), (75, 100), (90, 100), (0, 100)]',
                         help="Enclose pairs list with 's and [], list all desired ranges in "
                              "parentheses like this: '[(0, 50), (25, 75), (50, 100)]'")
-
-
     args = parser.parse_args()
 
-    print('reading features...')
-    ts_df = pd.read_csv(args.input)
-    data_dict = load_data_dict_json(args.data_dict)
-    print('done reading features...')
+    if not os.path.exists(args.input):
+        is_fake = True
+        ts_df, ts_data_dict, outcomes_df, outcomes_data_dict = make_fake_input_data(
+            n_seqs=10, n_features=100, min_duration=24.0, max_duration=240.0)
+    else:
+        is_fake = False
+        print('reading features...')
+        ts_df = pd.read_csv(args.input)
+        ts_data_dict = load_data_dict_json(args.ts_data_dict)
+        print('done reading features...')
     
-    print('reading outcomes...')
-    outcomes_df = pd.read_csv(args.outcomes)
-    data_dict_outcomes = load_data_dict_json(args.data_dict_outcomes)
-    print('done reading outcomes...')    
+        print('reading outcomes...')
+        outcomes_df = pd.read_csv(args.outcomes)
+        outcomes_data_dict = load_data_dict_json(args.outcomes_data_dict)
+        print('done reading outcomes...')    
 
     # transform data
     t1 = time.time()
-    dynamic_collapsed_df, dynamic_outcomes_df = collapse_dynamic(ts_df=ts_df, data_dict=data_dict,                                           
-                                                                 features_to_summarize=args.features_to_summarize, 
-                                                                 percentile_ranges_to_summarize=args.percentile_ranges_to_summarize, outcomes_df=outcomes_df, 
-                                                                 data_dict_outcomes=data_dict_outcomes)
-    
-    
-    dynamic_collapsed_features_data_dict = update_data_dict_collapse(data_dict, args.features_to_summarize, args.percentile_ranges_to_summarize)
+    dynamic_collapsed_df, dynamic_outcomes_df = featurize_stack_of_many_time_series(
+        ts_df=ts_df, ts_data_dict=ts_data_dict,                                           
+        outcomes_df=outcomes_df, 
+        outcomes_data_dict=outcomes_data_dict,
+        summary_ops=args.features_to_summarize, 
+        percentile_slices_to_featurize=args.percentile_ranges_to_summarize,
+        )
     t2 = time.time()
     print('done collapsing data..')
     print('time taken to collapse data : {} seconds'.format(t2-t1))
-    
+
+    if is_fake:
+        sys.exit()
+
     # save data to file
     dynamic_collapsed_df.to_csv(args.dynamic_collapsed_features_csv, index=False, compression='gzip')
     print('Saved dynamic collapsed features to :\n%s'%args.dynamic_collapsed_features_csv)
@@ -100,414 +101,400 @@ def main():
     dynamic_outcomes_df.to_csv(args.dynamic_outcomes_csv, index=False, compression='gzip')
     print('Saved dynamic outcomes to :\n%s'%args.dynamic_outcomes_csv)
     
-    
     # save data dictionary to file
+    dynamic_collapsed_features_data_dict = update_data_dict_collapse(
+        ts_data_dict, args.features_to_summarize, args.percentile_ranges_to_summarize)
     with open(args.dynamic_collapsed_features_data_dict, 'w') as f:
         json.dump(dynamic_collapsed_features_data_dict, f, indent=4)
+    print('Saved dynamic collapsed features dict to :\n%s' % (
+        args.dynamic_collapsed_features_data_dict))
 
-    print ('Saved dynamic collapsed features dict to :\n%s'%args.dynamic_collapsed_features_data_dict)
-    
 
-    
-def featurize_ts(
-        time_arr_by_var,
-        val_arr_by_var,
-        var_cols=[],
-        start_numerictime=None,
-        stop_numerictime=None,
-        summary_ops=['count', 'mean', 'std', 'slope'],
-        percentile_slices_to_featurize=[(0., 100.)],
+def featurize_stack_of_many_time_series(
+        ts_df=None,
+        ts_data_dict=None,
+        outcomes_df=None,
+        outcomes_data_dict=None,
+        summary_ops=['mean', 'min', 'max'],
+        percentile_slices_to_featurize=[(0,100)],
+        outcome_col='clinical_deterioration_outcome',
+        outcome_seq_duration_col='stay_length',
+        start_time_of_each_sequence=-24.0,
+        max_time_of_each_sequence=504,
+        start_time_of_endpoints=-12.0,
+        time_between_endpoints=12,
+        prediction_horizon=24,
+        verbose=True,
         ):
-    ''' Featurize provided multivariate irregular time series into flat vector
-
+    ''' Featurize many patient stays slices and extract outcome for each slice
     Args
     ----
-    time_arr_by_var : dict of 1D NumPy arrays
-    val_arr_by_var : dict of 1D NumPy arrays
-    var_cols : list of strings
-        Indicates the name of each desired variable
-    start_numerictime : float
-        Indicates numerical time value at which current window *starts*
-    stop_numerictime : float
-        Indicates numerical time that current window *stops*
-
+    ts_df : pandas DataFrame
+        Each row provides all measurements at one time of a single patient-stay
+        Must contain one column already converted to numerical time
+    ts_data_dict : dict
+        Provides specification for every column of ts_df
+    outcomes_df : pandas DataFrame
+        Each row provides outcome of a single patient stay
+    outcomes_data_dict : dict
+        Provides specification for each column of outcomes_df
+    summary_ops : list of strings
+        Identifies the summary functions we wish to apply to each variable's ts
+    percentile_slices_to_featurize : list of tuples
+        Indicates percentile range of all subwindows we will featurize
+        Example: [(0, 100), (0, 50)])
     Returns
     -------
-    feat_vec_1F : 2D NumPy array, shape (1, F)
-        One entry for each combination of {variable, summary op, subwindow slice}
-    feat_names : list of strings
-        Gives the names (in order) of the collapsed features
+    all_feat_df : DataFrame
+        One row per featurized window of any patient-stay slice
+        Key columns: ids + ['start', 'stop']
+        Value columns: one per extracted feature
+    all_outcomes_df : DataFrame
+        One row per featurized window of any patient-stay slice
+        Key columns: ids + ['start', 'stop']
+        Value columns: just one, the outcome column
+    Examples
+    --------
+    >>> args = make_fake_input_data(n_seqs=25, n_features=10, max_duration=50.0)
+    >>> feat_df, outcome_df = featurize_stack_of_many_time_series(*args,
+    ...     summary_ops=['mean', 'slope'],
+    ...     start_time_of_each_sequence=0,
+    ...     start_time_of_endpoints=0.0,
+    ...     time_between_endpoints=12.0,
+    ...     verbose=False,
+    ...     );
+    >>> feat_df.shape
+    (95, 24)
     '''
-    if start_numerictime is None:
-        start_numerictime = time_arr_by_var.get('__START_TIME__', None)
-    if stop_numerictime is None:
-        stop_numerictime = time_arr_by_var.get('__PREDICTION_TIME__', None)
-    time_range = stop_numerictime - start_numerictime
+    # Parse desired slices to featurize at each window
+    # This allows command-line specification of ranges as a string
+    if isinstance(percentile_slices_to_featurize, str):
+        percentile_slices_to_featurize = ast.literal_eval(
+            percentile_slices_to_featurize)
+    if isinstance(summary_ops, str):
+        summary_ops = summary_ops.split(' ')
 
-    F = len(percentile_slices_to_featurize) * len(var_cols) * len (summary_ops)
-    feat_vec_1F = np.zeros((1, F))
-    feat_names = list()
-    ff = 0
-    for rp_ind, (low, high) in enumerate(percentile_slices_to_featurize):
-        cur_window_start_time = start_numerictime + float(low) / 100 * time_range
-        cur_window_stop_time = start_numerictime + float(high) / 100 * time_range
-
-        for var_id, var_name in enumerate(var_cols):           
-            try:
-                cur_feat_arr = val_arr_by_var[var_name]
-                cur_numerictime_arr = time_arr_by_var[var_name]
-                start, stop = calc_start_and_stop_indices_from_percentiles(
-                    cur_numerictime_arr,
-                    start_percentile=low,
-                    end_percentile=high)
-                cur_numerictime_arr = cur_numerictime_arr[start:stop]
-                cur_feat_arr = cur_feat_arr[start:stop]
-
-            except KeyError:
-                # Current variable never measured in provided data
-                cur_numerictime_arr = np.zeros(0)
-                cur_feat_arr = np.zeros(0)
-
-            for op_ind, op in enumerate(summary_ops):
-                summary_func, empty_val = SUMMARY_OPERATIONS[op]
-
-                cur_isfinite_arr = np.isfinite(cur_feat_arr)
-                if cur_feat_arr.size < 1 or cur_isfinite_arr.sum() < 1:
-                    feat_vec_1F[0,ff] = empty_val
-                else:
-                    feat_vec_1F[0,ff] = summary_func(
-                        cur_feat_arr, cur_numerictime_arr, cur_isfinite_arr,
-                        cur_window_start_time, cur_window_stop_time)
-                feat_names.append("%s_%s_%.0f-%.0f" % (var_name, op, float(low), float(high)))
-                ff += 1
-
-    return feat_vec_1F, feat_names
-
-def collapse_dynamic(ts_df, data_dict, features_to_summarize, percentile_ranges_to_summarize, outcomes_df, data_dict_outcomes):
-    ''' Featurize multiple patient stays slices, and extract the outcome for each slice
-
-    Args
-    ----
-    ts_df : Dataframe containing raw per-time-step features
-    data_dict : dict of spec for every column in ts_df
-    features_to_summarize : list of strings
-        Indicates the list of all the summary functions
-    percentile_ranges_to_summarize : list of tuples (example : [(0, 100), (0, 50)])
-        Indicates numerical time value at which current window *starts*
-    outcomes_df : Dataframe containing outcomes-per-sequence
-    data_dict_outcomes : dict of spec for every column in outcomes_df
-
-    Returns
-    -------
-    dynamic_collapsed_df : Dataframe containing the collapsed features for all patient-stay slices
-    dynamic_outcomes_df : Dataframe containing the outcomes for all patient-stay slices
-    '''    
-    
-    id_cols = parse_id_cols(data_dict)
+    # Parse provided data dictionary
+    # Recover specific columns for each of the different roles:
+    id_cols = parse_id_cols(ts_data_dict)
     id_cols = remove_col_names_from_list_if_not_in_df(id_cols, ts_df)
-
-    feature_cols = parse_feature_cols(data_dict)
+    feature_cols = parse_feature_cols(ts_data_dict)
     feature_cols = remove_col_names_from_list_if_not_in_df(feature_cols, ts_df)
-
-    time_cols = parse_time_cols(data_dict)
+    time_cols = parse_time_cols(ts_data_dict)
     time_cols = remove_col_names_from_list_if_not_in_df(time_cols, ts_df)
-    
     if len(time_cols) == 0:
         raise ValueError("Expected at least one variable with role='time'")
     elif len(time_cols) > 1:
-#         raise ValueError("More than one time variable found. Expected exactly one.")
-          print("More than one time variable found. Choosing %s"%time_cols[-1])
+        print("More than one time variable found. Choosing %s" % time_cols[-1])
     time_col = time_cols[-1]
 
-    # Obtain fenceposts based on where any key differs
-    # Be sure keys are converted to a numerical datatype (so fencepost detection is possible)
+    # Obtain fenceposts delineating each individual sequence within big stack
+    # We assume that sequences changeover when *any* key differs
+    # We convert all keys to a numerical datatype to make this possible
     keys_df = ts_df[id_cols].copy()
     for col in id_cols:
         if not pd.api.types.is_numeric_dtype(keys_df[col].dtype):
             keys_df[col] = keys_df[col].astype('category')
             keys_df[col] = keys_df[col].cat.codes
-    fp = np.hstack([0, 1 + np.flatnonzero(np.diff(keys_df.values, axis=0).any(axis=1)), keys_df.shape[0]]) 
+    middle_fence_posts = 1 + np.flatnonzero(
+        np.diff(keys_df.values, axis=0).any(axis=1))
+    fp = np.hstack([0, middle_fence_posts, keys_df.shape[0]])
     
-    # define outcome column (TODO : Avoid hardcording by loading from config.json)
-    outcome_col = 'clinical_deterioration_outcome'
+    feat_arr_per_seq = list()
+    windows_per_seq = list()
+    outcomes_per_seq = list()
+    durations_per_seq = list()
+    missingness_density_per_seq = list()
+    ids_per_seq = list()
     
-    # Start timer
-    total_time = 0
-    timestamp_arr = np.asarray(ts_df[time_col].values.copy(), dtype=np.float32)
-    features_arr = ts_df[feature_cols].values
-    ids_arr = ts_df[id_cols].values
+    # Total number of features we'll compute in each feature vector
+    F = len(percentile_slices_to_featurize) * len(feature_cols) * len(summary_ops)
 
-    prediction_window = 12 # change to spacing_between_endpoints
-    prediction_horizon = 24
-    max_hrs_data_observed = 504
-    t_start=-24 # start time 
-    dynamic_collapsed_feat_id_list = list()
-    dynamic_outcomes_list = list()
-    dynamic_window_list = list()
-    dynamic_stay_lengths_list = list()
-    pbar=ProgressBar()
-    n_rows = len(fp) - 1
-    
-    dynamic_collapsed_feats_all_fps_list = []
-    dynamic_outcomes_all_fps_list = []
-    t1=time.time()
-    
-    for p in pbar(range(n_rows)):
+    # Loop over each sequence in the tall tidy-format dataset
+    start_time_sec = time.time()
+    n_seqs = len(fp) - 1
+    pbar = ProgressBar()
+    for p in pbar(range(n_seqs)):
         
         # Get features and times for the current fencepost
         fp_start = fp[p]
         fp_end = fp[p+1]
 
-        # get the current stay id (Do this outside the loop)
-        cur_id_df = ts_df[id_cols].iloc[fp[p]:fp[p+1]].drop_duplicates(subset=id_cols)
+        # Get the current stay keys
+        cur_id_df = ts_df[id_cols].iloc[fp_start:fp_end].drop_duplicates(
+            subset=id_cols)
 
-        # get the stay length of the current 
-        cur_outcomes_df = pd.merge(outcomes_df, cur_id_df, on=id_cols, how='inner')
-        cur_stay_length = cur_outcomes_df['stay_length'].values[0]
-        cur_final_outcome = int(cur_outcomes_df[outcome_col].values[0])
+        if outcomes_df is not None:
+            # Get the total duration of the current sequence
+            cur_outcomes_df = pd.merge(
+                outcomes_df, cur_id_df, on=id_cols, how='inner')
 
-        # create windows from start to length of stay (0-prediction_window, 0-2*prediction_window, ... 0-length_of_stay)
-        t_end = min(cur_stay_length, max_hrs_data_observed)
-        window_ends = np.arange(t_start+prediction_window, t_end+prediction_window, prediction_window)
+            # Get the current sequence's finale outcome
+            cur_final_outcome = int(cur_outcomes_df[outcome_col].values[0])
+            cur_seq_duration = float(cur_outcomes_df[outcome_seq_duration_col].values[0])
+        else:
+            cur_seq_duration = float(ts_df[time_col].iloc[fp_start:fp_end].values[-1])
+
+        # Create windows at desired spacing
+        stop_time_of_cur_sequence = min(
+            cur_seq_duration, max_time_of_each_sequence)
+        window_ends = np.arange(
+            start_time_of_endpoints,
+            stop_time_of_cur_sequence + 0.01 * time_between_endpoints,
+            time_between_endpoints)
         
-        # create a dictionary of times and values for each feature
-        cur_fp_df = ts_df.loc[fp[p]:fp[p+1], [time_col]+feature_cols] 
-        v = cur_fp_df.set_index(time_col).agg(lambda x: x.dropna().to_dict()) 
-        res = v[v.str.len() > 0].to_dict()
-        
+        # Create a dictionary of times and values for each feature
         time_arr_by_var = dict()
         val_arr_by_var = dict()
+        times_U = ts_df[time_col].values[fp_start:fp_end]
+        for feature_col in feature_cols:
+            vals_U = ts_df[feature_col].values[fp_start:fp_end]
+            keep_mask_U = np.isfinite(vals_U)
+            if np.sum(keep_mask_U) > 0:
+                time_arr_by_var[feature_col] = times_U[keep_mask_U]
+                val_arr_by_var[feature_col] = vals_U[keep_mask_U]
+
+        cur_seq_missing_density = (
+            1.0 - len(val_arr_by_var.keys()) / float(len(feature_cols)))
+
+        # Deprecated code from preetish.... MCH couldn't get this to work.
+        '''
+        v = cur_fp_df.set_index(time_col).agg(lambda x: x.dropna().to_dict()) 
+        res = v[v.str.len() > 0].to_dict()
         for feature_col in feature_cols:
             if feature_col in res.keys():
-                time_arr_by_var[feature_col] = np.array(list(res[feature_col].keys()))
-                val_arr_by_var[feature_col] = np.array(list(res[feature_col].values()))
+                time_arr_by_var[feature_col] = np.array(
+                    list(res[feature_col].keys()), dtype=np.float64)
+                val_arr_by_var[feature_col] = np.array(
+                    list(res[feature_col].values()), dtype=np.float64)
+        '''
+
+        W = len(window_ends)
+        window_features_WF = np.zeros([W, F], dtype=np.float32)
+        window_starts_stops_W2 = np.zeros([W, 2], dtype=np.float32)
+        if outcomes_df is not None:
+            window_outcomes_W1 = np.zeros([W, 1], dtype=np.int64)
         
-        # get the summary operations and the percentile ranges to collapse in to pre-allocate the collapsed feature matrix
-        percentile_slices_to_featurize=ast.literal_eval(percentile_ranges_to_summarize)
+        for ww, window_end in enumerate(window_ends):
+            window_starts_stops_W2[ww, 0] = start_time_of_each_sequence
+            window_starts_stops_W2[ww, 1] = window_end
         
-        summary_ops = features_to_summarize.split(' ')
-        F = len(percentile_slices_to_featurize) * len(feature_cols) * len (summary_ops)
-        
-        cur_dynamic_collapsed_feat_arr = np.zeros([len(window_ends), F], dtype=np.float32)
-        cur_dynamic_final_outcomes = np.zeros([len(window_ends), 1], dtype=np.int64)
-        cur_dynamic_window_starts_and_ends = np.zeros([len(window_ends), 2])
-        
-        for q, window_end in enumerate(window_ends):
-            cur_dynamic_collapsed_feat_arr[q, :], feat_names = featurize_ts(time_arr_by_var, val_arr_by_var, 
-                                                   var_cols=feature_cols, start_numerictime=t_start,
-                                                   stop_numerictime=window_end,
-                                                   summary_ops=summary_ops,
-                                                   percentile_slices_to_featurize=percentile_slices_to_featurize)
+            window_features_WF[ww, :], feat_names = featurize_ts(
+                time_arr_by_var, val_arr_by_var, 
+                var_cols=feature_cols,
+                var_spec_dict=ts_data_dict,
+                start_numerictime=start_time_of_each_sequence,
+                stop_numerictime=window_end,
+                summary_ops=summary_ops,
+                percentile_slices_to_featurize=percentile_slices_to_featurize)
             
-            # if the length of stay is within the prediction horizon, set the outcome as the clinical deterioration outcome, else set 0
-            if window_end>=cur_stay_length-prediction_horizon:
-                cur_dynamic_final_outcomes[q] = cur_final_outcome
-            else:
-                cur_dynamic_final_outcomes[q] = 0
-            
-            
-            cur_dynamic_window_starts_and_ends[q, :] = np.array([t_start, window_end])
+            if outcomes_df is not None:
+                # Determine the outcome for this window
+                # Set outcome as final outcome if within the provided horizon
+                # Otherwise, set to zero
+                if window_end >= cur_seq_duration - prediction_horizon:
+                    window_outcomes_W1[ww] = cur_final_outcome
+                else:
+                    window_outcomes_W1[ww] = 0
         
-        
-        # stack across all fps
-        dynamic_collapsed_feats_all_fps_list.append(cur_dynamic_collapsed_feat_arr)
-        
-        dynamic_outcomes_all_fps_list.append(cur_dynamic_final_outcomes)
-        
-        # keep track of ids
-        dynamic_collapsed_feat_id_list.append(np.tile(cur_id_df.values[0], (len(window_ends), 1)))
-        
-        # keep track of window ends
-        dynamic_window_list.append(cur_dynamic_window_starts_and_ends)
-        
-        # keep track of the stay lengths
-        dynamic_stay_lengths_list.append(np.tile(cur_stay_length, (len(window_ends), 1)))
-        
-    
-    # horizontally stack across all ops
-    dynamic_collapsed_df = pd.DataFrame(np.vstack(dynamic_collapsed_feats_all_fps_list), columns=feat_names)    
-    
-    # add the ids back to the collapsed features
-    ids_df = pd.DataFrame(np.vstack(dynamic_collapsed_feat_id_list), columns=id_cols) 
-    
-    # add the window start and ends
-    dynamic_window_df = pd.DataFrame(np.vstack(dynamic_window_list), columns=['window_start','window_end'])
-    dynamic_stay_lengths_df = pd.DataFrame(np.vstack(dynamic_stay_lengths_list), columns=['stay_length'])
-    
-    dynamic_collapsed_df = pd.concat([ids_df, dynamic_collapsed_df, dynamic_window_df], axis=1)
-    
-    dynamic_outcomes_df = pd.DataFrame(np.vstack(dynamic_outcomes_all_fps_list), columns=[outcome_col])
-    dynamic_outcomes_df = pd.concat([ids_df, dynamic_outcomes_df, dynamic_window_df, dynamic_stay_lengths_df], axis=1)     
-    
-    t2 = time.time()
-    print('done in %d seconds'%(t2-t1))
-    total_time = total_time + t2-t1    
+        # Append all windows from this sequence to the big lists
+        feat_arr_per_seq.append(window_features_WF)
+        windows_per_seq.append(window_starts_stops_W2)
+        ids_per_seq.append(np.tile(cur_id_df.values[0], (W, 1)))
 
-    print('-----------------------------------------')
-    print('total time taken to collapse features = %d seconds'%total_time)
-    print('-----------------------------------------')    
+        durations_per_seq.append(np.tile(cur_seq_duration, (W, 1)))
+        missingness_density_per_seq.append(cur_seq_missing_density)
+        if outcomes_df is not None:
+            outcomes_per_seq.append(window_outcomes_W1)
+
+    # Produce final data frames
+    features_df = pd.DataFrame(np.vstack(feat_arr_per_seq), columns=feat_names)    
+    ids_df = pd.DataFrame(np.vstack(ids_per_seq), columns=id_cols) 
+    windows_df = pd.DataFrame(np.vstack(windows_per_seq), columns=['start', 'stop'])
+    all_features_df = pd.concat([ids_df, windows_df, features_df], axis=1)
     
-    return dynamic_collapsed_df, dynamic_outcomes_df
+    if outcomes_df is not None:
+        durations_df = pd.DataFrame(np.vstack(durations_per_seq), columns=[outcome_seq_duration_col])
+        outcomes_df = pd.DataFrame(np.vstack(outcomes_per_seq), columns=[outcome_col])
+        all_outcomes_df = pd.concat([ids_df, windows_df, durations_df, outcomes_df], axis=1)
+    else:
+        durations_df = pd.DataFrame(np.vstack(durations_per_seq), columns=[outcome_seq_duration_col])
+        all_outcomes_df = pd.concat([ids_df, windows_df, durations_df], axis=1)
 
-
-def calc_start_and_stop_indices_from_percentiles(
-        timestamp_arr, start_percentile, end_percentile, max_timestamp=None):
-    ''' Find start and stop indices to select specific percentile range
+    seq_lengths = np.vstack([a[0] for a in durations_per_seq])
+    elapsed_time_sec = time.time() - start_time_sec
     
-    Args
-    ----
-    timestamp_df : pd.DataFrame
+    if verbose:
+        print('-----------------------------------------')
+        print('Processed %d sequences of duration %.1f-%.1f in %.1f sec' % (
+            n_seqs,
+            np.percentile(seq_lengths, 5),
+            np.percentile(seq_lengths, 95),
+            elapsed_time_sec,
+            ))
+        print('    Total number of measured features: %d' % len(feature_cols))
+        print('    Fraction of possible features NEVER seen in a seq. : %.2f-%.2f ' % (
+            np.percentile(missingness_density_per_seq, 5),
+            np.percentile(missingness_density_per_seq, 95),
+            ))
+        print('-----------------------------------------')   
+    
+    return all_features_df, all_outcomes_df
 
+
+def make_fake_input_data(
+        n_seqs=10, n_features=10,
+        min_duration=24,
+        max_duration=24*10,
+        random_state=42,
+        proba_deterioration=0.1):
+    ''' Create example input data for debugging
     Returns
     -------
-    lower_bound : int
-        First index to consider in current sequence 
-    upper_bound : int
-        Last index to consider in current sequence
-
-    Examples
-    --------
-    >>> timestamp_arr = np.arange(100)
-    >>> calc_start_and_stop_indices_from_percentiles(timestamp_arr, 0, 10, None)
-    (0, 10)
-    >>> calc_start_and_stop_indices_from_percentiles(timestamp_arr, 25, 33, None)
-    (25, 33)
-    >>> calc_start_and_stop_indices_from_percentiles(timestamp_arr, 0, 0, 100)
-    (0, 1)
-
-    >>> timestamp_arr = np.asarray([0.7, 0.8, 0.9, 0.95, 0.99, 50.0, 98.1])
-
-    # If we want the first 1% of the sequence, we'd get first 5 values
-    >>> calc_start_and_stop_indices_from_percentiles(timestamp_arr, 0, 1, 100)
-    (0, 5)
-
-    # If we want the slice from 1% to 100%, we'd get the last 2 values
-    >>> calc_start_and_stop_indices_from_percentiles(timestamp_arr, 1, 100, 100)
-    (5, 7)
+    ts_df
+    ts_data_dict
+    outcomes_df
+    outcomes_data_dict
     '''
 
-    # Consider last data point as first timestamp + step size input by the user. For eg. If the step size is 1hr, then consider only 
-    # first hour of time series data
-    
-    min_timestamp = timestamp_arr[0]
-    if max_timestamp is None:
-        max_timestamp = timestamp_arr[-1]
-    max_timestamp = np.minimum(max_timestamp, timestamp_arr[-1])
-    
-    lower_tstamp = (min_timestamp +
-        (max_timestamp - min_timestamp) * float(start_percentile) / 100)
-    lower_bound = np.searchsorted(timestamp_arr, lower_tstamp)
+    signal_var = 'BODY_TEMPERATURE'
+    distractor_vars = 'HEIGHT;WEIGHT;BMI;RESPIRATORY_RATE'.split(';')
+    all_other_vars = ['IRRELEVANT_LAB_%03d' % d for d in range(n_features-5)]
+    prng = np.random.RandomState(random_state)
 
-    upper_tstamp = (min_timestamp +
-        (max_timestamp - min_timestamp) * float(end_percentile) / 100)
-    upper_bound = np.searchsorted(timestamp_arr, upper_tstamp)
-    
-    # if lower bound and upper bound are the same, add 1 to the upper bound
-    if lower_bound >= upper_bound:
-        upper_bound = lower_bound + 1
-    assert upper_bound <= timestamp_arr.size + 1
+    ts_df_per_seq = list()
+    outcome_df_per_seq = list()
 
-    return int(lower_bound), int(upper_bound)
+    for seq_id in range(n_seqs):
+        patient_id = prng.choice(np.arange(100, 999))
+        admission_id = 100000 * patient_id + prng.choice(np.arange(100, 999))
 
+        start_numerictime = 0.0
+        stop_numerictime = prng.uniform(min_duration, max_duration)
+        v_by_var = dict()
+        t_by_var = dict(__START_TIME__=start_numerictime, __PREDICTION_TIME__=stop_numerictime)
 
-def collapse_mean(data_arr, timestamp_arr, isfinite_arr, tstart, tstop):
-    '''
-    '''
-    return np.nanmean(data_arr)
+        n_signals_observed = prng.choice(
+            np.arange(2, int(np.ceil(stop_numerictime))//5))
+        t_L = np.sort(np.asarray([
+            prng.uniform(start_numerictime, stop_numerictime)
+            for _ in range(n_signals_observed)]))
+        t_by_var[signal_var] = t_L
 
-def collapse_std(data_arr, timestamp_arr, isfinite_arr, tstart, tstop):
-    '''
-    '''
-    return np.nanstd(data_arr)
-    
-def collapse_median(data_arr, timestamp_arr, isfinite_arr, tstart, tstop):
-    '''
-    '''
-    return np.nanmedian(data_arr)
-    
-def collapse_min(data_arr, timestamp_arr, isfinite_arr, tstart, tstop):
-    '''
-    '''
-    return np.nanmin(data_arr)
+        # Determine the outcome (which is tied to the signal var)
+        if seq_id == 0:
+            did_deteriorate = 1 # always make sure at least one deteriorates
+        elif seq_id == 1:
+            did_deteriorate = 0
+        else:
+            did_deteriorate = int(prng.rand() < proba_deterioration)
+        if did_deteriorate:
+            # Temperature is abnormal, taking a nosedive from fever to too cold
+            stdt_L = (t_L - start_numerictime) / (stop_numerictime - start_numerictime)
+            tempF_L = (
+                100.0 - 2.0 * stdt_L + 0.05 * prng.randn(t_L.size))
+        else:
+            # Temperature is normal, around 98.6
+            tempF_L = 98.6 + 0.3 * prng.randn(t_L.size)
+        v_by_var[signal_var] = (tempF_L - 32) * 5.0/9.0
 
-def collapse_max(data_arr, timestamp_arr, isfinite_arr, tstart, tstop):
-    '''
-    '''
-    return np.nanmax(data_arr)
+        # Fill in many other variables
+        for var_name in sorted(distractor_vars):
+            n_distractors_observed = prng.choice(np.arange(5, int(np.ceil(stop_numerictime))/3))
+            t_L = np.sort(np.asarray([
+                prng.uniform(start_numerictime, stop_numerictime)
+                for _ in range(n_signals_observed)]))
+            t_by_var[var_name] = t_L
+            v_by_var[var_name] = prng.randn(t_L.size)
 
-def collapse_count(data_arr, timestamp_arr, isfinite_arr, tstart, tstop):
-    return np.sum(np.isfinite(data_arr))
+        for var_name in sorted(all_other_vars):
+            if var_name in t_by_var:
+                continue
+            do_observe_rare = int(prng.rand() < 0.05)
+            if do_observe_rare > 0:
+                t_L = np.sort(np.asarray([
+                    prng.uniform(start_numerictime, stop_numerictime)
+                    for _ in range(1)]))
+                t_by_var[var_name] = t_L
+                v_by_var[var_name] = prng.randn(t_L.size)
 
+        # Convert to ts_df format
+        ts_T = np.unique(np.hstack([arr for arr in t_by_var.values()]))
+        T = ts_T.size
+        all_vars = np.sort(np.hstack([signal_var] + distractor_vars + all_other_vars))
+        V = len(all_vars)
+        vals_TV = np.nan * np.ones((T, V), dtype=np.float32)
+        for vv, var in enumerate(all_vars):
+            if var not in t_by_var:
+                continue
+            insert_ids = np.searchsorted(ts_T, t_by_var[var])
+            vals_TV[insert_ids, vv] = v_by_var[var]
+        ts_df = pd.DataFrame(vals_TV, columns=all_vars)
+        ts_df.insert(0, 'time', ts_T)
+        ts_df.insert(0, 'admission_id', admission_id)
+        ts_df.insert(0, 'patient_id', patient_id)
 
-def collapse_slope(data_arr, timestamp_arr, isfinite_arr, tstart, tstop):
-    ''' Compute slope within current window of time
+        outcome_df = pd.DataFrame([dict(
+            patient_id=patient_id,
+            admission_id=admission_id,
+            clinical_deterioration_outcome=did_deteriorate,
+            stay_length=stop_numerictime)])
 
-    Treat time as *relative* between 0 and 1 within the window
+        ts_df_per_seq.append(ts_df)
+        outcome_df_per_seq.append(outcome_df)
 
-    Examples
-    --------
-    >>> ts = np.asarray([0., 1., 2., 3.])
-    >>> ys = np.asarray([0., 1., 2., 3.])
-    >>> fs = np.ones(4, dtype=np.bool)
-    >>> "%.5f" % collapse_slope(ys, ts, fs, 0.0, 3.0)
-    '3.00000'
+    tall_ts_df = pd.concat(ts_df_per_seq, axis=0)
+    tall_outcome_df = pd.concat(outcome_df_per_seq, axis=0)
 
-    >>> B = 77.7
-    >>> "%.5f" % collapse_slope(ys, ts + B, fs, 0.0 + B, 3.0 + B)
-    '3.00000'
-    '''
-    ys = data_arr[isfinite_arr]
-    ts = (timestamp_arr[isfinite_arr] - tstart) / float(tstop - tstart)
+    def get_role(col_name):
+        if col_name.endswith('id'):
+            return 'id'
+        elif col_name.endswith('time'):
+            return 'time'
+        else:
+            return 'measurement'
 
-    ymean = np.mean(ys)
-    tmean = np.mean(ts)
-    ys -= ymean
-    ts -= tmean
+    # Make data dicts
+    field_list = list()
+    for col in ts_df.columns:
+        info_dict = dict(
+            name=col,
+            role=get_role(col),
+        )
+        field_list.append(info_dict)
+    ts_data_dict = {'fields':field_list}
+    outcomes_data_dict = {'fields':[]}
 
-    numer = np.sum(ts * ys)
-    denom = np.sum(np.square(ts))
-    slope = numer / (1e-10 + denom)
-    return slope
-    #intercept = ymean - slope * tmean
-    #return slope, intercept
+    return tall_ts_df, ts_data_dict, tall_outcome_df, outcomes_data_dict
 
+def update_data_dict_collapse(data_dict, collapse_range_features, range_pairs): 
 
-def collapse_elapsed_time_since_last_measured(data_arr, timestamp_arr, isfinite_arr, tstart, tstop):
-    '''
-    Computes the time since last value was observed from the last stamps
+    id_cols = parse_id_cols(data_dict)
+    feature_cols = parse_feature_cols(data_dict)
 
-    Example
-    -------
-    >>> data = np.asarray([0, 1 , np.nan, 4, 5, np.nan, np.nan])
-    >>> times = np.asarray([30, 32, 36, 40, 45, 51, 60])
-    >>> collapse_elapsed_time_since_last_measured(data, times, None, 0, 60)
-    15.0
-    '''
-    if isfinite_arr is None:
-        isfinite_arr = np.isfinite(data_arr)
+    new_fields = []
+    for name in id_cols:
+        for col in data_dict['fields']:
+            if col['name'] == name: 
+                new_fields.append(col)
+                
+    for op in collapse_range_features.split(' '):
+        for low, high in ast.literal_eval(range_pairs):
+            for name in feature_cols:
+                for col in data_dict['fields']:
+                    if col['name'] == name: 
+                        new_dict = dict(col)
+                        new_dict['name'] = '{}_{}_{}-{}'.format(name, op, low, high)
+                        new_fields.append(new_dict)
 
-    if np.sum(isfinite_arr) == 0:
-        tlast = tstart
+    new_data_dict = copy.deepcopy(data_dict)
+    if 'schema' in new_data_dict:
+        new_data_dict['schema']['fields'] = new_fields
+        del new_data_dict['fields']
     else:
-        tlast = timestamp_arr[np.flatnonzero(isfinite_arr)[-1]]
-    return float(tstop - tlast)
+        new_data_dict['fields'] = new_fields
+        
+    return new_data_dict
 
-
-
-# Map each desired summary function to
-# 1) the function to call for non-empty input arrays w/ at least one finite val
-# 2) the numerical value to use when the target time slice is empty
-
-SUMMARY_OPERATIONS = {
-    'mean' : (collapse_mean, 0.0),
-    'median' : (collapse_median, 0.0),
-    'std' : (collapse_std, -1.0),
-    'slope' : (collapse_slope, 0.0),
-    'count': (collapse_count, 0.0),
-    'hours_since_measured' : (collapse_elapsed_time_since_last_measured, -1.0),
-    'max' : (collapse_max, 0.0),
-    'min' : (collapse_min, 0.0)
-}    
-    
 if __name__ == '__main__':
     main()

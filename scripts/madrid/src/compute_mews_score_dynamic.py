@@ -85,7 +85,11 @@ def compute_mews_dynamic(ts_df, data_dict, mews_df, outcomes_df):
 
         # create windows from start to length of stay (0-prediction_window, 0-2*prediction_window, ... 0-length_of_stay)
         t_end = min(cur_stay_length, max_hrs_data_observed)
-        window_ends = np.arange(t_start+prediction_window, t_end+prediction_window, prediction_window)
+#         window_ends = np.arange(t_start+prediction_window, t_end+prediction_window, prediction_window)
+        window_ends = np.arange(
+            t_start + prediction_window,
+            t_end + 0.01 * prediction_window,
+            prediction_window)
         
         cur_dynamic_mews_scores = np.zeros([len(window_ends), 1], dtype=np.float32)
         
