@@ -54,6 +54,72 @@ def visualize2D(data_DTN=None, y_N=None, mu_all=None, cov_all=None, levels=3,
         
 #         from IPython import embed; embed()
     f.savefig('pchmm_fits.png')
+    
+    
+    
+def visualize2D_new(data_DTN=None, y_N=None, mu_all=None, cov_all=None, levels=3, 
+                colorlist=['salmon', 'blue'], markerlist=['$x$', '$o$'], alpha=0.3):
+    
+    f, ax = plt.subplots(figsize=(15, 5))
+    
+    inds_label_0 = np.flatnonzero(y_N==0)
+    inds_label_1 = np.flatnonzero(y_N==1)
+    
+#     n_plot_seqs = 100
+    ax.scatter(data_DTN[0, :, inds_label_0], data_DTN[1, :, inds_label_0], 
+                marker='x', s=2, c='b', label='y=0')
+    ax.scatter(data_DTN[0, :, inds_label_1], data_DTN[1, :, inds_label_1], 
+                marker='o', s=2, c='r', label='y=1')
+    
+    fontsize=10
+    ax.set_ylabel('Temperature_1 (deg C)', fontsize=fontsize)
+    ax.set_xlabel('Temperature_0 (deg C)', fontsize = fontsize)
+    
+    ax.set_xlim([-5, 50])
+    ax.set_ylim([-5, 5])
+        
+    
+    for ii in range(mu_all.shape[0]):
+        D = len(mu_all[ii])
+        cov_DD = np.diag(cov_all[ii, :])
+        mu_D = mu_all[ii]
+        
+        # Decompose cov matrix into eigenvalues "lambda[d]" and eigenvectors "U[:,d]"
+        lambda_D, U_DD = np.linalg.eig(cov_DD)
+
+        # Verify orthonormal
+        assert np.allclose(np.eye(D), np.dot(U_DD, U_DD.T))
+        # View eigenvector matrix as a rotation transformation
+        rot_DD = U_DD
+
+        # Prep for plotting elliptical contours
+        # by creating grid of G different (x,y) points along perfect circle
+        # Recall that a perfect circle is swept by considering all radians between [-pi, +pi]
+        unit_circle_radian_step_size=0.03
+        t_G = np.arange(-np.pi, np.pi, unit_circle_radian_step_size)
+        x_G = np.sin(t_G)
+        y_G = np.cos(t_G)
+        Zcirc_DG = np.vstack([x_G, y_G])
+
+        # Warp circle into ellipse defined by Sigma's eigenvectors
+        # Rescale according to eigenvalues
+        Zellipse_DG = np.sqrt(lambda_D)[:,np.newaxis] * Zcirc_DG
+        # Rotate according to eigenvectors
+        Zrotellipse_DG = np.dot(rot_DD, Zellipse_DG)
+        
+        radius_lengths=[0.3, 0.6, 0.9, 1.2, 1.5]
+        
+        # Plot contour lines across several radius lengths
+        for r in radius_lengths:
+            Z_DG = r * Zrotellipse_DG + mu_D[:, np.newaxis]
+            plt.plot(
+                Z_DG[0], Z_DG[1], '.-',
+                color='k',
+                markersize=3.0,
+                markerfacecolor='k',
+                markeredgecolor='k')
+    
+    f.savefig('pchmm_fits.png')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='pchmm fitting')
@@ -62,13 +128,16 @@ if __name__ == '__main__':
     args = parser.parse_args()
         
     #go through all the saved loss plots
-    all_fits_csvs = glob.glob(os.path.join(args.fits_dir, "pchmm-*lamb=1.csv"))
+    all_fits_csvs = glob.glob(os.path.join(args.fits_dir, "pchmm-*lamb=10*.csv"))
     
     losses_per_fit_list = []
     auc_per_fit_list = []
     for fit_csv in all_fits_csvs:
         fit_df = pd.read_csv(fit_csv)
-        losses_per_fit_list.append(fit_df['val_loss'].to_numpy()[-1])
+        lamb = int(fit_csv.replace('.csv', '').split('lamb=')[-1])
+        curr_loss = fit_df['val_hmm_model_loss'].to_numpy()[-1] + (fit_df['val_predictor_loss'].to_numpy()[-1])/lamb
+#         curr_loss = (fit_df['val_predictor_loss'].to_numpy()[-1])/lamb
+        losses_per_fit_list.append(curr_loss)
         auc_per_fit_list.append(fit_df['val_predictor_AUC'].to_numpy()[-1])
     
     
@@ -121,7 +190,7 @@ if __name__ == '__main__':
     features_outcomes_df.drop_duplicates(subset=id_cols, inplace=True)
     y_N = features_outcomes_df['did_overheat_binary_label'].values
     
-    visualize2D(data_DTN=data_DTN, y_N=y_N, mu_all=mu_all, cov_all=cov_all, levels=3, 
+    visualize2D_new(data_DTN=data_DTN, y_N=y_N, mu_all=mu_all, cov_all=cov_all, levels=3, 
                 colorlist=['salmon', 'blue'], markerlist=['$x$', '$o$'], alpha=0.3)
     
     from IPython import embed; embed()

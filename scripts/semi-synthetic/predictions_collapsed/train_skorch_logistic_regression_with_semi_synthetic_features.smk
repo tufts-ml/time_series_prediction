@@ -9,7 +9,7 @@ snakemake --snakefile train_skorch_logistic_regression_with_semi_synthetic_featu
 
 '''
 
-configfile : "skorch_logistic_regression_semi_synthetic_bce.json"
+configfile : "skorch_logistic_regression_semi_synthetic_single_config.json"
 
 PROJECT_REPO_DIR = "/cluster/tufts/hugheslab/prath01/projects/time_series_prediction/"
 SEMI_SYNTHETIC_DATA_PATH = "/cluster/tufts/hugheslab/prath01/projects/time_series_prediction/datasets/semi_synthetic_precision_recall/"

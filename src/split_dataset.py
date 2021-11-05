@@ -158,4 +158,3 @@ if __name__ == '__main__':
     if args.output_data_dict_filename is not None:
         with open(args.output_data_dict_filename, 'w') as f:
             json.dump(data_dict, f, indent=4)
-

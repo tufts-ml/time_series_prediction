@@ -1,9 +1,10 @@
 {
     "lr": [0.001, 0.0005],
-    "batch_size": [512, -1],
+    "batch_size": [512],
     "weight_decay": [1000, 10, 1e-3, 1e-7, 1e-9],
     "n_hiddens" : [32],
-    "scoring" : ["surrogate_loss_loose"],
+    "n_layers" : [1],
+    "scoring" : ["cross_entropy_loss"],
     "incremental_min_precision" : ["false"],
     "initialization_gain" : [1.0],
     "warm_start" : ["false"],

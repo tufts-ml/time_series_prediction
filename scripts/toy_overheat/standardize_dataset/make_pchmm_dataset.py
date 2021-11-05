@@ -212,7 +212,7 @@ if __name__ == "__main__":
     print('Number of negative sequences : %s'%(len(inds_label_0)))
     print('Number of positive sequences : %s'%(len(inds_label_1)))
     
-    fontsize = 8
+    fontsize = 10
     f,axs = plt.subplots(1,1, figsize=(15, 5))
 
     # plot time series sequence of example with label 0
@@ -223,17 +223,11 @@ if __name__ == "__main__":
     axs.scatter(data_DTN[0, :, inds_label_1], data_DTN[1, :, inds_label_1], 
                 marker='o', s=2, c='r', label='y=1')
     
-    axs.set_ylim([-4,4])
+    axs.set_ylim([-5,5])
     axs.set_xlim([-spacing,n_states*spacing+spacing])
     axs.set_ylabel('Temperature_1 (deg C)', fontsize=fontsize)
     axs.set_xlabel('Temperature_0 (deg C)', fontsize = fontsize)
 
-    # plot time series sequence of example with label 0
-#     axs[1].plot(range(Tmax), data_DTN[0,:,inds_label_1[:n_plot_seqs]].T, '-.')
-#     axs[1].set_ylim([-8,8])
-#     axs[0].set_xlim([-spacing,n_states*spacing+spacing])
-#     axs[1].set_ylabel('Temperature_1 (deg C)', fontsize=fontsize)
-#     axs[1].set_xlabel('Temperature_0 (deg C)', fontsize = fontsize)
     
     plot_png = os.path.join(args.output_dir, 'example_pos_and_neg_sequences.png')
     print('Saving generated positive and negative sequence plots to %s'%plot_png)

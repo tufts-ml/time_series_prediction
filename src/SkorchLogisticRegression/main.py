@@ -9,7 +9,7 @@ import skorch
 from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import (roc_curve, accuracy_score, log_loss, 
                             balanced_accuracy_score, confusion_matrix, 
-                            roc_auc_score, make_scorer, precision_score, recall_score)
+                            roc_auc_score, average_precision_score, make_scorer, precision_score, recall_score)
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from SkorchLogisticRegression import SkorchLogisticRegression
@@ -129,14 +129,23 @@ if __name__ == '__main__':
     parser.add_argument('--merge_x_y', default=True,
                                 type=lambda x: (str(x).lower() == 'true'), required=False)
     parser.add_argument('--initialization_gain', type=float, default=1.0)
-    parser.add_argument('--incremental_min_precision', type=str, default='true')
+    parser.add_argument('--incremental_min_precision', type=str, default='false')
+    parser.add_argument('--tighten_bounds', type=str, default='false')
 
     args = parser.parse_args()
+    
+    torch.device('cuda')
     
     if args.incremental_min_precision=="true":
         args.incremental_min_precision=True
     else:
         args.incremental_min_precision=False
+        
+        
+    if args.tighten_bounds=="true":
+        args.tighten_bounds=True
+    else:
+        args.tighten_bounds=False
     # read the data dictionaries
     print('Reading train-test data...')
     
@@ -183,7 +192,7 @@ if __name__ == '__main__':
         n_splits=args.n_splits, cols_to_group=args.key_cols_to_group_when_splitting)
     # Assign training instances to splits by provided keys
     key_train = splitter.make_groups_from_df(df_by_split['train'][key_cols])
-    
+    del(df_by_split)
     
     # get the train and validation splits
     for ss, (tr_inds, va_inds) in enumerate(splitter.split(x_train, y_train, groups=key_train)):
@@ -205,7 +214,6 @@ if __name__ == '__main__':
     
     print(split_dict)
     
-    from IPython import embed; embed()
     # get the feature columns
     class_weights_ = torch.tensor(np.asarray([1/((y_train==0).sum()), 1/((y_train==1).sum())]))
     
@@ -240,6 +248,12 @@ if __name__ == '__main__':
     epoch_scoring_recall_valid = EpochScoring('recall', lower_is_better=False, on_train=False,
                                                   name='recall_valid')
     
+    epoch_scoring_auprc_train = EpochScoring('average_precision', lower_is_better=False, on_train=True,
+                                             name='auprc_train')
+    
+    epoch_scoring_auprc_valid = EpochScoring('average_precision', lower_is_better=False, on_train=False,
+                                             name='auprc_valid')
+    
     early_stopping_cp = EarlyStopping(monitor='precision_valid',
                                           patience=30, threshold=1e-10, threshold_mode='rel', 
                                           lower_is_better=False)
@@ -247,6 +261,11 @@ if __name__ == '__main__':
     loss_early_stopping_cp = EarlyStopping(monitor='valid_loss',
                                           patience=5, threshold=1e-10, threshold_mode='rel', 
                                           lower_is_better=True)
+    
+    auprc_early_stopping_cp = EarlyStopping(monitor='auprc_valid',
+                                          patience=15, threshold=1e-10, threshold_mode='rel', 
+                                          lower_is_better=False)
+    
     
     epoch_scoring_surr_loss_train = EpochScoring(calc_surrogate_loss_skorch_callback, lower_is_better=True, on_train=True,
                                          name='surr_loss_train')
@@ -292,7 +311,7 @@ if __name__ == '__main__':
     
     
     
-    fixed_precision = 0.9
+    fixed_precision = 0.7
     thr_list = [0.5]
     ## start training
     if args.scoring == 'cross_entropy_loss':
@@ -312,6 +331,8 @@ if __name__ == '__main__':
                                                        epoch_scoring_surr_loss_valid,
                                                        epoch_scoring_bce_loss_train,
                                                        epoch_scoring_bce_loss_valid,
+                                                       epoch_scoring_auprc_train,
+                                                       epoch_scoring_auprc_valid,
                                                        tpl_bound_train,
                                                        tpl_bound_valid,
                                                        fpu_bound_train,
@@ -330,7 +351,7 @@ if __name__ == '__main__':
         print('Searching thresholds that maximize recall at fixed precision %.4f'%fixed_precision)
         y_train_proba_vals = logistic_clf.predict_proba(x_train_transformed)
         unique_probas = np.unique(y_train_proba_vals)
-        thr_grid = np.linspace(np.percentile(unique_probas,1), np.percentile(unique_probas, 99), 100)
+        thr_grid = np.linspace(np.percentile(unique_probas,0), np.percentile(unique_probas, 100), 5000)
         
         # compute precision recall across folds
 #         precision_score_grid_SG = np.zeros((splitter.n_splits, thr_grid.size))
@@ -345,15 +366,15 @@ if __name__ == '__main__':
         
         
         precision_scores_G, recall_scores_G = [np.zeros(thr_grid.size), np.zeros(thr_grid.size)]
+        y_train_pred_probas = logistic_clf.predict_proba(x_train_transformed)[:,1]
         for gg, thr in enumerate(thr_grid): 
 #             logistic_clf.module_.linear_transform_layer.bias.data = torch.tensor(thr_grid[gg]).double()
-            curr_thr_y_preds = logistic_clf.predict_proba(x_train_transformed)[:,1]>=thr_grid[gg] 
+            curr_thr_y_preds = y_train_pred_probas>=thr_grid[gg] 
             precision_scores_G[gg] = precision_score(y_train, curr_thr_y_preds)
             recall_scores_G[gg] = recall_score(y_train, curr_thr_y_preds) 
         
 #         mean_precision_score_G = np.mean(precision_score_grid_SG, axis=0)
 #         mean_recall_score_G = np.mean(recall_score_grid_SG, axis=0)
-        
         keep_inds = precision_scores_G>=fixed_precision
         if keep_inds.sum()>0:
             precision_scores_G = precision_scores_G[keep_inds]
@@ -406,7 +427,6 @@ if __name__ == '__main__':
                                                optimizer=torch.optim.Adam)
             
             
-#             from IPython import embed; embed()
             logistic_init_clf = logistic_init.fit(x_train_transformed, y_train)
 
             # transfer the weights and to a new instance of SkorchLogisticRegression and train minimizing surrogate loss
@@ -472,6 +492,7 @@ if __name__ == '__main__':
                                                 constraint_lambda=args.lamb,
                                                 incremental_min_precision=args.incremental_min_precision,
                                                 initialization_gain=args.initialization_gain,
+                                                tighten_bounds=args.tighten_bounds,
                                                 callbacks=[epoch_scoring_precision_train,
                                                            epoch_scoring_precision_valid,
                                                            epoch_scoring_recall_train,
@@ -492,7 +513,7 @@ if __name__ == '__main__':
                                                            cp, train_end_cp],
                                                optimizer=torch.optim.Adam)
             
-#             from IPython import embed; embed()
+#            from IPython import embed; embed()
             logistic_clf = logistic.fit(x_train_transformed, y_train)
 
         
@@ -528,16 +549,19 @@ if __name__ == '__main__':
         y_train_pred = y_train_pred_probas>=thr
         precision_train = precision_score(y_train, y_train_pred)
         recall_train = recall_score(y_train, y_train_pred)
+        auprc_train = average_precision_score(y_train, y_train_pred_probas)
         
         y_valid_pred_probas = logistic_clf.predict_proba(x_valid_transformed)[:,1]
         y_valid_pred = y_valid_pred_probas>=thr
         precision_valid = precision_score(y_valid, y_valid_pred)
-        recall_valid = recall_score(y_valid, y_valid_pred)       
+        recall_valid = recall_score(y_valid, y_valid_pred)   
+        auprc_valid = average_precision_score(y_valid, y_valid_pred_probas)
         
         y_test_pred_probas = logistic_clf.predict_proba(x_test_transformed)[:,1]
         y_test_pred = y_test_pred_probas>=thr
         precision_test = precision_score(y_test, y_test_pred)
         recall_test = recall_score(y_test, y_test_pred)
+        auprc_test = average_precision_score(y_test, y_test_pred_probas)
 
         # compute the TP's, FP's, TN's and FN's
 #         y_train = y_train[:, np.newaxis] 
@@ -579,6 +603,7 @@ if __name__ == '__main__':
                 'TN_train':TN_train,
                 'FN_train':FN_train,
                 'N_train':len(x_train),
+                'auprc_train':auprc_train,
                 'precision_valid':precision_valid,
                 'recall_valid':recall_valid,
                 'TP_valid':TP_valid,
@@ -586,14 +611,17 @@ if __name__ == '__main__':
                 'TN_valid':TN_valid,
                 'FN_valid':FN_valid,
                 'N_valid':len(x_valid),
+                'auprc_valid':auprc_valid,
                 'precision_test':precision_test,
                 'recall_test':recall_test,
                 'TP_test':TP_test,
                 'FP_test':FP_test,
                 'TN_test':TN_test,
                 'FN_test':FN_test,
-                'N_test':len(x_test)}
+                'N_test':len(x_test),
+                'auprc_test':auprc_test}
     perf_df = pd.DataFrame([perf_dict])
     perf_csv = os.path.join(args.output_dir, args.output_filename_prefix+'_perf.csv')
     print('Saving performance on train and test set to %s'%(perf_csv))
     perf_df.to_csv(perf_csv, index=False)
+

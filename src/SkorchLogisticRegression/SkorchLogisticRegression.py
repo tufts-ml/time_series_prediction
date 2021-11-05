@@ -27,6 +27,7 @@ class SkorchLogisticRegression(skorch.NeuralNet):
             min_precision=0.9,
             constraint_lambda=100,
             incremental_min_precision=False,
+            tighten_bounds=False,
             initialization_gain=1.0,
             *args,
             **kwargs
@@ -39,15 +40,25 @@ class SkorchLogisticRegression(skorch.NeuralNet):
         self.loss_name=loss_name
         self.min_precision = min_precision
         self.constraint_lambda=constraint_lambda
-        self.gamma_fp = 7.00 #2.001 #4.00 #1.001
-        self.delta_fp = 0.021 #0.006 #0.012 #0.003
-        self.m_fp = 8.264 #170.73 #32.47  #1231.95
-        self.b_fp = 2.092 #5.12 #3.33  #12.708
-        self.gamma_tp =  7.00 #2.001 #4.00  #1.001
-        self.delta_tp = 0.035 #0.01 #0.02  #0.005
-        self.m_tp = 5.19 #92.3 #17.00 #680.072
-        self.b_tp = -3.54 #-4.61 #-3.97 #-5.297
+        self.gamma_fp = 7.00
+        self.delta_fp = 0.03  
+        self.m_fp = 6.85 
+        self.b_fp = 1.59 
+        self.gamma_tp =  7.00 
+        self.delta_tp = 0.03 
+        self.m_tp = 6.85 
+        self.b_tp = -3.54 
         self.precision_ind = None
+        self.tighten_bounds = tighten_bounds
+        self.bounds_dict = dict(gamma_fp = [7.00, 6.00, 5.00, 4.00, 3.00],
+                                delta_fp = [0.021, 0.018, 0.015, 0.012, 0.009],
+                                m_fp = [8.264, 12.091, 18.897, 32.477, 64.85],
+                                b_fp = [2.092, 2.426, 2.828, 3.336, 4.026],
+                                gamma_tp = [7.00, 6.00, 5.00, 4.00, 3.00],
+                                delta_tp = [0.035, 0.030, 0.025, 0.020, 0.015],
+                                m_tp = [5.19, 6.192, 9.778, 17.009, 34.448],
+                                b_tp = [-3.54, -3.646, -3.784, -3.97, -4.229])
+        
         self.incremental_min_precision=incremental_min_precision
         self.initialization_gain=initialization_gain
         kwargs.update(dict(module=SkorchLogisticRegressionModule, 
@@ -71,9 +82,13 @@ class SkorchLogisticRegression(skorch.NeuralNet):
         y_proba_N2 : 2D array, (n_examples, 2)
         '''
         self.module_.eval()
-        y_logproba_ = self.module_.forward(torch.DoubleTensor(x_NF))
+                
+        if isinstance(x_NF, skorch.dataset.Dataset):
+            y_logproba_ = self.module_.forward(torch.DoubleTensor(x_NF.X))
+        else:
+            y_logproba_ = self.module_.forward(torch.DoubleTensor(x_NF))
         y_logproba_N1 = y_logproba_.detach().numpy()
-        y_proba_N2 = np.empty((x_NF.shape[0], 2))
+        y_proba_N2 = np.empty((len(y_logproba_N1), 2))
         y_proba_N2[:,1] = np.exp(y_logproba_N1[:,0])
         y_proba_N2[:,0] = 1 - y_proba_N2[:,1]
         return y_proba_N2
@@ -156,6 +171,8 @@ class SkorchLogisticRegression(skorch.NeuralNet):
     
     def calc_fp_tp_bounds_better(self, y_true_, y_est_logits_):
         
+        current_epoch = self.history[-1]['epoch']
+        
         fp_upper_bound_N = (1+self.gamma_fp*self.delta_fp)*torch.sigmoid(self.m_fp*y_est_logits_+self.b_fp)
         fp_upper_bound = torch.sum(fp_upper_bound_N[y_true_==0])
         
@@ -178,8 +195,9 @@ class SkorchLogisticRegression(skorch.NeuralNet):
         return fp_upper_bound, tp_lower_bound
     
     
-    def calc_surrogate_loss(
-            self, y_true, y_est_logits_=None, X=None, return_y_logproba=False, alpha=0.8, lamb=1, bounds='tight'):
+    def calc_surrogate_loss(self, y_true, y_est_logits_=None, X=None, return_y_logproba=False, 
+                            alpha=0.8, lamb=1, bounds='tight'):
+        
         if y_est_logits_ is None:
             y_est_logits_ = self.module_.linear_transform_layer.forward(X.type(torch.DoubleTensor))[:,0]
 
@@ -237,6 +255,7 @@ class SkorchLogisticRegression(skorch.NeuralNet):
             loss_, y_logproba_ = self.calc_bce_loss(y, X=X, return_y_logproba=True)
         elif (self.loss_name == 'surrogate_loss_tight')&(self.incremental_min_precision):
             current_epoch = self.history[-1]['epoch']
+            
             # slowly increment the min precision over epochs
             n_increments = 4
             epochs_per_increment = int(self.max_epochs/n_increments)
@@ -260,11 +279,38 @@ class SkorchLogisticRegression(skorch.NeuralNet):
                                                                 lamb=self.constraint_lambda, bounds='tight')                
                 
                 
-        elif (self.loss_name == 'surrogate_loss_tight')&(not(self.incremental_min_precision)):
+        elif (self.loss_name == 'surrogate_loss_tight')&(not(self.incremental_min_precision))&(not(self.tighten_bounds)):
             
             loss_, y_logproba_ = self.calc_surrogate_loss(y, X=X, return_y_logproba=True,
                                                                 alpha=self.min_precision,
                                                                 lamb=self.constraint_lambda, bounds='tight') 
+            
+        elif (self.loss_name == 'surrogate_loss_tight')&(self.tighten_bounds):
+            
+            # slowly tighten the bounds every num_epochs/4 (TODO : Change this to something more adaptive)
+            current_epoch = self.history[-1]['epoch']
+            n_increments = 4
+            epochs_per_increment = int(self.max_epochs/n_increments)
+            
+            bound_ind = int(current_epoch/epochs_per_increment)
+            if (current_epoch<self.max_epochs):
+                self.gamma_fp = self.bounds_dict['gamma_fp'][bound_ind]
+                self.delta_fp = self.bounds_dict['delta_fp'][bound_ind]
+                self.m_fp = self.bounds_dict['m_fp'][bound_ind]
+                self.b_fp = self.bounds_dict['b_fp'][bound_ind]
+                self.gamma_tp = self.bounds_dict['gamma_tp'][bound_ind]
+                self.delta_tp = self.bounds_dict['delta_tp'][bound_ind]
+                self.m_tp = self.bounds_dict['m_tp'][bound_ind]
+                self.b_tp = self.bounds_dict['b_tp'][bound_ind]
+            
+            if (current_epoch%epochs_per_increment==0):
+                print('tightening bounds at epoch %d'%current_epoch)
+            
+            loss_, y_logproba_ = self.calc_surrogate_loss(y, X=X, return_y_logproba=True,
+                                                    alpha=self.min_precision,
+                                                    lamb=self.constraint_lambda, bounds='tight')
+            
+        
         elif (self.loss_name == 'surrogate_loss_loose'):
             
             loss_, y_logproba_ = self.calc_surrogate_loss(y, X=X, return_y_logproba=True,
@@ -323,13 +369,36 @@ class SkorchLogisticRegression(skorch.NeuralNet):
                 loss_, y_logproba_ = self.calc_surrogate_loss(y, X=X, return_y_logproba=True,
                                                                     alpha=min_precision_grid[self.precision_ind],
                                                                     lamb=self.constraint_lambda, bounds='tight')                
-
-
-            elif (self.loss_name == 'surrogate_loss_tight')&(not(self.incremental_min_precision)):
+            
+            elif (self.loss_name == 'surrogate_loss_tight')&(not(self.incremental_min_precision))&(not(self.tighten_bounds)):
 
                 loss_, y_logproba_ = self.calc_surrogate_loss(y, X=X, return_y_logproba=True,
                                                                     alpha=self.min_precision,
                                                                     lamb=self.constraint_lambda, bounds='tight') 
+                
+            elif (self.loss_name == 'surrogate_loss_tight')&(self.tighten_bounds):
+                # slowly tighten the bounds every num_epochs/4 (TODO : Change this to something more adaptive)
+            # slowly tighten the bounds every num_epochs/4 (TODO : Change this to something more adaptive)
+                current_epoch = self.history[-1]['epoch']
+                n_increments = 4
+                epochs_per_increment = int(self.max_epochs/n_increments)
+
+                bound_ind = int(current_epoch/epochs_per_increment)
+                if (current_epoch<self.max_epochs):
+                    self.gamma_fp = self.bounds_dict['gamma_fp'][bound_ind]
+                    self.delta_fp = self.bounds_dict['delta_fp'][bound_ind]
+                    self.m_fp = self.bounds_dict['m_fp'][bound_ind]
+                    self.b_fp = self.bounds_dict['b_fp'][bound_ind]
+                    self.gamma_tp = self.bounds_dict['gamma_tp'][bound_ind]
+                    self.delta_tp = self.bounds_dict['delta_tp'][bound_ind]
+                    self.m_tp = self.bounds_dict['m_tp'][bound_ind]
+                    self.b_tp = self.bounds_dict['b_tp'][bound_ind]
+
+                loss_, y_logproba_ = self.calc_surrogate_loss(y, X=X, return_y_logproba=True,
+                                                        alpha=self.min_precision,
+                                                        lamb=self.constraint_lambda, bounds='tight')
+            
+            
             elif self.loss_name == 'surrogate_loss_loose':
                 loss_, y_logproba_ = self.calc_surrogate_loss(y, X=X, return_y_logproba=True, 
                                                                 alpha=self.min_precision, lamb=self.constraint_lambda,

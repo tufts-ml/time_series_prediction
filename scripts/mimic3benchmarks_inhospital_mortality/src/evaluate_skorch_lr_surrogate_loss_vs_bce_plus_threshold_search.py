@@ -29,7 +29,7 @@ import random
 import pickle
 import glob
 import seaborn as sns
-
+from split_dataset import Splitter
 
 def get_best_model(clf_models_dir, filename_aka):
     ''' Get the best model from training history'''
@@ -127,40 +127,49 @@ def plot_all_models_training_plots(clf_models_dir, all_models_history_files_aka,
     all_models_history_files = glob.glob(os.path.join(clf_models_dir, all_models_history_files_aka))
     for f_ind, model_history_file in enumerate(all_models_history_files):
         training_hist_df = pd.DataFrame(json.load(open(model_history_file))) 
-        
-        if training_hist_df['precision_train'].values[-1]>0.5:
-            for i, metric in enumerate(metrics): 
-                # plot epochs vs precision on train and validation
-                if (metric == 'fpu_bound'):
-                    axs[i].plot(training_hist_df.epoch, training_hist_df['fpu_bound_train'], color='r', 
-                                label='FP upper bound', alpha=alpha)
-                    axs[i].plot(training_hist_df.epoch, training_hist_df['fp_train'], color='b', label='FP train', alpha=alpha)
-                elif (metric == 'tpl_bound'):
-                    axs[i].plot(training_hist_df.epoch, training_hist_df['tpl_bound_train'], color='r', 
-                                label='TP lower bound', alpha=alpha)
-                    axs[i].plot(training_hist_df.epoch, training_hist_df['tp_train'], color='b', label='TP train', alpha=alpha)            
-                else:
-                    try:
-                        axs[i].plot(training_hist_df.epoch, training_hist_df['%s_train'%metric], color='b', 
-                                    label='train', alpha=alpha)
-                        axs[i].plot(training_hist_df.epoch, training_hist_df['%s_valid'%metric], color='r', 
-                                    label='valid', alpha=alpha)
-                        if (metric=='precision')|(metric=='recall'):
-                            yticks = np.arange(0, 1.1, 0.2)
-                            yticklabels = ['%.2f'%ii for ii in yticks]
-                            axs[i].set_yticks(yticks)
-                            axs[i].set_yticklabels(yticklabels)
+        try:
+            if training_hist_df['precision_train'].values[-1]>0.2:
+                for i, metric in enumerate(metrics): 
+                    # plot epochs vs precision on train and validation
+                    if (metric == 'fpu_bound'):
+                        axs[i].plot(training_hist_df.epoch, training_hist_df['fpu_bound_train'], color='r', 
+                                    label='FP upper bound', alpha=alpha)
+                        axs[i].plot(training_hist_df.epoch, training_hist_df['fp_train'], color='b', label='FP train', alpha=alpha)
+                    elif (metric == 'tpl_bound'):
+                        axs[i].plot(training_hist_df.epoch, training_hist_df['tpl_bound_train'], color='r', 
+                                    label='TP lower bound', alpha=alpha)
+                        axs[i].plot(training_hist_df.epoch, training_hist_df['tp_train'], color='b', label='TP train', alpha=alpha)            
+#                         axs[i].set_ylim([0, 2500])
+                    else:
+                        try:
+                            axs[i].plot(training_hist_df.epoch, training_hist_df['%s_train'%metric], color='b', 
+                                        label='train', alpha=alpha)
+                            axs[i].plot(training_hist_df.epoch, training_hist_df['%s_valid'%metric], color='r', 
+                                        label='valid', alpha=alpha)
+                            if (metric=='precision')|(metric=='recall'):
+                                yticks = np.arange(0, 1.1, 0.2)
+                                yticklabels = ['%.2f'%ii for ii in yticks]
+                                axs[i].set_yticks(yticks)
+                                axs[i].set_yticklabels(yticklabels)
 
-                    except:
-                        axs[i].plot(training_hist_df.epoch, training_hist_df['train_%s'%metric], color='b', 
-                                    label='%s(train)'%metric, alpha=alpha)
-                        axs[i].plot(training_hist_df.epoch, training_hist_df['valid_%s'%metric], color='r', 
-                                    label='%s(valid)'%metric, alpha=alpha)
+                        except:
+                            axs[i].plot(training_hist_df.epoch, training_hist_df['train_%s'%metric], color='b', 
+                                        label='%s(train)'%metric, alpha=alpha)
+                            axs[i].plot(training_hist_df.epoch, training_hist_df['valid_%s'%metric], color='r', 
+                                        label='%s(valid)'%metric, alpha=alpha)
 
                     axs[i].set_ylabel(metric)
-                if f_ind == 0:
-                    axs[i].legend(loc='upper left')
-                    axs[i].grid(True)   
+                    if f_ind == 0:
+                        axs[i].legend(loc='upper left')
+#                         axs[i].grid(True) 
+        
+
+            
+        except:
+            continue
+#     for ax in axs:
+#         ax.legend(loc='upper left')
+#         ax.grid(True) 
     axs[i].set_xlabel('epochs')
     axs[i].set_xlim([0, 500])
 #     plt.suptitle(plt_name)
@@ -180,16 +189,15 @@ def get_all_precision_recalls(clf_models_dir, filename_aka):
     
     
     for i, f in enumerate(training_files):
-        training_hist_df = pd.read_csv(f)
-        precision_train_np[i] = training_hist_df.precision_train.values[-1]
-        recall_train_np[i] = training_hist_df.recall_train.values[-1]
-        precision_valid_np[i] = training_hist_df.precision_valid.values[-1]
-        recall_valid_np[i] = training_hist_df.recall_valid.values[-1]
-        precision_test_np[i] = training_hist_df.precision_test.values[-1]
-        recall_test_np[i] = training_hist_df.recall_test.values[-1]
+            training_hist_df = pd.read_csv(f)
+            precision_train_np[i] = training_hist_df.precision_train.values[-1]
+            recall_train_np[i] = training_hist_df.recall_train.values[-1]
+            precision_valid_np[i] = training_hist_df.precision_valid.values[-1]
+            recall_valid_np[i] = training_hist_df.recall_valid.values[-1]
+            precision_test_np[i] = training_hist_df.precision_test.values[-1]
+            recall_test_np[i] = training_hist_df.recall_test.values[-1]
         
     
-#     from IPython import embed; embed()
     precision_train_unfiltered = precision_train_np
     precision_valid_unfiltered = precision_valid_np
     precision_test_unfiltered = precision_test_np
@@ -197,21 +205,8 @@ def get_all_precision_recalls(clf_models_dir, filename_aka):
     recall_valid_unfiltered = recall_valid_np
     recall_test_unfiltered = recall_test_np    
     
-    
-# # #     get model with max recall at precision >=0.8
-#     keep_inds = precision_train_np>=0.75
-#     if keep_inds.sum()>0:
-#         training_files = np.array(training_files)[keep_inds]
-#         precision_train_np = precision_train_np[keep_inds]
-#         recall_train_np = recall_train_np[keep_inds]
-#         precision_valid_np = precision_valid_np[keep_inds]
-#         recall_valid_np = recall_valid_np[keep_inds]
-    
 
-#     best_model_ind = np.argmax(recall_valid_np)
-    
-
-    return precision_train_unfiltered, precision_valid_unfiltered, precision_test_unfiltered, recall_train_unfiltered, recall_valid_unfiltered, recall_test_unfiltered
+    return precision_train_unfiltered, precision_valid_unfiltered, precision_test_unfiltered, recall_train_unfiltered, recall_valid_unfiltered, recall_test_unfiltered, training_files
   
 def make_precision_recall_boxplots(precision_train_np, precision_valid_np, precision_test_np, recall_train_np, recall_valid_np, recall_test_np, plt_name, title_str=''):
     # plot he boxplot of precision recall
@@ -251,9 +246,15 @@ if __name__ == '__main__':
     
     ## get the test patient id's
     # get the test set's csv and dict
+    x_train_df = pd.read_csv(os.path.join(args.clf_train_test_split_dir, 'x_train.csv'))
+    y_train_df = pd.read_csv(os.path.join(args.clf_train_test_split_dir, 'y_train.csv'))
+    
+#     x_valid_df = pd.read_csv(os.path.join(args.clf_train_test_split_dir, 'x_valid.csv'))
+#     y_valid_df = pd.read_csv(os.path.join(args.clf_train_test_split_dir, 'y_valid.csv'))
+    
+    x_test_df = pd.read_csv(os.path.join(args.clf_train_test_split_dir, 'x_test.csv'))
     y_test_df = pd.read_csv(os.path.join(args.clf_train_test_split_dir, 'y_test.csv'))
     y_test_dict_file = os.path.join(args.clf_train_test_split_dir, 'y_dict.json')
-    x_test_df = pd.read_csv(os.path.join(args.clf_train_test_split_dir, 'x_test.csv'))
     x_test_dict_file = os.path.join(args.clf_train_test_split_dir, 'x_dict.json')
     
     # import the y dict to get the id cols
@@ -261,89 +262,44 @@ if __name__ == '__main__':
     x_test_dict = load_data_dict_json(x_test_dict_file)
     id_cols = parse_id_cols(y_test_dict)
     feature_cols = parse_feature_cols(x_test_dict)
-    
     outcome_col = args.outcome_column_name
-    y_test_ids_df = y_test_df[id_cols].drop_duplicates(subset=id_cols).reset_index(drop=True)
-    
 #     # get performance metrics
-    x_test = x_test_df[feature_cols].values
-    y_test = y_test_df[outcome_col].values
+    x_train = x_train_df[feature_cols].values.astype(np.float32)
+    y_train = y_train_df[outcome_col].values
 
+    x_test = x_test_df[feature_cols].values.astype(np.float32)
+    y_test = y_test_df[outcome_col].values
+    
+    
+    # get the validation data
+    splitter = Splitter(size=0.25, random_state=41,
+                        n_splits=1, 
+                        cols_to_group='subject_id')
+    # Assign training instances to splits by provided keys
+    key_train = splitter.make_groups_from_df(x_train_df[id_cols])
+    
+    for ss, (tr_inds, va_inds) in enumerate(splitter.split(x_train, y_train, groups=key_train)):
+        x_tr = x_train[tr_inds].copy()
+        y_tr = y_train[tr_inds].copy()
+        x_valid = x_train[va_inds]
+        y_valid = y_train[va_inds]
+    
+    y_train = y_tr
+    del(y_tr)
+    
+    
     # load the scaler
     scaler = pickle.load(open(os.path.join(clf_models_dir, 'scaler.pkl'), 'rb'))
+    x_train_transformed = scaler.transform(x_tr)
+    x_valid_transformed = scaler.transform(x_valid)
     x_test_transformed = scaler.transform(x_test)
 
     # load model minimizing BCE loss
 #     skorch_lr_bce = SkorchLogisticRegression(n_features=x_test.shape[1])
 #     skorch_lr_bce.initialize()
     
+    
     '''
-    # get the best model minimizining bce loss
-    bce_filename_aka = 'skorch_logistic_regression*cross_entropy_loss*history.json'
-    bce_plus_thresh_filename_aka = 'skorch_logistic_regression*cross_entropy_loss*perf.csv'
-
-    best_model_file_bce_training_hist = get_best_model(clf_models_dir, bce_filename_aka)
-    best_model_file_bce = best_model_file_bce_training_hist.replace('history.json', '.txt')
-
-    # plot training plots of best model
-    plot_best_model_training_plots(best_model_file_bce_training_hist, 'logistic_regression_minimizing_cross_entropy')
-    
-    best_model_file_bce_plus_thresh = get_best_model_after_threshold_search(clf_models_dir, bce_plus_thresh_filename_aka)
-
-    # get the best model minimizining surrogate loss
-    sl_with_bce_init_filename_aka = 'skorch_logistic_regression*surrogate_loss_tight*warm_start=true*history.json'
-    sl_with_bce_init_csv_aka = 'skorch_logistic_regression*surrogate_loss_tight*warm_start=true*perf.csv'
-
-    best_model_file_sl_with_bce_init = get_best_model_after_threshold_search(clf_models_dir, sl_with_bce_init_csv_aka)
-    best_model_file_training_hist_sl_with_bce_init = best_model_file_sl_with_bce_init.replace('_perf.csv', 'history.json')
-    
-    
-    # plot training plots of best model
-    plot_best_model_training_plots(best_model_file_training_hist_sl_with_bce_init, 'logistic_regression_minimizing_surrogate_loss_tight_bce_init')
-    
-    # get the best model minimizining surrogate loss
-    sl_rand_init_filename_aka = 'skorch_logistic_regression*surrogate_loss_tight*warm_start=false*history.json'
-    sl_rand_init_csv_aka = 'skorch_logistic_regression*surrogate_loss_tight*warm_start=false*perf.csv'
-
-    best_model_file_sl_rand_init = get_best_model_after_threshold_search(clf_models_dir, sl_rand_init_csv_aka)
-    best_model_file_training_hist_sl_rand_init = best_model_file_sl_rand_init.replace('_perf.csv', 'history.json')
-    best_model_file_params_rand_init = best_model_file_sl_rand_init.replace('_perf.csv', 'params.pt')
-    
-    # load model minimizing tight surrogate loss
-    skorch_lr_sl_rand_init = SkorchLogisticRegression(n_features=x_test.shape[1])
-    skorch_lr_sl_rand_init.initialize()    
-    
-    skorch_lr_sl_rand_init.load_params(f_params=best_model_file_params_rand_init)
-    
-    # get the weights and bias of the best rand init model
-    best_rand_init_model_weights = np.asarray(skorch_lr_sl_rand_init.module_.linear_transform_layer.weight.data)[0] 
-    best_rand_init_model_bias = np.asarray(skorch_lr_sl_rand_init.module_.linear_transform_layer.bias.data) 
-    
-    # plot the distribution of weights of the best rand init model
-    f, axs = plt.subplots(1, 1, figsize=(8,8))
-    axs.hist(best_rand_init_model_weights, bins=100) 
-    axs.set_title('Best Rand Init LR weights distribution , bias = %.3f'%best_rand_init_model_bias)
-    axs.set_xlabel('Model Weight')
-    axs.set_ylabel('Counts')
-    f.savefig('best_rand_init_lr_model_weights_hist.png')
-    
-    # plot training plots of best model
-    plot_best_model_training_plots(best_model_file_training_hist_sl_rand_init, 'logistic_regression_minimizing_surrogate_loss_tight_rand_init')
-
-    print('Performance of LR minimizing BCE :')
-    f = open(best_model_file_bce, "r")
-    print(f.read())
-    bce_plus_thresh_perf_df = pd.read_csv(best_model_file_bce_plus_thresh)
-    print('Performance of LR minimizing BCE + threshold search:')
-    print(bce_plus_thresh_perf_df) 
-    sl_with_bce_init_perf_df = pd.read_csv(best_model_file_sl_with_bce_init)
-    print('Performance of LR with surrogate objective and warm start with BCE:')
-    print(sl_with_bce_init_perf_df)
-    sl_with_rand_init_perf_df = pd.read_csv(best_model_file_sl_rand_init)
-    print('Performance of LR with surrogate objective and random init:')
-    print(sl_with_rand_init_perf_df)
-    '''
-    
     sl_rand_init_incremental_min_precision_filename_aka = 'skorch_logistic_regression*surrogate_loss_tight*warm_start=false*incremental_min_precision=true*history.json'
     
 #     plot_all_models_training_plots(clf_models_dir, sl_rand_init_incremental_min_precision_filename_aka, 'skorch_lr_incremental_min_precision')
@@ -351,16 +307,18 @@ if __name__ == '__main__':
     precisions_train_incremental_min_precision, precisions_valid_incremental_min_precision, precisions_test_incremental_min_precision, recalls_train_incremental_min_precision, recalls_valid_incremental_min_precision,  recalls_test_incremental_min_precision= get_all_precision_recalls(clf_models_dir, sl_rand_init_incremental_min_precision_filename_aka.replace('history.json', '.csv'))
     
     make_precision_recall_boxplots(precisions_train_incremental_min_precision, precisions_valid_incremental_min_precision, precisions_test_incremental_min_precision, recalls_train_incremental_min_precision, recalls_valid_incremental_min_precision, recalls_test_incremental_min_precision, 'lr_precision_recall_boxplot_incremental_min_precision', '(Ramp Up)')
+    '''
     
     sl_rand_init_direct_min_precision_filename_aka = 'skorch_logistic_regression*surrogate_loss_tight*warm_start=false*incremental_min_precision=false*history.json'
     
 #     plot_all_models_training_plots(clf_models_dir, sl_rand_init_direct_min_precision_filename_aka, 'skorch_lr_direct_min_precision')
     
-    precisions_train_direct_min_precision, precisions_valid_direct_min_precision, precisions_test_direct_min_precision, recalls_train_direct_min_precision, recalls_valid_direct_min_precision, recalls_test_direct_min_precision = get_all_precision_recalls(clf_models_dir, sl_rand_init_direct_min_precision_filename_aka.replace('history.json', '.csv'))
+    precisions_train_direct_min_precision, precisions_valid_direct_min_precision, precisions_test_direct_min_precision, recalls_train_direct_min_precision, recalls_valid_direct_min_precision, recalls_test_direct_min_precision, training_files_direct_min_precision = get_all_precision_recalls(clf_models_dir, sl_rand_init_direct_min_precision_filename_aka.replace('history.json', '.csv'))
     
     
-    make_precision_recall_boxplots(precisions_train_direct_min_precision, precisions_valid_direct_min_precision, precisions_test_direct_min_precision, recalls_train_direct_min_precision, recalls_valid_direct_min_precision, recalls_test_direct_min_precision, 'lr_precision_recall_boxplot_direct_min_precision', '(Direct)')
+#     make_precision_recall_boxplots(precisions_train_direct_min_precision, precisions_valid_direct_min_precision, precisions_test_direct_min_precision, recalls_train_direct_min_precision, recalls_valid_direct_min_precision, recalls_test_direct_min_precision, 'lr_precision_recall_boxplot_direct_min_precision', '(Direct)')
     
+    '''
     sl_bce_perturb_filename_aka = 'skorch_logistic_regression*surrogate_loss_tight*warm_start=true*history.json'
     
     plot_all_models_training_plots(clf_models_dir, sl_bce_perturb_filename_aka, 'skorch_lr_bce_perturb')
@@ -369,77 +327,94 @@ if __name__ == '__main__':
     
     
     make_precision_recall_boxplots(precisions_train_bce_perturb, precisions_valid_bce_perturb, precisions_test_bce_perturb, recalls_train_bce_perturb, recalls_valid_bce_perturb, recalls_test_bce_perturb, 'lr_precision_recall_boxplot_bce_perturb', '(BCE + Perturbation)')
+    '''
+
     
     bce_plus_thresh_filename_aka = 'skorch_logistic_regression*cross_entropy_loss*warm_start=false*history.json'
     
 #     plot_all_models_training_plots(clf_models_dir, bce_plus_thresh_filename_aka, 'skorch_lr_bce_plus_thresh')
     
-    precisions_train_bce_plus_thresh, precisions_valid_bce_plus_thresh, precisions_test_bce_plus_thresh, recalls_train_bce_plus_thresh, recalls_valid_bce_plus_thresh, recalls_test_bce_plus_thresh = get_all_precision_recalls(clf_models_dir, bce_plus_thresh_filename_aka.replace('history.json', '.csv'))
+    precisions_train_bce_plus_thresh, precisions_valid_bce_plus_thresh, precisions_test_bce_plus_thresh, recalls_train_bce_plus_thresh, recalls_valid_bce_plus_thresh, recalls_test_bce_plus_thresh, training_files_bce_plus_thresh = get_all_precision_recalls(clf_models_dir, bce_plus_thresh_filename_aka.replace('history.json', '.csv'))
     
     
-    make_precision_recall_boxplots(precisions_train_bce_plus_thresh, precisions_valid_bce_plus_thresh, precisions_test_bce_plus_thresh, recalls_train_bce_plus_thresh, recalls_valid_bce_plus_thresh, recalls_test_bce_plus_thresh, 'lr_precision_recall_boxplot_bce_plus_thresh', '(BCE + Threshold Search)')
+#     make_precision_recall_boxplots(precisions_train_bce_plus_thresh, precisions_valid_bce_plus_thresh, precisions_test_bce_plus_thresh, recalls_train_bce_plus_thresh, recalls_valid_bce_plus_thresh, recalls_test_bce_plus_thresh, 'lr_precision_recall_boxplot_bce_plus_thresh', '(BCE + Threshold Search)')
     
+
     sl_loose_filename_aka = 'skorch_logistic_regression*surrogate_loss_loose*warm_start=false*history.json'
     
 #     plot_all_models_training_plots(clf_models_dir, sl_loose_filename_aka, 'skorch_lr_sl_loose')
     
-    precisions_train_sl_loose, precisions_valid_sl_loose, precisions_test_sl_loose, recalls_train_sl_loose, recalls_valid_sl_loose, recalls_test_sl_loose = get_all_precision_recalls(clf_models_dir, sl_loose_filename_aka.replace('history.json', '.csv'))
+    precisions_train_sl_loose, precisions_valid_sl_loose, precisions_test_sl_loose, recalls_train_sl_loose, recalls_valid_sl_loose, recalls_test_sl_loose, training_files_sl_loose = get_all_precision_recalls(clf_models_dir, sl_loose_filename_aka.replace('history.json', '.csv'))
     
     
-    make_precision_recall_boxplots(precisions_train_sl_loose, precisions_valid_sl_loose, precisions_test_sl_loose, recalls_train_sl_loose, recalls_valid_sl_loose, recalls_test_sl_loose, 'lr_precision_recall_boxplot_sl_loose', '(Surrogate Loss Hinge Bound)')
+#     make_precision_recall_boxplots(precisions_train_sl_loose, precisions_valid_sl_loose, precisions_test_sl_loose, recalls_train_sl_loose, recalls_valid_sl_loose, recalls_test_sl_loose, 'lr_precision_recall_boxplot_sl_loose', '(Surrogate Loss Hinge Bound)')
     
-    for ii, (method, prcs_train, recs_train, prcs_valid, recs_valid, prcs_test, recs_test) in enumerate([
+    from IPython import embed; embed()
+    best_files_dict = dict()
+    best_perf_dict = dict()
+    for ii, (method, prcs_train, recs_train, prcs_valid, recs_valid, prcs_test, recs_test, tr_files) in enumerate([
         ('direct min precision', 
          precisions_train_direct_min_precision,
          recalls_train_direct_min_precision,
          precisions_valid_direct_min_precision,
          recalls_valid_direct_min_precision,
          precisions_test_direct_min_precision,
-         recalls_test_direct_min_precision),
-        ('incremental min precision',
-         precisions_train_incremental_min_precision,
-         recalls_train_incremental_min_precision,
-         precisions_valid_incremental_min_precision,
-         recalls_valid_incremental_min_precision,
-         precisions_test_incremental_min_precision,
-         recalls_test_incremental_min_precision),
-        ('bce + perturbaton',
-         precisions_train_bce_perturb,
-         recalls_train_bce_perturb,
-         precisions_valid_bce_perturb,
-         recalls_valid_bce_perturb,
-         precisions_test_bce_perturb,         
-         recalls_test_bce_perturb),
+         recalls_test_direct_min_precision,
+         training_files_direct_min_precision),
+#         ('incremental min precision',
+#          precisions_train_incremental_min_precision,
+#          recalls_train_incremental_min_precision,
+#          precisions_valid_incremental_min_precision,
+#          recalls_valid_incremental_min_precision,
+#          precisions_test_incremental_min_precision,
+#          recalls_test_incremental_min_precision),
+#         ('bce + perturbaton',
+#          precisions_train_bce_perturb,
+#          recalls_train_bce_perturb,
+#          precisions_valid_bce_perturb,
+#          recalls_valid_bce_perturb,
+#          precisions_test_bce_perturb,         
+#          recalls_test_bce_perturb),
         ('bce + threshold search',
          precisions_train_bce_plus_thresh,
          recalls_train_bce_plus_thresh,
          precisions_valid_bce_plus_thresh,
          recalls_valid_bce_plus_thresh, 
          precisions_test_bce_plus_thresh,
-         recalls_test_bce_plus_thresh),
+         recalls_test_bce_plus_thresh,
+         training_files_bce_plus_thresh),
         ('Surrogate Loss (Hinge Bound)',
          precisions_train_sl_loose,
          recalls_train_sl_loose,
          precisions_valid_sl_loose,
          recalls_valid_sl_loose, 
          precisions_test_sl_loose,
-         recalls_test_sl_loose)]):
+         recalls_test_sl_loose,
+         training_files_sl_loose)
+    ]):
         
-        keep_inds = (prcs_train>0.9)&(prcs_valid>0.8)
+        min_prec_tr = 0.9
+        min_prec_va = 0.8
+        keep_inds = (prcs_train>min_prec_tr)&(prcs_valid>min_prec_va)
+        
+        if keep_inds.sum()==0:
+            keep_inds = (prcs_train>min_prec_tr)&(prcs_valid>0.7)
+        
         fracs_above_min_precision = (keep_inds).sum()/len(prcs_train)
         prcs_train = prcs_train[keep_inds]
         prcs_valid = prcs_valid[keep_inds]
         prcs_test = prcs_test[keep_inds]        
         recs_train = recs_train[keep_inds]
         recs_valid = recs_valid[keep_inds]
-        recs_test = recs_test[keep_inds]        
+        recs_test = recs_test[keep_inds] 
+        tr_files = np.array(tr_files)[keep_inds]
         
         best_ind = np.argmax(recs_valid)
         
 #         max_recall = max(recs[keep_inds])
         print('\nMethod - %s'%method)
         print('=================================================')
-        print('Frac hypers achieving above 0.9 on training set : %.5f'%(fracs_above_min_precision))
+        print('Frac hypers achieving above %.4f on training set : %.5f'%(min_prec_tr, fracs_above_min_precision))
         print('Precision on train/valid/test with best model :')
         print('--------------------------------------------------')
         print('Train : %.5f'%prcs_train[best_ind])
@@ -449,9 +424,259 @@ if __name__ == '__main__':
         print('--------------------------------------------------')
         print('Train : %.5f'%recs_train[best_ind])
         print('Valid : %.5f'%recs_valid[best_ind])
-        print('Test : %.5f'%recs_test[best_ind])       
+        print('Test : %.5f'%recs_test[best_ind])  
+        print('--------------------------------------------------')
+        print('best training file : %s'%tr_files[best_ind])
+        best_files_dict[method] = tr_files[best_ind]
+        best_perf_dict[method] = dict()
+        best_perf_dict[method]['precision_train'] = prcs_train[best_ind]
+        best_perf_dict[method]['precision_valid'] = prcs_valid[best_ind]
+        best_perf_dict[method]['precision_test'] = prcs_test[best_ind]
+        best_perf_dict[method]['recall_train'] = recs_train[best_ind]
+        best_perf_dict[method]['recall_valid'] = recs_valid[best_ind]
+        best_perf_dict[method]['recall_test'] = recs_test[best_ind]
+
+    
+    ### select 1 classifier and plot its precision and recalls across many thresholds on train, valid and test
+    f_tr, axs_tr = plt.subplots(1, 1, figsize=(8, 8))
+    f_va, axs_va = plt.subplots(1, 1, figsize=(8, 8))
+    f_te, axs_te = plt.subplots(1, 1, figsize=(8, 8))
+    sns.set_context("notebook", font_scale=1.25)
+    sns.set_style("whitegrid")
+    fontsize=12
+    for ii, (method, best_model_fname, model_color, chosen_prec_recall_dict) in enumerate([
+        ('Sigmoid bound', best_files_dict['direct min precision'], 'r', best_perf_dict['direct min precision']),
+        ('BCE + Threshold search', best_files_dict['bce + threshold search'], 'b', best_perf_dict['bce + threshold search']),
+        ('Hinge Bound', best_files_dict['Surrogate Loss (Hinge Bound)'], 'g', best_perf_dict['Surrogate Loss (Hinge Bound)'])
+    ]):
         
+        skorch_lr_clf = SkorchLogisticRegression(n_features=x_test.shape[1])
+        skorch_lr_clf.initialize()
+        skorch_lr_clf.load_params(f_params=os.path.join(clf_models_dir,
+                                                        best_model_fname.replace('_perf.csv', 'params.pt')))
+
+        y_train_pred_probas = skorch_lr_clf.predict_proba(x_train_transformed)[:,1]
+        y_train_preds = y_train_pred_probas>=0.5        
+        
+        y_valid_pred_probas = skorch_lr_clf.predict_proba(x_valid_transformed)[:,1]
+        y_valid_preds = y_valid_pred_probas>=0.5
+        
+        y_test_pred_probas = skorch_lr_clf.predict_proba(x_test_transformed)[:,1]
+        y_test_preds = y_test_pred_probas>=0.5
+        
+        precision_train, recall_train, thresholds_pr_train = precision_recall_curve(y_train, y_train_pred_probas)
+        precision_valid, recall_valid, thresholds_pr_valid = precision_recall_curve(y_valid, y_valid_pred_probas)
+        precision_test, recall_test, thresholds_pr_test = precision_recall_curve(y_test, y_test_pred_probas)
+        
+        target_precisions = np.arange(0.1, 1, 0.01) 
+        
+        
+        recalls_at_target_precisions_train, recalls_at_target_precisions_valid, recalls_at_target_precisions_test = [np.zeros(len(target_precisions)), np.zeros(len(target_precisions)), np.zeros(len(target_precisions))]
+        for kk, target_precision in enumerate(target_precisions):
+            keep_inds_tr = precision_train>=target_precision
+            keep_inds_va = precision_valid>=target_precision
+            keep_inds_te = precision_test>=target_precision
+
+            recalls_at_target_precisions_train[kk] = max(recall_train[keep_inds_tr])
+            recalls_at_target_precisions_valid[kk] = max(recall_valid[keep_inds_va])
+            recalls_at_target_precisions_test[kk] = max(recall_test[keep_inds_te])
+
+        
+#         chosen_thresh_ind = (target_precisions>=0.599)&(target_precisions<=0.601)
+        
+        for jj, (split, precs, recs, chosen_prec, chosen_rec, f, axs) in enumerate([
+            ('train', target_precisions, recalls_at_target_precisions_train, 
+             chosen_prec_recall_dict['precision_train'], chosen_prec_recall_dict['recall_train'], f_tr, axs_tr),
+            ('valid', target_precisions, recalls_at_target_precisions_valid, 
+             chosen_prec_recall_dict['precision_valid'], chosen_prec_recall_dict['recall_valid'], f_va, axs_va),
+            ('test', target_precisions, recalls_at_target_precisions_test, 
+             chosen_prec_recall_dict['precision_test'], chosen_prec_recall_dict['recall_test'], f_te, axs_te)]):
+            axs.plot(recs, precs, color=model_color, label=method, linewidth=3, zorder=1)
+#             axs[jj].plot(chosen_rec, chosen_prec, color=model_color, marker = 'x', markersize=8)
+            axs.set_ylabel('Target precision', fontsize=fontsize+2)
+            axs.set_title('Recalls at target precision on %s'%split, fontsize=fontsize+4)
+            xmin = -0.003
+            xmax = 0.35
+            ymin = 0.35
+            ymax = 1.0
+            xticks = np.arange(0.0, 1.0, 0.05)
+            xticklabels = ['%.2f'%x for x in xticks]
+            axs.set_xticks(xticks)
+            axs.set_xticklabels(xticklabels)
+            axs.set_xlim([xmin, xmax])
+            axs.set_ylim([ymin, ymax])
+            axs.set_xlabel('Recall at target precision', fontsize=fontsize+2)
+            
+            chosen_thresh_ind = np.argmin(abs(chosen_prec - precs))
+            
+            if ii==2:
+                axs.plot(recs[chosen_thresh_ind], precs[chosen_thresh_ind], color='k', marker='+', mew=3, markersize=25,
+                            label='chosen target_precision', zorder=2)   
+            else:
+                axs.plot(recs[chosen_thresh_ind], precs[chosen_thresh_ind], color='k', marker='+', mew=3, markersize=25, zorder=2)                  
+            
+            axs.legend(fontsize=fontsize)
+#     f.savefig('skorch_lr_recalls_at_various_target_precisions.png', pad_inches=0)
+#         f.savefig('skorch_lr_recalls_at_various_target_precisions_%s.pdf'%split, bbox_inches='tight', pad_inches=0)
+#         f.savefig('skorch_lr_recalls_at_various_target_precisions_%s.png'%split, bbox_inches='tight', 
+#                   pad_inches=0.5)
+    
+    
+    
+    ## plot the PR curve
+    f, axs = plt.subplots(2, 2, figsize=(15, 15))
+    sns.set_context("notebook", font_scale=1.25)
+    sns.set_style("whitegrid")
+    
+    for ii, (method, best_model_fname, model_color) in enumerate([('Sigmoid bound', 
+                                                                   best_files_dict['direct min precision'], 
+                                                                   'r'),
+                                                                  ('BCE', 
+                                                                   best_files_dict['bce + threshold search'], 
+                                                                   'b'),
+                                                                  ('Hinge bound', 
+                                                                   best_files_dict['Surrogate Loss (Hinge Bound)'], 
+                                                                   'g')]):
+        
+        skorch_lr_clf = SkorchLogisticRegression(n_features=x_test.shape[1])
+        skorch_lr_clf.initialize()
+        skorch_lr_clf.load_params(f_params=os.path.join(clf_models_dir,
+                                                        best_model_fname.replace('_perf.csv', 'params.pt')))
+        
+        y_valid_pred_probas = skorch_lr_clf.predict_proba(x_valid_transformed)[:,1]
+        y_valid_preds = y_valid_pred_probas>=0.5
+        
+        y_test_pred_probas = skorch_lr_clf.predict_proba(x_test_transformed)[:,1]
+        y_test_preds = y_test_pred_probas>=0.5
+        
+        #compute roc curve
+        fpr_valid, tpr_valid, thresholds_auc_valid = roc_curve(y_valid, y_valid_pred_probas)
+        precision_valid, recall_valid, thresholds_pr_valid = precision_recall_curve(y_valid, y_valid_pred_probas)
+        roc_valid = roc_auc_score(y_valid, y_valid_pred_probas)
+        ap_valid = average_precision_score(y_valid, y_valid_pred_probas)
+        
+        fpr_test, tpr_test, thresholds_auc_test = roc_curve(y_test, y_test_pred_probas)
+        precision_test, recall_test, thresholds_pr_test = precision_recall_curve(y_test, y_test_pred_probas)  
+        roc_test = roc_auc_score(y_test, y_test_pred_probas)
+        ap_test = average_precision_score(y_test, y_test_pred_probas)
+        
+                
+        # get the thresholds, precisions, recalls, tprs satisfying the validation precision greater than 0.8 on validation
+        select_inds_pr_valid = precision_valid>=0.8
+        select_thresholds_valid = thresholds_pr_valid[select_inds_pr_valid[:-1]]
+        select_precision_valid = precision_valid[select_inds_pr_valid]
+        select_recall_valid = recall_valid[select_inds_pr_valid]
+        select_inds_auc_valid = fpr_valid<=0.2
+        select_thresholds_auc_valid = thresholds_auc_valid[select_inds_auc_valid]
+        select_tpr_valid = tpr_valid[select_inds_auc_valid]
+        select_fpr_valid = fpr_valid[select_inds_auc_valid]        
+        
+        
+        select_inds_pr_test = precision_test>=0.8
+        select_thresholds_test = thresholds_pr_test[select_inds_pr_test[:-1]]
+        select_precision_test = precision_test[select_inds_pr_test]
+        select_recall_test = recall_test[select_inds_pr_test]
+        select_inds_auc_test = fpr_test<=0.2
+        select_thresholds_auc_test = thresholds_auc_test[select_inds_auc_test]
+        select_tpr_test = tpr_test[select_inds_auc_test]
+        select_fpr_test = fpr_test[select_inds_auc_test]   
+        
+        
+        
+        # get the threshold, fpr, tpr of max recall with precision greater than 0.8 on validation
+        if method=='BCE':
+            best_ind_pr_valid = np.argmax(select_recall_valid)
+            best_precision_valid = select_precision_valid[best_ind_pr_valid]
+            best_recall_valid = select_recall_valid[best_ind_pr_valid]
+            best_threshold_valid = select_thresholds_valid[best_ind_pr_valid]
+            
+            best_ind_auc_valid = np.argmax(select_tpr_valid)
+            best_tpr_valid = select_tpr_valid[best_ind_auc_valid]
+            best_fpr_valid = select_fpr_valid[best_ind_auc_valid]
+            best_threshold_auc_valid = select_thresholds_auc_valid[best_ind_auc_valid]            
+            
+        else:
+            keep_inds = (thresholds_pr_valid>=0.50)&(precision_valid[:-1]>=0.8)
+            keep_thresholds_valid = thresholds_pr_valid[keep_inds]
+            keep_precision_valid = precision_valid[:-1][keep_inds]
+            keep_recall_valid = recall_valid[:-1][keep_inds]
+            best_ind_pr_valid = 0
+            best_precision_valid = keep_precision_valid[best_ind_pr_valid]
+            best_recall_valid = keep_recall_valid[best_ind_pr_valid] 
+            best_threshold_valid = keep_thresholds_valid[best_ind_pr_valid]
+            
+#             keep_inds_auc = (thresholds_auc_valid>=0.50)&(fpr_valid<=0.2)
+#             keep_thresholds_auc_valid = thresholds_auc_valid[keep_inds_auc]
+#             keep_fpr_valid = fpr_valid[keep_inds_auc]
+#             keep_tpr_valid = tpr_valid[keep_inds_auc]
+#             best_ind_auc_valid = np.argmax(keep_tpr_valid)
+#             best_fpr_valid = keep_fpr_valid[best_ind_auc_valid]
+#             best_tpr_valid = keep_tpr_valid[best_ind_auc_valid] 
+#             best_threshold_auc_valid = keep_thresholds_auc_valid[best_ind_auc_valid]
+            chosen_ind_auc_valid = np.argmax(select_tpr_valid)
+            best_tpr_valid = select_tpr_valid[chosen_ind_auc_valid]
+            best_fpr_valid = select_fpr_valid[chosen_ind_auc_valid]
+        
+        chosen_ind_test = np.argmax(select_recall_test)
+        best_recall_test = select_recall_test[chosen_ind_test]
+        best_precision_test = select_precision_test[chosen_ind_test]
+        
+        chosen_ind_auc_test = np.argmax(select_tpr_test)
+        best_tpr_test = select_tpr_test[chosen_ind_auc_test]
+        best_fpr_test = select_fpr_test[chosen_ind_auc_test]
+        
+        fontsize=12
+        axs[0, 0].plot(fpr_valid, tpr_valid, c=model_color, label=method +' (AUROC : %.2f)'%roc_valid)
+        axs[0, 0].set_xlabel('False Positive Rate', fontsize=fontsize)
+        axs[0, 0].set_ylabel('True Positive Rate', fontsize=fontsize)
+        axs[0, 0].set_title('ROC (Valid)')
+        axs[0, 0].legend(fontsize=fontsize)
+        axs[0, 0].plot(select_fpr_valid, select_tpr_valid, linewidth=8, c=model_color, alpha=0.5)
+        if ii==2:
+            axs[0, 0].plot(best_fpr_valid, best_tpr_valid, 'kx', markersize=10, label='chosen threshold')
+        else:
+            axs[0, 0].plot(best_fpr_valid, best_tpr_valid, 'kx', markersize=10)        
+        
+        
+        axs[1, 0].plot(fpr_test, tpr_test, c=model_color, label=method +' (AUROC : %.2f)'%roc_test)
+        axs[1, 0].set_xlabel('False Positive Rate', fontsize=fontsize)
+        axs[1, 0].set_ylabel('True Positive Rate', fontsize=fontsize)
+        axs[1, 0].set_title('ROC (Test)')   
+        axs[1, 0].legend(fontsize=fontsize)
+        axs[1, 0].plot(select_fpr_test, select_tpr_test, linewidth=8, c=model_color, alpha=0.5)
+        if ii==2:
+            axs[1, 0].plot(best_fpr_test, best_tpr_test, 'kx', markersize=10, label='chosen threshold')
+        else:
+            axs[1, 0].plot(best_fpr_test, best_tpr_test, 'kx', markersize=10) 
+        
+        
+        axs[0, 1].plot(recall_valid, precision_valid, c=model_color, label=method +' (AUPRC : %.2f)'%ap_valid)
+        axs[0, 1].set_xlabel('Recall', fontsize=fontsize)
+        axs[0, 1].set_ylabel('Precision', fontsize=fontsize)
+        axs[0, 1].set_title('Precision Recall Curve (Valid)') 
+        axs[0, 1].plot(select_recall_valid, select_precision_valid, linewidth=8, c=model_color, alpha=0.5)
+        if ii==2:
+            axs[0, 1].plot(best_recall_valid, best_precision_valid, 'kx', markersize=10, label='chosen threshold')
+        else:
+            axs[0, 1].plot(best_recall_valid, best_precision_valid, 'kx', markersize=10)
+
+        axs[0, 1].legend(fontsize=fontsize)
+        
+        
+        axs[1, 1].plot(recall_test, precision_test, c=model_color, label=method +' (AUPRC : %.2f)'%ap_test)
+        axs[1, 1].set_xlabel('Recall', fontsize=fontsize)
+        axs[1, 1].set_ylabel('Precision', fontsize=fontsize)
+        axs[1, 1].set_title('Precision Recall Curve (Test)') 
+        axs[1, 1].plot(select_recall_test, select_precision_test, linewidth=8, c=model_color, alpha=0.5)
+        if ii==2:
+            axs[1, 1].plot(best_recall_test, best_precision_test, 'kx', markersize=10, label='chosen threshold')
+        else:
+            axs[1, 1].plot(best_recall_test, best_precision_test, 'kx', markersize=10)
+        axs[1, 1].legend(fontsize=fontsize)
+    
+    f.savefig('roc_prc_all_methods.pdf', bbox_inches='tight', pad_inches=0)
+    f.savefig('roc_prc_all_methods.png')
+    
+    
     from IPython import embed; embed()
     
-    
- 

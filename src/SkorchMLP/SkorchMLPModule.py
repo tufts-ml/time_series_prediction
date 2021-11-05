@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
+from collections import OrderedDict
 
 def init_weights(m, initialization_gain):
     if type(m) == nn.Linear:
@@ -19,32 +20,47 @@ class SkorchMLPModule(nn.Module):
     ----
     '''
     def __init__(self,
-                 n_features=0, 
+                 n_features=0,
+                 n_layers=2,
                  n_hiddens=32,
                  dropout=0.0,
                  initialization_gain=1.0
             ):
         super(SkorchMLPModule, self).__init__()
         self.n_features = n_features
-        self.dropout = nn.Dropout(dropout)
+        self.n_layers = n_layers
+#         self.dropout = nn.Dropout(dropout)
         self.initialization_gain=initialization_gain
-        # Define the neural net layer 
-        self.hidden_layer = nn.Linear(in_features=n_features,
-                                 out_features=n_hiddens,
-                                 bias=True)
         
+        # Define the neural net layer 
+#         self.hidden_layer = nn.Linear(in_features=n_features,
+#                                  out_features=n_hiddens,
+#                                  bias=True)
+        
+        hidden_architecture = list()
+        for layer in range(n_layers):
+            if layer==0:
+                current_layer = nn.Linear(in_features=n_features, out_features=n_hiddens, bias=True)
+            else:
+                current_layer = nn.Linear(in_features=n_hiddens, out_features=n_hiddens, bias=True)
+            
+            nn.init.xavier_uniform_(current_layer.weight, gain=initialization_gain)
+            hidden_architecture.append(('fc_%d'%layer, current_layer))
+            hidden_architecture.append(('relu_%d'%layer, nn.ReLU()))
+            hidden_architecture.append(('dropout_%d'%layer, nn.Dropout(dropout)))
+        
+        self.hidden_layer = nn.Sequential(OrderedDict(hidden_architecture))
         
         # Define linear weight for each feature, plus bias
         self.output_layer = nn.Linear(in_features=n_hiddens,
             out_features=1,
             bias=True)
         
-        # initialize with Glorot
-        nn.init.xavier_uniform_(self.hidden_layer.weight, gain=initialization_gain)
+        # initialize with Glorot   
         nn.init.xavier_uniform_(self.output_layer.weight, gain=initialization_gain)
         
         # setup activation
-        self.activation = F.relu
+#         self.activation = F.relu
         
         # Setup to use double-precision floats (like np.float64)
         self.double()
@@ -64,11 +80,9 @@ class SkorchMLPModule(nn.Module):
         y_logproba_N_ : 2D Torch array (n_sequences, 1)
             Each row gives log probability that given example is positive class
         '''
+
         # forward pass through NN
-        y_before_final_layer_N_ = self.activation(self.hidden_layer.forward(x_NF_))
-        
-        # apply dropout
-        y_before_final_layer_N_ = self.dropout(y_before_final_layer_N_)
+        y_before_final_layer_N_ = self.hidden_layer.forward(x_NF_)
         
         # pass output to the final layer 
         y_beforesigmoid_N_ = self.output_layer(y_before_final_layer_N_)

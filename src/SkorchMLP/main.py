@@ -9,7 +9,7 @@ import skorch
 from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import (roc_curve, accuracy_score, log_loss, 
                             balanced_accuracy_score, confusion_matrix, 
-                            roc_auc_score, make_scorer, precision_score, recall_score)
+                            roc_auc_score, make_scorer, precision_score, recall_score, average_precision_score)
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from SkorchMLP import SkorchMLP
@@ -121,6 +121,7 @@ if __name__ == '__main__':
     parser.add_argument('--scoring', type=str,
                         help='loss scoring. Choose amongst binary_cross_entropy or surrogate_loss_tight') 
     parser.add_argument('--n_hiddens', type=int, help='number of hidden units') 
+    parser.add_argument('--n_layers', type=int, help='number of hidden layers') 
     parser.add_argument('--lr', type=float, help='learning rate')    
     parser.add_argument('--weight_decay', type=float, help='penalty for weights')
     parser.add_argument('--batch_size', type=int)
@@ -133,6 +134,9 @@ if __name__ == '__main__':
     parser.add_argument('--initialization_gain', type=float, default=1.0)
     parser.add_argument('--incremental_min_precision', type=str, default='true')
     args = parser.parse_args()
+    
+    device = torch.device("cpu")
+    
     
     if args.incremental_min_precision=="true":
         args.incremental_min_precision=True
@@ -225,7 +229,7 @@ if __name__ == '__main__':
     torch.manual_seed(args.seed)
         
     # set max_epochs 
-    max_epochs=300
+    max_epochs=200
     
     # define callbacks 
     epoch_scoring_precision_train = EpochScoring('precision', lower_is_better=False, on_train=True,
@@ -293,7 +297,7 @@ if __name__ == '__main__':
     
 #     n_cv_folds = int(np.floor(1/args.validation_size))
     ## start training
-    fixed_precision = 0.9
+    fixed_precision = 0.7
     thr_list = [0.5]
     if args.scoring == 'cross_entropy_loss':
         mlp = SkorchMLP(n_features=len(feature_cols),
@@ -304,6 +308,7 @@ if __name__ == '__main__':
                                             train_split=predefined_split(valid_ds),
                                             loss_name=args.scoring,
                                             n_hiddens=args.n_hiddens,
+                                            n_layers=args.n_layers,
                                             callbacks=[epoch_scoring_precision_train,
                                                       epoch_scoring_precision_valid,
                                                       epoch_scoring_recall_train,
@@ -373,6 +378,7 @@ if __name__ == '__main__':
                                                 train_split=predefined_split(valid_ds),
                                                 loss_name='cross_entropy_loss',
                                                 n_hiddens=args.n_hiddens,
+                                                n_layers=args.n_layers,
                                                 callbacks=[epoch_scoring_precision_train,
                                                            epoch_scoring_precision_valid,
                                                            epoch_scoring_recall_train,
@@ -408,6 +414,7 @@ if __name__ == '__main__':
                                                 constraint_lambda=args.lamb,
                                                 loss_name=args.scoring,
                                                 n_hiddens=args.n_hiddens,
+                                                n_layers=args.n_layers,
                                                 callbacks=[epoch_scoring_precision_train,
                                                            epoch_scoring_precision_valid,
                                                            epoch_scoring_recall_train,
@@ -464,6 +471,8 @@ if __name__ == '__main__':
                                                 constraint_lambda=args.lamb,
                                                 incremental_min_precision=args.incremental_min_precision,
                                                 initialization_gain=args.initialization_gain,
+                                                n_hiddens=args.n_hiddens,
+                                                n_layers=args.n_layers,
                                                 callbacks=[epoch_scoring_precision_train,
                                                            epoch_scoring_precision_valid,
                                                            epoch_scoring_recall_train,
@@ -487,25 +496,6 @@ if __name__ == '__main__':
             mlp_clf = mlp.fit(x_train_transformed, y_train)
         
         
-        
-        
-#         # get precision recall on validation set
-#         precision_scores_S = np.zeros(splitter.n_splits)
-#         recall_scores_S = np.zeros(splitter.n_splits)
-#         for ss, (tr_inds, va_inds) in enumerate(
-#         splitter.split(x_train, y_train, groups=key_train)):
-#             x_tr = x_train_transformed[tr_inds].copy()
-#             y_tr = y_train[tr_inds].copy()
-#             x_va = x_train_transformed[va_inds]
-#             y_va = y_train[va_inds]
-            
-#             curr_y_preds = mlp_clf.predict_proba(x_va)[:,1]>=0.5
-#             precision_scores_S[ss] = precision_score(y_va, curr_y_preds)
-#             recall_scores_S[ss] = recall_score(y_va, curr_y_preds)
-        
-#         precision_valid = np.mean(precision_scores_S)
-#         recall_valid = np.mean(recall_scores_S)
-        
     # save the scaler
     pickle_file = os.path.join(args.output_dir, 'scaler.pkl')
     dump(scaler, open(pickle_file, 'wb'))
@@ -518,16 +508,19 @@ if __name__ == '__main__':
         y_train_pred = y_train_pred_probas>=thr
         precision_train = precision_score(y_train, y_train_pred)
         recall_train = recall_score(y_train, y_train_pred)
+        auprc_train = average_precision_score(y_train, y_train_pred_probas)
 
         y_valid_pred_probas = mlp_clf.predict_proba(x_valid_transformed)[:,1]
         y_valid_pred = y_valid_pred_probas>=thr
         precision_valid = precision_score(y_valid, y_valid_pred)
         recall_valid = recall_score(y_valid, y_valid_pred)   
+        auprc_valid = average_precision_score(y_valid, y_valid_pred_probas)
         
         y_test_pred_probas = mlp_clf.predict_proba(x_test_transformed)[:,1]
         y_test_pred = y_test_pred_probas>=thr
         precision_test = precision_score(y_test, y_test_pred)
         recall_test = recall_score(y_test, y_test_pred)
+        auprc_test = average_precision_score(y_test, y_test_pred_probas)
 
         TP_train = np.sum(np.logical_and(y_train == 1, y_train_pred == 1))
         FP_train = np.sum(np.logical_and(y_train == 0, y_train_pred == 1))
@@ -563,6 +556,7 @@ if __name__ == '__main__':
                 'TN_train':TN_train,
                 'FN_train':FN_train,
                 'N_train':len(x_train),
+                'auprc_train':auprc_train,
                 'precision_valid':precision_valid,
                 'recall_valid':recall_valid,
                 'TP_valid':TP_valid,
@@ -570,13 +564,15 @@ if __name__ == '__main__':
                 'TN_valid':TN_valid,
                 'FN_valid':FN_valid,
                 'N_valid':len(x_valid),
+                'auprc_valid':auprc_valid,
                 'precision_test':precision_test,
                 'recall_test':recall_test,
                 'TP_test':TP_test,
                 'FP_test':FP_test,
                 'TN_test':TN_test,
                 'FN_test':FN_test,
-                'N_test':len(x_test)}
+                'N_test':len(x_test),
+                'auprc_test':auprc_test}
     
     
     perf_df = pd.DataFrame([perf_dict])

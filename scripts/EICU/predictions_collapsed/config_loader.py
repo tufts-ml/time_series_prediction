@@ -40,6 +40,9 @@ update_os_environ_vars()
 DATASET_SPLIT_COLLAPSED_FEAT_PER_SEQUENCE_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["SPLIT_PATH_LIST_COLLAPSED_FEAT_PER_SEQUENCE"])))
 update_os_environ_vars()
 
+DATASET_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["SPLIT_PATH_LIST_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT"])))
+update_os_environ_vars()
+
 # DATASET_SPLIT_COLLAPSED_FEAT_PER_TSLICE_PATH = os.path.join(*list(map(os.path.expandvars, D_CONFIG["SPLIT_PATH_LIST_COLLAPSED_FEAT_PER_TIMESLICE"])))
 # update_os_environ_vars()
 
