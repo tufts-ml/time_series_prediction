@@ -32,6 +32,16 @@ from sklearn.linear_model import LogisticRegression
 from skl2onnx.common.data_types import FloatTensorType
 from skl2onnx import convert_sklearn
 
+def read_csv_with_float32_dtypes(filename):
+    # Sample 100 rows of data to determine dtypes.
+    df_test = pd.read_csv(filename, nrows=100)
+
+    float_cols = [c for c in df_test if df_test[c].dtype == "float64"]
+    float32_cols = {c: np.float32 for c in float_cols}
+
+    df = pd.read_csv(filename, dtype=float32_cols)
+    
+    return df
 
 # define callbacks
 def calc_surrogate_loss_skorch_callback(net, X, y):
@@ -130,7 +140,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int)
     parser.add_argument('--seed', type=int, default=1111)
     parser.add_argument('--n_splits', type=int, default=2)
-    parser.add_argument('--lamb', type=int, default=1000)
+    parser.add_argument('--lamb', type=float, default=1000)
     parser.add_argument('--warm_start', type=str, default='false')
     parser.add_argument('--merge_x_y', default=True,
                                 type=lambda x: (str(x).lower() == 'true'), required=False)
@@ -162,7 +172,7 @@ if __name__ == '__main__':
         for csv_file in csv_files:
 
             # TODO use json data dict to load specific columns as desired types
-            more_df =  pd.read_csv(csv_file)
+            more_df = read_csv_with_float32_dtypes(csv_file)
             if cur_df is None:
                 cur_df = more_df
             else:
@@ -208,7 +218,7 @@ if __name__ == '__main__':
 
         x_train = x_tr
         y_train = y_tr
-        del(x_tr, y_tr)
+        del(x_tr, y_tr, df_by_split)
     
     else:
         x_valid_csv, y_valid_csv = args.valid_csv_files.split(',')
@@ -239,6 +249,7 @@ if __name__ == '__main__':
     x_valid_transformed = scaler.transform(x_valid)
     x_test_transformed = scaler.transform(x_test) 
     
+    del(x_train, x_valid, x_test)
     
     # store the fixed validation set as a skorch dataset
     valid_ds = Dataset(x_valid_transformed, y_valid) 
@@ -247,7 +258,7 @@ if __name__ == '__main__':
     torch.manual_seed(args.seed)
     
     # set max_epochs 
-    max_epochs=500
+    max_epochs=100
     
     # define callbacks 
     epoch_scoring_precision_train = EpochScoring('precision', lower_is_better=False, on_train=True,
@@ -324,7 +335,7 @@ if __name__ == '__main__':
     
     
     
-    fixed_precision = 0.2
+    fixed_precision = 0.3
     thr_list = [0.5]
     ## start training
     if args.scoring == 'cross_entropy_loss':
@@ -363,19 +374,19 @@ if __name__ == '__main__':
         
         # search multiple decision thresolds and pick the threshold that performs best on validation set
         print('Searching thresholds that maximize recall at fixed precision %.4f'%fixed_precision)
-        x_train_valid_transformed = np.vstack([x_train_transformed, x_valid_transformed])
-        y_train_valid = np.concatenate([y_train, y_valid])
+#         x_train_valid_transformed = np.vstack([x_train_transformed, x_valid_transformed])
+#         y_train_valid = np.concatenate([y_train, y_valid])
         
-        y_train_valid_proba_vals = logistic_clf.predict_proba(x_train_valid_transformed)
-        unique_probas = np.unique(y_train_valid_proba_vals)
+        y_valid_proba_vals = logistic_clf.predict_proba(x_valid_transformed)
+        unique_probas = np.unique(y_valid_proba_vals)
         thr_grid = np.linspace(np.percentile(unique_probas,1), np.percentile(unique_probas, 99), 100)
         
         precision_scores_G, recall_scores_G = [np.zeros(thr_grid.size), np.zeros(thr_grid.size)]
         for gg, thr in enumerate(thr_grid): 
 #             logistic_clf.module_.linear_transform_layer.bias.data = torch.tensor(thr_grid[gg]).double()
-            curr_thr_y_preds = y_train_valid_proba_vals[:,1]>=thr_grid[gg] 
-            precision_scores_G[gg] = precision_score(y_train_valid, curr_thr_y_preds)
-            recall_scores_G[gg] = recall_score(y_train_valid, curr_thr_y_preds) 
+            curr_thr_y_preds = y_valid_proba_vals[:,1]>=thr_grid[gg] 
+            precision_scores_G[gg] = precision_score(y_valid, curr_thr_y_preds)
+            recall_scores_G[gg] = recall_score(y_valid, curr_thr_y_preds) 
         
 #         mean_precision_score_G = np.mean(precision_score_grid_SG, axis=0)
 #         mean_recall_score_G = np.mean(recall_score_grid_SG, axis=0)
@@ -579,28 +590,27 @@ if __name__ == '__main__':
     f_out.close()
     
     
-    perf_dict = {'N_train':len(x_train),
-                'precision_train':precision_train,
+    perf_dict = {'precision_train':precision_train,
                 'recall_train':recall_train,
                 'TP_train':TP_train,
                 'FP_train':FP_train,
                 'TN_train':TN_train,
                 'FN_train':FN_train,
-                'N_train':len(x_train),
+                'N_train':len(x_train_transformed),
                 'precision_valid':precision_valid,
                 'recall_valid':recall_valid,
                 'TP_valid':TP_valid,
                 'FP_valid':FP_valid,
                 'TN_valid':TN_valid,
                 'FN_valid':FN_valid,
-                'N_valid':len(x_valid),
+                'N_valid':len(x_valid_transformed),
                 'precision_test':precision_test,
                 'recall_test':recall_test,
                 'TP_test':TP_test,
                 'FP_test':FP_test,
                 'TN_test':TN_test,
                 'FN_test':FN_test,
-                'N_test':len(x_test),
+                'N_test':len(x_test_transformed),
                 'threshold':threshold}
     perf_df = pd.DataFrame([perf_dict])
     perf_csv = os.path.join(args.output_dir, args.output_filename_prefix+'_perf.csv')
@@ -614,7 +624,7 @@ if __name__ == '__main__':
     sklearn_lr_clf = LogisticRegression() 
     
     # do some dummy fitting to initialize the classifier to access the coefficients
-    sklearn_lr_clf.fit(x_train[:500], y_train[:500])
+    sklearn_lr_clf.fit(x_train_transformed[:500], y_train[:500])
     
     # save the skorch model weights to a sklearn Logistic regression object
     sklearn_lr_clf.coef_ = logistic_clf.module_.linear_transform_layer.weight.detach().numpy()

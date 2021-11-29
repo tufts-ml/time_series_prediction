@@ -159,7 +159,7 @@ def main():
                                             lower_is_better=True)
     
     rnn = RNNPerTStepBinaryClassifier(
-              max_epochs=250,
+              max_epochs=100,
               batch_size=args.batch_size,
               device=device,
               lr=args.lr,
@@ -203,19 +203,20 @@ def main():
     clf = rnn.fit(X_train, y_train)
     
     # get threshold with max recall at fixed precision
-    fixed_precision=0.1
+    fixed_precision=0.2
     
     # get predict probas for y=1 on validation set
     keep_inds_va = torch.logical_not(torch.all(torch.isnan(torch.FloatTensor(X_valid)), dim=-1))
-    y_va_pred_proba = clf.predict_proba(X_valid)[keep_inds_va][:,1].detach().numpy()
+    y_valid_pred_probas = clf.predict_proba(X_valid)[keep_inds_va][:,1].detach().numpy()
     
-    unique_probas = np.unique(y_va_pred_proba)
+    unique_probas = np.unique(y_valid_pred_probas)
     thr_grid_G = np.linspace(np.percentile(unique_probas,1), max(unique_probas), 100)
         
     precision_scores_G, recall_scores_G = [np.zeros(thr_grid_G.size), np.zeros(thr_grid_G.size)]
+#     y_valid_pred_probas = clf.predict_proba(torch.FloatTensor(X_valid))
     for gg, thr in enumerate(thr_grid_G): 
 #             logistic_clf.module_.linear_transform_layer.bias.data = torch.tensor(thr_grid[gg]).double()
-        curr_thr_y_preds = clf.predict_proba(torch.FloatTensor(X_valid))[keep_inds_va][:,1]>=thr_grid_G[gg] 
+        curr_thr_y_preds = y_valid_pred_probas>=thr_grid_G[gg] 
         precision_scores_G[gg] = precision_score(y_valid[keep_inds_va], curr_thr_y_preds)
         recall_scores_G[gg] = recall_score(y_valid[keep_inds_va], curr_thr_y_preds) 
     

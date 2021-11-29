@@ -126,7 +126,7 @@ if __name__ == '__main__':
     
     id_cols = parse_id_cols(x_data_dict)
     feature_cols = parse_feature_cols(x_data_dict)
-    time_col = parse_time_col(x_data_dict)
+    time_col = 'stop'#parse_time_col(x_data_dict)
     
     # add mask features
     non_medication_feature_cols = [feature_col for feature_col in feature_cols if 'medication' not in feature_col]

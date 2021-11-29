@@ -7,7 +7,7 @@ TRAIN COLLAPSED FEATURES AND OUTCOMES DYNAMICICALLY TO MIMIC REAL TIME DEPLOYMEN
 
 Usage : Collapsing features in multiple patient stay slices, with their corresponding outputs, dynamically
 ----------------------------------------------------------------
->> snakemake --cores 1 --snakefile make_collapsed_dataset_dynamic_labs_vitals_only.smk make_collapsed_features_for_dynamic_output_prediction
+>> snakemake --cores 1 --snakefile make_collapsed_dataset_dynamic_deployment.smk make_collapsed_features_for_dynamic_output_prediction
 
 ----------------------------------------------------------------------------------------------------------------------------------------
 COMPUTE MEWS SCORES DYNAMICALLY
@@ -15,9 +15,9 @@ COMPUTE MEWS SCORES DYNAMICALLY
 
 Usage : Computing MEWS in multiple patient stay slices, with their corresponding outputs, dynamically
 ----------------------------------------------------------------
->> snakemake --cores 1 --snakefile make_collapsed_dataset_dynamic_labs_vitals_only.smk compute_mews_for_dynamic_output_prediction
+>> snakemake --cores 1 --snakefile make_collapsed_dataset_dynamic_deployment.smk compute_mews_for_dynamic_output_prediction
 
->> snakemake --cores 1 --snakefile make_collapsed_dataset_dynamic_labs_vitals_only.smk prepare_mews_dynamic_features
+>> snakemake --cores 1 --snakefile make_collapsed_dataset_dynamic_deployment.smk prepare_mews_dynamic_features
 
 ---------------------------------------------------------------------------------------------------------------------------------------
 MERGE ALL VITALS, LABS AND MEDICATIONS INTO A SINGLE FEATURE MATRIX
@@ -25,16 +25,16 @@ MERGE ALL VITALS, LABS AND MEDICATIONS INTO A SINGLE FEATURE MATRIX
 
 Usage : Merge all the collapsed features across tslices into a single features table
 ----------------------------------------------------------------------------------------
->> snakemake --cores 1 --snakefile make_collapsed_dataset_dynamic_labs_vitals_only.smk merge_dynamic_collapsed_features
+>> snakemake --cores 1 --snakefile make_collapsed_dataset_dynamic_deployment.smk merge_dynamic_collapsed_features
 
 
 Usage : Split the features table into train\valid\test based on the year of admission. Trian on first 3 years of admission. Vlaidate and test on the 4th and 5th years of admission
 -------------------------------------------------------------------------------------------------------------
->> snakemake --cores 1 --snakefile make_collapsed_dataset_dynamic_labs_vitals_only.smk split_into_train_and_test
+>> snakemake --cores 1 --snakefile make_collapsed_dataset_dynamic_deployment.smk split_into_train_and_test
 
 Usage : Do every step above in sequence
 -------------------------------------
->> snakemake --cores all --snakefile make_collapsed_dataset_dynamic_labs_vitals_only.smk  all
+>> snakemake --cores all --snakefile make_collapsed_dataset_dynamic_deployment.smk  all
 '''
 
 # Default environment variables
@@ -64,8 +64,8 @@ rule make_collapsed_features_for_dynamic_output_prediction:
         vitals_spec_json=os.path.join(DATASET_SITE_PATH, 'Spec-Vitals.json'),
         labs_csv=os.path.join(DATASET_SITE_PATH, "labs_before_icu.csv.gz"),
         labs_spec_json=os.path.join(DATASET_SITE_PATH, 'Spec-Labs.json'), 
-        medications_csv=os.path.join(DATASET_SITE_PATH, "medications_before_icu.csv.gz"),
-        medications_spec_json=os.path.join(DATASET_SITE_PATH, 'Spec-Medications.json'), 
+        medications_csv=os.path.join(DATASET_SITE_PATH, "medication_orders_before_icu.csv.gz"),
+        medications_spec_json=os.path.join(DATASET_SITE_PATH, 'Spec-Medication-Orders.json'), 
         outcomes_csv=os.path.join(DATASET_SITE_PATH, "clinical_deterioration_outcomes.csv.gz"),
         outcomes_spec_json=os.path.join(DATASET_SITE_PATH, "Spec-Outcomes_TransferToICU.json")
 
@@ -102,8 +102,8 @@ rule make_collapsed_features_for_dynamic_output_prediction:
             --dynamic_collapsed_features_csv "{output.collapsed_vitals_dynamic_csv}" \
             --dynamic_collapsed_features_data_dict "{output.collapsed_vitals_dynamic_json}" \
             --dynamic_outcomes_csv "{output.outputs_dynamic_vitals_csv}" \
-            --features_to_summarize "std time_since_measured count slope median min max" \
-            --percentile_ranges_to_summarize "[('0','100')]" \
+            --features_to_summarize "std time_since_measured count slope median min max last_value_measured" \
+            --percentile_ranges_to_summarize "[('90', '100'), ('0', '100')]" \
 
         python -u {input.script} \
             --input {input.labs_csv} \
@@ -113,8 +113,8 @@ rule make_collapsed_features_for_dynamic_output_prediction:
             --dynamic_collapsed_features_csv "{output.collapsed_labs_dynamic_csv}" \
             --dynamic_collapsed_features_data_dict "{output.collapsed_labs_dynamic_json}" \
             --dynamic_outcomes_csv "{output.outputs_dynamic_labs_csv}" \
-            --features_to_summarize "std time_since_measured count slope median min max" \
-            --percentile_ranges_to_summarize "[(0, 100)]" \
+            --features_to_summarize "std time_since_measured count slope median min max last_value_measured" \
+            --percentile_ranges_to_summarize "[('90', '100'), ('0', '100')]" \
 
         python -u {input.script} \
             --input {input.medications_csv} \
@@ -124,8 +124,8 @@ rule make_collapsed_features_for_dynamic_output_prediction:
             --dynamic_collapsed_features_csv "{output.collapsed_medications_dynamic_csv}" \
             --dynamic_collapsed_features_data_dict "{output.collapsed_medications_dynamic_json}" \
             --dynamic_outcomes_csv "{output.outputs_dynamic_medications_csv}" \
-            --features_to_summarize "std time_since_measured count slope median min max" \
-            --percentile_ranges_to_summarize "[(0, 100)]" \
+            --features_to_summarize "std time_since_measured count slope median min max last_value_measured" \
+            --percentile_ranges_to_summarize "[('90', '100'), ('0', '100')]" \
         '''
 
 rule compute_mews_for_dynamic_output_prediction:
@@ -182,6 +182,7 @@ rule merge_dynamic_collapsed_features:
             --dynamic_collapsed_features_folder {params.dynamic_collapsed_features_folder} \
             --static_data_dict_dir {params.static_data_dict_dir} \
             --output_dir {params.output_dir}\
+            --include_medications true \
         '''
 
 rule prepare_mews_dynamic_features:

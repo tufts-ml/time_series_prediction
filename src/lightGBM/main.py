@@ -27,6 +27,18 @@ from skl2onnx import convert_sklearn, update_registered_converter
 from skl2onnx.common.shape_calculator import calculate_linear_classifier_output_shapes
 import onnxruntime as rt
 
+def read_csv_with_float32_dtypes(filename):
+    # Sample 100 rows of data to determine dtypes.
+    df_test = pd.read_csv(filename, nrows=100)
+
+    float_cols = [c for c in df_test if df_test[c].dtype == "float64"]
+    float32_cols = {c: np.float32 for c in float_cols}
+
+    df = pd.read_csv(filename, dtype=float32_cols)
+    
+    return df
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='sklearn lightgbm')
 
@@ -82,7 +94,7 @@ if __name__ == '__main__':
         for csv_file in csv_files:
 
             # TODO use json data dict to load specific columns as desired types
-            more_df =  pd.read_csv(csv_file)
+            more_df =  read_csv_with_float32_dtypes(csv_file)
             if cur_df is None:
                 cur_df = more_df
             else:
@@ -125,7 +137,7 @@ if __name__ == '__main__':
 
         x_train = x_tr
         y_train = y_tr
-        del(x_tr, y_tr)
+        del(x_tr, y_tr, df_by_split)
     
     else:
         x_valid_csv, y_valid_csv = args.valid_csv_files.split(',')

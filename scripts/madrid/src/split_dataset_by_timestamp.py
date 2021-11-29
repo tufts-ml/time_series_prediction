@@ -28,6 +28,21 @@ sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src'))
 from feature_transformation import (parse_id_cols, parse_time_cols, parse_feature_cols)
 from utils import load_data_dict_json
 
+
+
+def read_csv_with_float32_dtypes(filename):
+    # Sample 100 rows of data to determine dtypes.
+    df_test = pd.read_csv(filename, nrows=100)
+
+    float_cols = [c for c in df_test if df_test[c].dtype == "float64"]
+    float32_cols = {c: np.float32 for c in float_cols}
+
+    df = pd.read_csv(filename, dtype=float32_cols)
+    
+    return df
+
+
+
 if __name__ == '__main__':
     # Parse command line arguments
     parser = argparse.ArgumentParser()
@@ -45,7 +60,7 @@ if __name__ == '__main__':
     
     print('Creating train-test splits for %s'%args.input)
     # Import data
-    df = pd.read_csv(args.input)
+    df = read_csv_with_float32_dtypes(args.input)
     data_dict = load_data_dict_json(args.data_dict)
     
     '''

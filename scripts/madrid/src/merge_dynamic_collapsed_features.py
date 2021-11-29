@@ -25,6 +25,12 @@ def read_csv_with_float32_dtypes(filename):
     return df
 
 
+def convert_float64_cols_to_float32(my_df):
+    cols = my_df.select_dtypes(include=[np.float64]).columns
+    my_df[cols] = my_df[cols].astype(np.float32)
+    
+    return my_df
+
 def merge_data_dicts(data_dicts_list):
     # get a single consolidated data dict for all features and another for outcomes
     # combine all the labs, demographics and vitals jsons into a single json
@@ -69,8 +75,7 @@ if __name__ == '__main__':
     dynamic_collapsed_labs_df = pd.read_csv(os.path.join(DATASET_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH, 
                                                          'CollapsedLabsDynamic.csv.gz'))
     demographics_df = pd.read_csv(os.path.join(args.static_data_dict_dir, 'demographics_before_icu.csv.gz'))
-
-    
+     
     # get data dicts of collapsed features
     vitals_dd = load_data_dict_json(os.path.join(DATASET_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH, 
                                                  'Spec_CollapsedVitalsDynamic.json'))
@@ -98,6 +103,11 @@ if __name__ == '__main__':
     
         medications_output =  pd.read_csv(os.path.join(DATASET_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH, 
                                                        'OutputsDynamicMedications.csv.gz'))
+        
+        
+        dynamic_collapsed_vitals_df = convert_float64_cols_to_float32(dynamic_collapsed_vitals_df)
+        dynamic_collapsed_labs_df = convert_float64_cols_to_float32(dynamic_collapsed_labs_df)
+        dynamic_collapsed_medications_df = convert_float64_cols_to_float32(dynamic_collapsed_medications_df)
         
         # merge vitals, labs and medications
         dynamic_collapsed_feats_df = pd.merge(pd.merge(dynamic_collapsed_vitals_df, dynamic_collapsed_labs_df, 
