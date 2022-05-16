@@ -121,7 +121,7 @@ rule build_csv_dataset_for_pchmm:
         script=os.path.join(DATASET_SCRIPTS_ROOT, 'standardize_dataset', 'make_pchmm_dataset.py')
 
     output:
-        x_std_data_csv=os.path.join(DATASET_STD_PATH, 'features_2d_per_tstep.csv'),
+        x_std_data_csv=os.path.join(DATASET_STD_PATH, 'features_2d_per_tstep_no_imp_observed=60_perc.csv'),
         y_std_data_csv=os.path.join(DATASET_STD_PATH, 'outcomes_per_seq.csv')
 
     params:
@@ -134,9 +134,9 @@ rule build_csv_dataset_for_pchmm:
         '''
         python -u {input.script} \
             --output_dir {params.output_dir} \
-            --Nmax 1000 \
-            --Tmax 50 \
-            --n_states 10 \
+            --Nmax 350 \
+            --Tmax 8 \
+            --n_states 4 \
         '''
 
 rule build_csv_dataset_with_global_overheat:

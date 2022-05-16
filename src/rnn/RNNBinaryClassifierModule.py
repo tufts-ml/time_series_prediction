@@ -55,7 +55,7 @@ class RNNBinaryClassifierModule(nn.Module):
         if self.convert_to_log_reg:
             init_weights_for_logistic_regression_conversion(self.rnn)
             self.first_pass=True
-        self.double()
+#         self.double()
        
     def score(self, X, y, sample_weight=None):
         correct_predictions = 0

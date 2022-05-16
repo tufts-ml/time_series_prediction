@@ -6,7 +6,7 @@ import json
 from sklearn.model_selection import GridSearchCV, cross_validate, ShuffleSplit
 from sklearn.metrics import (roc_curve, accuracy_score, log_loss, 
                              balanced_accuracy_score, confusion_matrix, 
-                             roc_auc_score, make_scorer)
+                             roc_auc_score, make_scorer, average_precision_score)
 from yattag import Doc
 import matplotlib.pyplot as plt
 # DEFAULT_PROJECT_REPO = os.path.sep.join(__file__.split(os.path.sep)[:-2])
@@ -70,6 +70,8 @@ if __name__ == '__main__':
     parser.add_argument('--train_csv_files', type=str, required=True)
     parser.add_argument('--test_csv_files', type=str, required=True)
     parser.add_argument('--data_dict_files', type=str, required=True)
+    parser.add_argument('--valid_csv_files', type=str, default=None)
+    parser.add_argument('--init_strategy', type=str, default='kmeans')
     parser.add_argument('--batch_size', type=int, default=1024,
                         help='Number of sequences per minibatch')
     parser.add_argument('--epochs', type=int, default=50,
@@ -128,8 +130,20 @@ if __name__ == '__main__':
     print('number of data points : %d\nnumber of time points : %s\nnumber of features : %s\n'%(N,T,F))
         
     # split train into train and validation
-    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=args.validation_size, 
-                                                      random_state=213, shuffle=False)
+    if args.valid_csv_files is None:
+        # split train into train and validation
+        X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=args.validation_size, random_state=213)
+    else:
+        x_valid_csv_filename, y_valid_csv_filename = args.valid_csv_files.split(',')
+        valid_vitals = TidySequentialDataCSVLoader(
+            x_csv_path=x_valid_csv_filename,
+            y_csv_path=y_valid_csv_filename,
+            x_col_names=feature_cols,
+            idx_col_names=id_cols,
+            y_col_name=args.outcome_col_name,
+            y_label_type='per_sequence'
+        )
+        X_val, y_val = valid_vitals.get_batch_data(batch_id=0)
     
     X_train = np.expand_dims(X_train, 1)
     X_val = np.expand_dims(X_val, 1)
@@ -143,22 +157,38 @@ if __name__ == '__main__':
     data_dict['test'] = (X_test, y_test)
     
     # get the init means and covariances of the observation distribution by clustering
-    print('Initializing cluster means with kmeans...')
+#     print('Initializing cluster means with kmeans...')
     prng = np.random.RandomState(args.seed)
-    n_init = 15000
+    n_init = 10000
     init_inds = prng.permutation(N)[:n_init]# select random samples from training set
     X_flat = X_train[:n_init].reshape(n_init*T, X_train.shape[-1])# flatten across time
     X_flat = np.where(np.isnan(X_flat), ma.array(X_flat, mask=np.isnan(X_flat)).mean(axis=0), X_flat)
-        
-    # get cluster means
-    n_states = args.n_states
-    kmeans = KMeans(n_clusters=n_states, n_init=10).fit(X_flat)
-    init_means = kmeans.cluster_centers_
     
-    # get cluster covariance in each cluster
-    init_covs = np.stack([np.zeros(F) for i in range(n_states)])
-#     for i in range(n_states):
-#         init_covs[i,:]=np.var(X_flat[X_flat_preds==i], axis=0)
+    n_states = args.n_states
+    if args.init_strategy=='kmeans':
+        print('Initializing cluster means with kmeans...')
+        # get cluster means
+        kmeans = KMeans(n_clusters=n_states, n_init=10).fit(X_flat)
+        init_means = kmeans.cluster_centers_
+
+        # get cluster covariance in each cluster
+        init_covs = np.stack([np.zeros(F) for i in range(n_states)])
+    elif args.init_strategy=='uniform':
+        print('Initializing cluster means with random init...')
+        percentile_ranges_F2 = np.percentile(X_flat, [1, 99], axis=0).T
+        init_means = np.zeros((n_states, F))
+        for f in range(F):
+            low=percentile_ranges_F2[f, 0]
+            high=percentile_ranges_F2[f, 1]
+            if low==high:
+                high=low+1
+            init_means[:,f] = prng.uniform(low=low, 
+                                            high=high, 
+                                            size=args.n_states)
+            init_covs = np.stack([np.zeros(F) for i in range(n_states)])
+#     from IPython import embed; embed()
+    
+    
     
     # train model
     optimizer = get_optimizer('adam', lr = args.lr)
@@ -180,6 +210,9 @@ if __name__ == '__main__':
             transition_initializer=None, optimizer=optimizer)
     
     
+    if args.batch_size==-1:
+        args.batch_size=N
+
     data = custom_dataset(data_dict=data_dict)
     data.batch_size = args.batch_size
     model.build(data) 
@@ -229,32 +262,38 @@ if __name__ == '__main__':
     opt_eta_intercept = np.asarray([0, cv.best_estimator_.intercept_[0]])
     init_etas = [opt_eta_weights, opt_eta_intercept]
     model._predictor.set_weights(init_etas)
-    
-    
-    model.fit(data, steps_per_epoch=100, epochs=50, batch_size=args.batch_size, lr=args.lr,
+
+#     
+    model.fit(data, steps_per_epoch=1, epochs=150, batch_size=args.batch_size, lr=args.lr,
               initial_weights=model.model.get_weights())
     
     # evaluate on test set
 #     x_train, y_train = data.train().numpy()
     z_train = model.hmm_model.predict(x_train)
     y_train_pred_proba = model._predictor.predict(z_train)
-    train_roc_auc = roc_auc_score(y_train, y_train_pred_proba)
-    print('ROC AUC on train : %.2f'%train_roc_auc)
+    train_auprc = average_precision_score(y_train, y_train_pred_proba)
+    print('AUPRC on train : %.5f'%train_auprc)
     
+    # evaluate on test set
+    x_valid, y_valid = data.valid().numpy()
+    z_valid = model.hmm_model.predict(x_valid)
+    y_valid_pred_proba = model._predictor.predict(z_valid)
+    valid_auprc = average_precision_score(y_valid, y_valid_pred_proba)
+    print('AUPRC on valid : %.5f'%valid_auprc)    
     
     # evaluate on test set
     x_test, y_test = data.test().numpy()
     z_test = model.hmm_model.predict(x_test)
     y_test_pred_proba = model._predictor.predict(z_test)
-    test_roc_auc = roc_auc_score(y_test, y_test_pred_proba)
-    print('ROC AUC on test : %.2f'%test_roc_auc)
-    
+    test_auprc = average_precision_score(y_test, y_test_pred_proba)
+    print('AUPRC on test : %.5f'%test_auprc)
+        
     # get the parameters of the fit distribution
-    mu_all = model.hmm_model(x_train).observation_distribution.distribution.mean().numpy()
+    mu_all = model.hmm_model(x_train[:10]).observation_distribution.distribution.mean().numpy()
     try:
-        cov_all = model.hmm_model(x_train).observation_distribution.distribution.covariance().numpy()
+        cov_all = model.hmm_model(x_train[:10]).observation_distribution.distribution.covariance().numpy()
     except:
-        cov_all = model.hmm_model(x_train).observation_distribution.distribution.scale.numpy()
+        cov_all = model.hmm_model(x_train[:10]).observation_distribution.distribution.scale.numpy()
         
     eta_all = np.vstack(model._predictor.get_weights())
     
@@ -273,6 +312,14 @@ if __name__ == '__main__':
     model_filename = os.path.join(args.output_dir, args.output_filename_prefix+'-weights.h5')
     model.model.save_weights(model_filename, save_format='h5')
     
+    # save some additional performance 
+    perf_save_file = os.path.join(args.output_dir, 'final_perf_'+args.output_filename_prefix+'.csv')
+    model_perf_df = pd.DataFrame([{'train_AUPRC' : train_auprc, 
+                                   'valid_AUPRC' : valid_auprc, 
+                                   'test_AUPRC' : test_auprc}])
+    
+    
+    model_perf_df.to_csv(perf_save_file, index=False)
     
     
 # if __name__ == '__main__':

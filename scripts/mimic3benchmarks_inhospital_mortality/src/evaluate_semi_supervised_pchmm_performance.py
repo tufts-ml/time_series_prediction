@@ -33,6 +33,63 @@ from pcvae.datasets.toy import toy_line, custom_dataset
 from pcvae.models.hmm import HMM
 from scipy.special import softmax
 import glob
+import seaborn as sns
+from itertools import combinations
+
+
+def plotGauss2DContour(
+        mu, Sigma,
+        color='b',
+        radiusLengths=[1.0, 3.0],
+        markersize=3.0,
+        ax_handle=None,
+        label=''
+        ):
+    ''' Plot elliptical contours for provided mean mu, covariance Sigma.
+    Uses only the first 2 dimensions.
+    Post Condition
+    --------------
+    Plot created on current axes
+    '''
+    
+    # Decompose cov matrix into eigenvalues "lambda[d]" and eigenvectors "U[:,d]"
+    lambda_D, U_DD = np.linalg.eig(Sigma)
+    
+    # Verify orthonormal
+    D = len(mu)
+    assert np.allclose(np.eye(D), np.dot(U_DD, U_DD.T))
+    # View eigenvector matrix as a rotation transformation
+    rot_DD = U_DD
+
+    # Prep for plotting elliptical contours
+    # by creating grid of G different (x,y) points along perfect circle
+    # Recall that a perfect circle is swept by considering all radians between [-pi, +pi]
+    unit_circle_radian_step_size=0.03
+    t_G = np.arange(-np.pi, np.pi, unit_circle_radian_step_size)
+    x_G = np.sin(t_G)
+    y_G = np.cos(t_G)
+    Zcirc_DG = np.vstack([x_G, y_G])
+
+    # Warp circle into ellipse defined by Sigma's eigenvectors
+    # Rescale according to eigenvalues
+    Zellipse_DG = np.sqrt(lambda_D)[:,np.newaxis] * Zcirc_DG
+    # Rotate according to eigenvectors
+    Zrotellipse_DG = np.dot(rot_DD, Zellipse_DG)
+
+    radius_lengths=[0.3, 0.6, 0.9, 1.2, 1.5]
+
+    # Plot contour lines across several radius lengths
+    for r in radius_lengths:
+        Z_DG = r * Zrotellipse_DG + mu[:, np.newaxis]
+        ax_handle.plot(
+            Z_DG[0], Z_DG[1], '.-',
+            color=color,
+            markersize=3.0,
+            markerfacecolor=color,
+            markeredgecolor=color, 
+            label=label)
+        
+    return ax_handle
 
 
 def plot_best_model_training_plots(best_model_file):
@@ -56,29 +113,32 @@ def plot_best_model_training_plots(best_model_file):
     
     f.savefig('semi-supervised-best-model-training-plots.png')
 
+
+
 def get_best_model_file(saved_model_files_aka):
     
     training_files = glob.glob(saved_model_files_aka)
     aucroc_per_fit_list = []
-    loss_per_fit_list = []
+    auprc_per_fit_list = []
+#     loss_per_fit_list = []
     
     for i, training_file in enumerate(training_files):
         train_perf_df = pd.read_csv(training_file)
-        aucroc_per_fit_list.append(train_perf_df['val_predictor_AUC'].values[-1])
+        auprc_per_fit_list.append(train_perf_df['valid_AUPRC'].values[-1])
         curr_lamb = int(training_file.split('lamb=')[1].replace('.csv', ''))
-        loss_per_fit_list.append((train_perf_df['val_predictor_loss'].values[-1])/curr_lamb)
+#         loss_per_fit_list.append((train_perf_df['val_predictor_loss'].values[-1])/curr_lamb)
 
-    aucroc_per_fit_np = np.array(aucroc_per_fit_list)
-    aucroc_per_fit_np[np.isnan(aucroc_per_fit_np)]=0
+    auprc_per_fit_np = np.array(auprc_per_fit_list)
+    auprc_per_fit_np[np.isnan(auprc_per_fit_np)]=0
 
-    loss_per_fit_np = np.array(loss_per_fit_list)
-    loss_per_fit_np[np.isnan(loss_per_fit_np)]=10^8
+#     loss_per_fit_np = np.array(loss_per_fit_list)
+#     loss_per_fit_np[np.isnan(loss_per_fit_np)]=10^8
 
 #    best_model_ind = np.argmax(aucroc_per_fit_np)
-    best_model_ind = np.argmin(loss_per_fit_np)
+    best_model_ind = np.argmax(auprc_per_fit_np)
 
     best_model_file = training_files[best_model_ind]
-    plot_best_model_training_plots(best_model_file)
+#     plot_best_model_training_plots(best_model_file)
 #     
     # get the number of states of best file
     best_fit_params = best_model_file.split('-')
@@ -88,7 +148,11 @@ def get_best_model_file(saved_model_files_aka):
 #     from IPython import embed; embed()
     return best_model_file, n_states
 
-
+def legend_without_duplicate_labels(ax):
+    handles, labels = ax.get_legend_handles_labels()
+    unique = [(h, l) for i, (h, l) in enumerate(zip(handles, labels)) if l not in labels[:i]]
+    ax.legend(*zip(*unique))
+    return ax
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--clf_models_dir', default=None, type=str,
@@ -110,27 +174,45 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     
-    ## get the test patient id's
-    # get the test set's csv and dict
-    y_test_df = pd.read_csv(os.path.join(args.clf_train_test_split_dir, 'y_test.csv'))
-    y_test_dict_file = os.path.join(args.clf_train_test_split_dir, 'y_dict.json')
+    ## get the test data
+    x_train_np_filename = os.path.join(args.clf_train_test_split_dir, 'X_train.npy')
+    x_valid_np_filename = os.path.join(args.clf_train_test_split_dir, 'X_valid.npy')
+    x_test_np_filename = os.path.join(args.clf_train_test_split_dir, 'X_test.npy')
+    y_train_np_filename = os.path.join(args.clf_train_test_split_dir, 'y_train.npy')
+    y_valid_np_filename = os.path.join(args.clf_train_test_split_dir, 'y_valid.npy')
+    y_test_np_filename = os.path.join(args.clf_train_test_split_dir, 'y_test.npy')    
     
-    # get the x test feature columns
-    x_test_dict_file = os.path.join(args.clf_train_test_split_dir, 'x_dict.json')
-    x_test_dict = load_data_dict_json(x_test_dict_file)
-    feature_cols_with_mask_features = parse_feature_cols(x_test_dict)
     
-    # import the y dict to get the id cols
-    y_test_dict = load_data_dict_json(y_test_dict_file)
-    id_cols = parse_id_cols(y_test_dict)
-
-    tslice_folders = os.path.join(args.tslice_folder, 'TSLICE=')
-    outcome_col_name = args.outcome_column_name
-    tslices_list = ['24']
-    y_test_ids_df = y_test_df[id_cols].drop_duplicates(subset=id_cols).reset_index(drop=True)
+    X_train = np.load(x_train_np_filename)
+    X_test = np.load(x_test_np_filename)
+    y_train = np.load(y_train_np_filename)
+    y_test = np.load(y_test_np_filename)
+    X_val = np.load(x_valid_np_filename)
+    y_val = np.load(y_valid_np_filename)
+    
     
     features_dict = load_data_dict_json(os.path.join(args.preproc_data_dir, 'Spec_FeaturesPerTimestep.json')) 
-    time_col = 'hours_in'
+    feature_cols = parse_feature_cols(features_dict)
+    
+    N,T,F = X_test.shape
+    print('number of data points : %d\nnumber of time points : %s\nnumber of features : %s\n'%(N,T,F))
+    
+    
+    # mask labels in training set and validation set as per user provided %perc_labelled
+#     N_tr = len(X_train)
+    N_va = len(X_val)
+    N_te = len(X_test)
+    
+    X_train = np.expand_dims(X_train, 1)
+    X_val = np.expand_dims(X_val, 1)
+    X_test = np.expand_dims(X_test, 1)
+    
+    # standardize data for PC-HMM
+    key_list = ['train', 'valid', 'test']
+    data_dict = dict.fromkeys(key_list)
+    data_dict['train'] = (X_train, y_train)
+    data_dict['valid'] = (X_val, y_val)
+    data_dict['test'] = (X_test, y_test)
     
     clf_models_dir=args.clf_models_dir
 
@@ -138,119 +220,140 @@ if __name__ == '__main__':
     prctile_vals = [5, 50, 95]
     random_seed_list = args.random_seed_list.split(' ')
     perf_df = pd.DataFrame()
-    
-    print('Evaluating  at tslices stored in : %s'%tslice_folders)
-    for p, tslice in enumerate(tslices_list):
-        tslice_folder = tslice_folders + tslice
-
-        outcomes_df = pd.read_csv(os.path.join(tslice_folder,
-                                               'outcomes_filtered_%s_hours.csv'%tslice))
-    
-        features_df = pd.read_csv(os.path.join(tslice_folder,
-                                               'features_before_death_filtered_%s_hours.csv'%tslice))
-        
-        test_outcomes_df = pd.merge(outcomes_df, y_test_ids_df, on=id_cols, how='inner')
-        test_features_df = pd.merge(features_df, y_test_ids_df, on=id_cols, how='inner')
-        test_features_df.sort_values(by=id_cols+[time_col], inplace=True)
-        test_outcomes_df.sort_values(by=id_cols, inplace=True)
-        
-#         print('Adding missing values mask as features...')
-        feature_cols = parse_feature_cols(features_dict)
-    
-        # load test data with TidySequentialDataLoader
-        test_vitals = TidySequentialDataCSVLoader(
-            x_csv_path=test_features_df,
-            y_csv_path=test_outcomes_df,
-            x_col_names=feature_cols_with_mask_features,
-            idx_col_names=id_cols,
-            y_col_name=outcome_col_name,
-            y_label_type='per_sequence'
-        )    
-
-        # predict on test data
-        x_test, y_test = test_vitals.get_batch_data(batch_id=0)
-        
-        N,T,F = x_test.shape
-        
-        # load the test data into dataset object for evaluation
-        x_test = np.expand_dims(x_test, 1)
-        key_list = ['train', 'valid', 'test']
-        data_dict = dict.fromkeys(key_list)
-        data_dict['train'] = (x_test[:2], y_test[:2])
-        data_dict['valid'] = (x_test[:2], y_test[:2])
-        data_dict['test'] = (x_test, y_test)
-        data = custom_dataset(data_dict=data_dict)
-        
-        for perc_labelled in ['1', '5', '10', '15', '20', '30', '50', '70', '75', '90', '100']:
-             for states in ['20', '30', '40', '50']:
-#                 for lamb in ['1000', '5000', '10000', '50000', '100000']:
-                saved_model_files_aka = os.path.join(clf_models_dir, "semi-supervised-pchmm*perc_labelled=%s-*n_states=%s-*lamb=*.csv"%(perc_labelled, states))
-                best_model_file, n_states = get_best_model_file(saved_model_files_aka)
-                best_model_weights = best_model_file.replace('.csv', '-weights.h5')
-
-                # load classifier
-                model = HMM(states=n_states,
-                            observation_dist='NormalWithMissing',
-                            predictor_dist='Categorical')
-
-                model.build(data)
-                model.model.load_weights(best_model_weights)
 
 
-                x_test, y_test = data.test().numpy()
-                # get the beliefs of the test set
-                z_test = model.hmm_model.predict(x_test)
-                y_test_pred_proba = model._predictor.predict(z_test)
-
-                print('Evaluating PCHMM with perc_labelled =%s and states =%s with model %s'%(perc_labelled, states, best_model_file))
-
-                # bootstrapping to get CI on metrics
-                roc_auc_np = np.zeros(len(random_seed_list))
-                balanced_accuracy_np = np.zeros(len(random_seed_list))
-                log_loss_np = np.zeros(len(random_seed_list))
-                avg_precision_np = np.zeros(len(random_seed_list))
-                precision_np = np.zeros(len(random_seed_list))
-                recall_np = np.zeros(len(random_seed_list))
-
-                for k, seed in enumerate(random_seed_list):
-                    random.seed(int(seed))
-                    rnd_inds = random.sample(range(x_test.shape[0]), int(0.8*x_test.shape[0])) 
-                    curr_y_test = y_test[rnd_inds]
-                    curr_x_test = x_test[rnd_inds, :]
-                    curr_y_pred = np.argmax(y_test_pred_proba[rnd_inds], -1)
-                    curr_y_pred_proba = y_test_pred_proba[rnd_inds]
-
-                    roc_auc_np[k] = roc_auc_score(curr_y_test, curr_y_pred_proba)
-                    balanced_accuracy_np[k] = balanced_accuracy_score(np.argmax(curr_y_test,-1), curr_y_pred)
-                    precision_np[k] = precision_score(np.argmax(curr_y_test,-1), curr_y_pred)
-                    recall_np[k] = recall_score(np.argmax(curr_y_test,-1), curr_y_pred)
-                    log_loss_np[k] = log_loss(curr_y_test, curr_y_pred_proba, normalize=True) / np.log(2)
-                    avg_precision_np[k] = average_precision_score(curr_y_test, curr_y_pred_proba)
+    # load the test data into dataset object for evaluation
+    x_test = np.expand_dims(X_test, 1)
+    key_list = ['train', 'valid', 'test']
+    data_dict = dict.fromkeys(key_list)
+    data_dict['train'] = (X_test[:2], y_test[:2])
+    data_dict['valid'] = (X_test[:2], y_test[:2])
+    data_dict['test'] = (X_test, y_test)
+    data = custom_dataset(data_dict=data_dict)
 
 
-                print('perc_labelled = %s, states = %s, ROC-AUC : %.2f'%(perc_labelled, states, np.percentile(roc_auc_np, 50)))
-                print('Median average precision : %.3f'%np.median(avg_precision_np))
-        #         print('Median precision score : %.3f'%np.median(precision_np))
-        #         print('Median recall score : %.3f'%np.median(recall_np))
-        #         print('Median balanced accuracy score : %.3f'%np.median(balanced_accuracy_np))
+    for perc_labelled in ['100']:#'3.7', '11.1', '33.3', '100'
+        for states in ['90']:#'10', '30', '60', '90'
 
-                for prctile in prctile_vals:
-                    row_dict = dict()
-                    row_dict['model'] = 'PCHMM-n_states=%s'%(states)
-                    row_dict['percentile'] = prctile
-    #                     row_dict['lambda'] = lamb
-                    row_dict['perc_labelled'] = perc_labelled
-                    row_dict['roc_auc'] = np.percentile(roc_auc_np, prctile)
-                    row_dict['balanced_accuracy'] = np.percentile(balanced_accuracy_np, prctile)
-                    row_dict['log_loss'] = np.percentile(log_loss_np, prctile)
-                    row_dict['average_precision'] = np.percentile(avg_precision_np, prctile)
-                    row_dict['precision'] = np.percentile(precision_np, prctile)
-                    row_dict['recall'] = np.percentile(recall_np, prctile)
-                    row_dict['n_states'] = states
+            saved_model_files_aka = os.path.join(clf_models_dir, 
+                                                 "final_perf_*semi-supervised-pchmm*perc_labelled=%s-*n_states=%s-*lamb=*.csv"%(perc_labelled, states))
+            best_model_file, n_states = get_best_model_file(saved_model_files_aka)
+            best_model_weights = best_model_file.replace('.csv', '-weights.h5').replace('final_perf_', '')
 
-                    perf_df = perf_df.append(row_dict, ignore_index=True)      
+            # load classifier
+            model = HMM(states=n_states,
+                        observation_dist='NormalWithMissing',
+                        predictor_dist='Categorical')
+            
+            model.build(data)
+            model.model.load_weights(best_model_weights)
+            
+            # see if you can visualize the means of the top predictor weight states
+            mu_all = model.hmm_model(x_test[:10]).observation_distribution.distribution.mean().numpy()
+            cov_all = model.hmm_model(x_test[:10]).observation_distribution.distribution.scale.numpy()
+            if (perc_labelled=='100')&(states=='90'):
+                sorted_inds = np.argsort(model._predictor.get_weights()[0][:, 1])[::-1]
+#                 keep_features_cols = ['age', 'heart rate', 
+#                                       'diastolic blood pressure', 'systolic blood pressure', 
+#                                       'blood urea nitrogen', 'oxygen saturation', 
+#                                       'white blood cell count', 'red blood cell count']
+
+                keep_features_cols = ['age', 
+                                      'blood urea nitrogen',
+                                      'oxygen saturation']
+
+                keep_features_inds = np.where(np.isin(feature_cols, keep_features_cols))
+                n_influential = 3 # number of influential states to retain from predictor
+                mu_KD_influential = np.squeeze(mu_all[sorted_inds[:n_influential], :][:, keep_features_inds])
+                cov_KD_influential = np.squeeze(cov_all[sorted_inds[:n_influential], :][:, keep_features_inds])
+                feature_cols_reindexed = np.array(feature_cols)[keep_features_inds[0]]
+                
+                cohort_colors = ['r', 'g', 'b', 'k']
+                for combo in combinations(keep_features_cols, 2):
+                    f, axs = plt.subplots(1, 1, figsize=(8, 8))
+                    sns.set_style("white") # or use "white" if we don't want grid lines
+                    sns.set_context("notebook", font_scale=1.3)
+                    curr_feature_combo_inds = np.isin(keep_features_cols, combo)
+                    curr_feature_combo = np.array(keep_features_cols)[curr_feature_combo_inds]
+                    for kk in range(n_influential):
+                        mu = mu_KD_influential[kk, curr_feature_combo_inds]
+                        Sigma = np.diag(cov_KD_influential[kk, curr_feature_combo_inds])
+                        axs = plotGauss2DContour(mu, Sigma, ax_handle=axs, 
+                                                 label='Cohort %s'%kk, 
+                                                 color=cohort_colors[kk])
+                    
+                    axs.legend()
+                    axs = legend_without_duplicate_labels(axs)
+                    axs.set_xlabel(curr_feature_combo[0])
+                    axs.set_ylabel(curr_feature_combo[1])
+                    f.savefig('interpretability_%s_%s.pdf'%(curr_feature_combo[0], curr_feature_combo[1]), 
+                              bbox_inches='tight', 
+                              pad_inches=0)
+                
+#                 cohorts_from_pchmm_df = pd.DataFrame(mu_KD_influential, columns=feature_cols_reindexed)
+#                 cohorts_from_pchmm_df['cohort'] = range(n_influential)
+#                 sns.set_style("white") # or use "white" if we don't want grid lines
+#                 sns.set_context("notebook", font_scale=1.3)
+#                 sns.pairplot(cohorts_from_pchmm_df, hue='cohort', palette='bright', diag_kind=None, plot_kws={"s": 80})
+#                 plt.savefig('interpretability.png')
+            
+            
+            from IPython import embed; embed()
+            x_test, y_test = data.test().numpy()
+            # get the beliefs of the test set
+            z_test = model.hmm_model.predict(x_test)
+            y_test_pred_proba = model._predictor.predict(z_test)
+
+            print('Evaluating PCHMM with perc_labelled =%s and states =%s with model %s'%(perc_labelled, states, best_model_file))
+
+            # bootstrapping to get CI on metrics
+            roc_auc_np = np.zeros(len(random_seed_list))
+#                     balanced_accuracy_np = np.zeros(len(random_seed_list))
+            log_loss_np = np.zeros(len(random_seed_list))
+            avg_precision_np = np.zeros(len(random_seed_list))
+#                     precision_np = np.zeros(len(random_seed_list))
+#                     recall_np = np.zeros(len(random_seed_list))
+
+            for k, seed in enumerate(random_seed_list):
+                random.seed(int(seed))
+                rnd_inds = random.sample(range(x_test.shape[0]), int(0.8*x_test.shape[0])) 
+                curr_y_test = y_test[rnd_inds]
+                curr_x_test = x_test[rnd_inds, :]
+                curr_y_pred = np.argmax(y_test_pred_proba[rnd_inds], -1)
+                curr_y_pred_proba = y_test_pred_proba[rnd_inds]
+
+                roc_auc_np[k] = roc_auc_score(curr_y_test, curr_y_pred_proba)
+#                         balanced_accuracy_np[k] = balanced_accuracy_score(np.argmax(curr_y_test,-1), curr_y_pred)
+#                         precision_np[k] = precision_score(np.argmax(curr_y_test,-1), curr_y_pred)
+#                         recall_np[k] = recall_score(np.argmax(curr_y_test,-1), curr_y_pred)
+                log_loss_np[k] = log_loss(curr_y_test, curr_y_pred_proba, normalize=True) / np.log(2)
+                avg_precision_np[k] = average_precision_score(curr_y_test, curr_y_pred_proba)
+
+
+            print('perc_labelled = %s, states = %s, \nROC-AUC : %.2f'%(perc_labelled, states, np.percentile(roc_auc_np, 50)))
+            print('Median average precision : %.3f'%np.median(avg_precision_np))
+    #         print('Median precision score : %.3f'%np.median(precision_np))
+    #         print('Median recall score : %.3f'%np.median(recall_np))
+    #         print('Median balanced accuracy score : %.3f'%np.median(balanced_accuracy_np))
+
+            for prctile in prctile_vals:
+                row_dict = dict()
+                row_dict['model'] = 'PCHMM-n_states=%s'%(states)
+                row_dict['percentile'] = prctile
+#                     row_dict['lambda'] = lamb
+                row_dict['perc_labelled'] = perc_labelled
+                row_dict['roc_auc'] = np.percentile(roc_auc_np, prctile)
+#                         row_dict['balanced_accuracy'] = np.percentile(balanced_accuracy_np, prctile)
+                row_dict['log_loss'] = np.percentile(log_loss_np, prctile)
+                row_dict['average_precision'] = np.percentile(avg_precision_np, prctile)
+#                         row_dict['precision'] = np.percentile(precision_np, prctile)
+#                         row_dict['recall'] = np.percentile(recall_np, prctile)
+                row_dict['n_states'] = states
+#                     row_dict['imputation_strategy'] = imputation_strategy
+
+                perf_df = perf_df.append(row_dict, ignore_index=True)      
 
     
     perf_csv = os.path.join(args.output_dir, 'semi_supervised_pchmm_performance.csv')
-    print('Saving semi-supervised PCHMM performance to %s'%perf_csv)
-    perf_df.to_csv(perf_csv, index=False)
+#     print('Saving semi-supervised PCHMM performance to %s'%perf_csv)
+#     perf_df.to_csv(perf_csv, index=False)

@@ -331,7 +331,6 @@ def featurize_stack_of_many_time_series(
             np.percentile(missingness_density_per_seq, 95),
             ))
         print('-----------------------------------------')   
-    
     return all_features_df, all_outcomes_df
 
 

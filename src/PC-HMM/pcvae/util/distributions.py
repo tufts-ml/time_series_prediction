@@ -38,7 +38,7 @@ def nll_data(weight=1., noise=0., include_base_dist_loss=False, prior_weight=Fal
         return llik
     return loglik
 
-def nll_labels(weight=1., noise=0., include_base_dist_loss=False, prior_weight=False):
+def nll_labels(weight=1., noise=0., include_base_dist_loss=False, predictor_weight=False):
     def loglik(x, p_x):
         mask = tf.reduce_sum(x, axis=tf.range(1, tf.rank(x)))# get mask indices
         x = tf.where(tf.math.is_nan(x), tf.zeros_like(x), x)
@@ -46,8 +46,8 @@ def nll_labels(weight=1., noise=0., include_base_dist_loss=False, prior_weight=F
         if isinstance(p_x, tfd.TransformedDistribution) and include_base_dist_loss:
             llik = llik - weight * p_x.distribution.log_prob(x)
         llik = tf.where(tf.math.is_nan(mask*llik), tf.zeros_like(llik), llik)
-        if prior_weight:
-            llik = llik + prior_weight * p_x.prior_loss()
+        if predictor_weight:
+            llik = llik + predictor_weight * p_x.prior_loss()
         return llik
     return loglik
 

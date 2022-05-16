@@ -8,7 +8,7 @@ import skorch
 from sklearn.model_selection import GridSearchCV, cross_validate, ShuffleSplit
 from sklearn.metrics import (roc_curve, accuracy_score, log_loss, 
                              balanced_accuracy_score, confusion_matrix, 
-                             roc_auc_score, make_scorer)
+                             roc_auc_score, make_scorer, average_precision_score)
 from yattag import Doc
 import matplotlib.pyplot as plt
 
@@ -103,7 +103,7 @@ def main():
     
     # set class weights as 1/(number of samples in class) for each class to handle class imbalance
     class_weights = torch.tensor([1/(y_train==0).sum(),
-                                  1/(y_train==1).sum()]).double()
+                                  1/(y_train==1).sum()]).float()
     
     print('Number of training sequences : %s'%N)
     print('Number of test sequences : %s'%X_test.shape[0])
@@ -112,7 +112,33 @@ def main():
     
     # callback to compute gradient norm
     compute_grad_norm = ComputeGradientNorm(norm_type=2)
+    
+    
+    
+    epoch_scoring_auprc_train = EpochScoring('average_precision', lower_is_better=False, on_train=True,
+                                                                    name='auprc_train')
+    
+    epoch_scoring_auprc_valid = EpochScoring('average_precision', lower_is_better=False, on_train=False,
+                                                  name='auprc_valid')
+    
 
+    epoch_scoring_auroc_train = EpochScoring('roc_auc', lower_is_better=False, on_train=True, 
+                                             name='aucroc_score_train')
+    
+    
+    epoch_scoring_auroc_valid = EpochScoring('roc_auc', lower_is_better=False, on_train=False, 
+                                             name='aucroc_score_valid')    
+    
+    loss_best_cp = Checkpoint(monitor='auprc_valid_best',
+                f_history=os.path.join(args.output_dir,
+                                       args.output_filename_prefix+'_auprc_best.json'),
+                f_params=os.path.join(args.output_dir,
+                                      args.output_filename_prefix+'_auprc_best.pt')
+               )
+    
+    auprc_early_stopping_cp =  EarlyStopping(monitor='auprc_valid', patience=15, threshold=0.002, threshold_mode='rel',
+                                            lower_is_better=False)
+    
     # LSTM
     if args.output_filename_prefix==None:
         output_filename_prefix = ('hiddens=%s-layers=%s-lr=%s-dropout=%s-weight_decay=%s'%(args.hidden_units, 
@@ -126,20 +152,23 @@ def main():
     print('RNN parameters : '+ output_filename_prefix)
     
     rnn = RNNBinaryClassifier(
-              max_epochs=30,
+              max_epochs=100,
               batch_size=args.batch_size,
               device=device,
               lr=args.lr,
               callbacks=[
-              EpochScoring('roc_auc', lower_is_better=False, on_train=True, name='aucroc_score_train'),
-              EpochScoring('roc_auc', lower_is_better=False, on_train=False, name='aucroc_score_valid'),
-#               EarlyStopping(monitor='aucroc_score_valid', patience=5, threshold=0.002, threshold_mode='rel',
-#                                              lower_is_better=False),
-#               LRScheduler(policy=ReduceLROnPlateau, mode='max', monitor='aucroc_score_valid', patience=10),
-                  compute_grad_norm,
+                  epoch_scoring_auroc_train,
+                  epoch_scoring_auroc_valid,
+                  epoch_scoring_auprc_train,
+                  epoch_scoring_auprc_valid,
+                  auprc_early_stopping_cp,
+#                   compute_grad_norm,
+                  loss_best_cp,
 #               GradientNormClipping(gradient_clip_value=0.5, gradient_clip_norm_type=2),
-              Checkpoint(monitor='aucroc_score_valid', f_history=os.path.join(args.output_dir, output_filename_prefix+'.json')),
-              TrainEndCheckpoint(dirname=args.output_dir, fn_prefix=output_filename_prefix),
+#               Checkpoint(monitor='aucroc_score_valid', 
+#                          f_history=os.path.join(args.output_dir, output_filename_prefix+'.json')),
+                  TrainEndCheckpoint(dirname=args.output_dir, fn_prefix=output_filename_prefix),
+                  auprc_early_stopping_cp
               ],
               criterion=torch.nn.CrossEntropyLoss,
               criterion__weight=class_weights,
@@ -150,8 +179,8 @@ def main():
               module__n_inputs=X_train.shape[-1],
               module__dropout_proba=args.dropout,
               optimizer=torch.optim.Adam,
-              optimizer__weight_decay=args.weight_decay
-                         ) 
+              optimizer__weight_decay=args.weight_decay,
+              optimizer__lr=args.lr) 
     '''
     # fit on subset of data
     print('fitting on subset of data...')
@@ -165,17 +194,17 @@ def main():
     clf = rnn.fit(X_train, y_train)
     y_pred_proba = clf.predict_proba(X_train)
     y_pred_proba_neg, y_pred_proba_pos = zip(*y_pred_proba)
-    auroc_train_final = roc_auc_score(y_train, y_pred_proba_pos)
-    print('AUROC with LSTM (Train) : %.2f'%auroc_train_final)
+    auprc_train_final = average_precision_score(y_train, y_pred_proba_pos)
+    print('AUPRC with LSTM (Train) : %.2f'%auprc_train_final)
 
     y_pred_proba = clf.predict_proba(X_test)
     y_pred_proba_neg, y_pred_proba_pos = zip(*y_pred_proba)
-    auroc_test_final = roc_auc_score(y_test, y_pred_proba_pos)
-    print('AUROC with LSTM (Test) : %.2f'%auroc_test_final)
+    auprc_test_final = average_precision_score(y_test, y_pred_proba_pos)
+    print('AUPRC with LSTM (Test) : %.2f'%auprc_test_final)
     
     # save the performance on test set
-    test_perf_df = pd.DataFrame(columns={'test_auc'})
-    test_perf_df = test_perf_df.append({'test_auc': auroc_test_final}, ignore_index=True)
+    test_perf_df = pd.DataFrame(columns={'test_auprc'})
+    test_perf_df = test_perf_df.append({'test_auprc': auprc_test_final}, ignore_index=True)
     test_perf_csv = os.path.join(args.output_dir, output_filename_prefix+'.csv')
     test_perf_df.to_csv(test_perf_csv, index=False)
     

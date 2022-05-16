@@ -39,6 +39,7 @@ def compute_time_since_last_observed(timestamp_arr, mask_arr):
 
 def update_data_dict_with_mask_features(x_data_dict):
     # add the new features to the data dict
+    
     new_fields=[]
     for col in x_data_dict['schema']['fields']:
         if col['name']==time_col:
@@ -110,10 +111,10 @@ if __name__ == '__main__':
     args = parser.parse_args()
     
     # get the train test features
-    x_train_csv=os.path.join(args.train_test_split_dir, 'x_train.csv.gz')
-    x_valid_csv=os.path.join(args.train_test_split_dir, 'x_valid.csv.gz')
-    x_test_csv=os.path.join(args.train_test_split_dir, 'x_test.csv.gz')
-    x_dict_json=os.path.join(args.train_test_split_dir, 'x_dict.json')
+    x_train_csv=os.path.join(args.train_test_split_dir, 'x_train_first_24_hours.csv')
+    x_valid_csv=os.path.join(args.train_test_split_dir, 'x_valid_first_24_hours.csv')
+    x_test_csv=os.path.join(args.train_test_split_dir, 'x_test_first_24_hours.csv')
+    x_dict_json=os.path.join(args.train_test_split_dir, 'x_dict_first_24_hours.json')
     
     # impute values by carry forward and then pop mean on train and test sets separately
     x_data_dict = load_data_dict_json(x_dict_json)
@@ -123,7 +124,7 @@ if __name__ == '__main__':
     
     id_cols = parse_id_cols(x_data_dict)
     feature_cols = parse_feature_cols(x_data_dict)
-    time_col = 'stop'#parse_time_cols(x_data_dict)
+    time_col = 'hours_in'#parse_time_cols(x_data_dict)
     
     
     # add mask features

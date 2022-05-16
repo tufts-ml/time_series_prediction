@@ -83,8 +83,18 @@ def featurize_ts(
     SUMMARY_OPERATIONS = make_summary_ops()
 
     for rp_ind, (low, high) in enumerate(percentile_slices_to_featurize):
-        cur_window_start_time = start_numerictime + float(low) / 100 * time_range
-        cur_window_stop_time = start_numerictime + float(high) / 100 * time_range
+        # Check if the collapse features are in percentile or abs hours
+        do_case_abs_hrs = low.count('T')>0 and high.count('T')>0
+        if do_case_abs_hrs:
+            low_hrs = low.split('-')[1]
+            low_hrs = int(low_hrs.replace('h', ''))
+            high_hrs = high.split('-')[1]
+            high_hrs = int(high_hrs.replace('h', ''))
+            cur_window_start_time = stop_numerictime - low_hrs
+            cur_window_stop_time = stop_numerictime - high_hrs
+        else:    
+            cur_window_start_time = start_numerictime + float(low) / 100 * time_range
+            cur_window_stop_time = start_numerictime + float(high) / 100 * time_range
 
         for var_id, var_name in enumerate(var_cols):
 
@@ -125,7 +135,10 @@ def featurize_ts(
                     feat_vec_1F[0,ff] = summary_func(
                         cur_feat_arr, cur_numerictime_arr, cur_isfinite_arr,
                         cur_window_start_time, cur_window_stop_time)
-                feat_names.append("%s_%s_%.0f-%.0f" % (var_name, op, float(low), float(high)))
+                if do_case_abs_hrs:
+                    feat_names.append("%s_%s_%s-%s" % (var_name, op, low, high))
+                else:
+                    feat_names.append("%s_%s_%.0f-%.0f" % (var_name, op, float(low), float(high)))
                 ff += 1
     return feat_vec_1F, feat_names
 

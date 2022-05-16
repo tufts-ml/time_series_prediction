@@ -16,8 +16,7 @@ class HMM(BaseVAE):
                  states=10, observation_dist=None, predictor_dist=None, predictor_network=None,
                  initial_state_initializer=None, transition_initializer=None, observation_initializer=None,
                  initial_state_alpha=1., transition_alpha=1., observation_prior_loss=None, prior_weight=1.0,
-                 debug=False,
-                 *args, **kwargs):
+                 predictor_weight=0, debug=False, *args, **kwargs):
         super(HMM, self).__init__(*args, **kwargs)
 
         self.input_shape = input_shape
@@ -41,6 +40,7 @@ class HMM(BaseVAE):
         self.metric = []
         self.debug = debug
         self.prior_weight = prior_weight
+        self.predictor_weight = predictor_weight
 
     def setup(self, data=None):
         if self.is_setup:
@@ -59,7 +59,8 @@ class HMM(BaseVAE):
                 self.predictor_dist = self.predictor_dist if self.predictor_dist else 'Categorical'
 
         self.steps = self.input_shape[-2]
-        self.predictor_network = get_predictor_network(self.predictor_network, **self.kwargs)
+        self.predictor_network = get_predictor_network(self.predictor_network, predictor_l2_weight=self.predictor_weight,
+                                                       **self.kwargs)
         self.predictor_dist = get_tfd_distribution(self.predictor_dist, **self.kwargs)
         self.optimizer = get_optimizer(self.optimizer, **self.kwargs)
         self.observation_dist = get_tfd_distribution(self.observation_dist)
@@ -135,9 +136,10 @@ class HMM(BaseVAE):
         prediction = self._predictor(hmm)
         self.model = Model(inputs=[input_x, input_y], outputs=[hmm, prediction],
                            name='training_model')
-
+        
         self.model.compile(optimizer=self.optimizer, loss=[nll_data(prior_weight=self.prior_weight),
-                                                           nll_labels(self.lam)], run_eagerly=self.debug, 
+                                                           nll_labels(self.lam)],
+                           run_eagerly=self.debug, 
                            metrics=[[None], self.metric], experimental_run_tf_function=True)
 
 

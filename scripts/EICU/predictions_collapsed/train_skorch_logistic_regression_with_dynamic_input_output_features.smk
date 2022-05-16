@@ -9,7 +9,7 @@ snakemake --snakefile train_skorch_logistic_regression_with_dynamic_input_output
 
 '''
 
-configfile : "skorch_logistic_regression_bce.json"
+configfile : "skorch_logistic_regression_single_config.json"
 
 from config_loader import (
     D_CONFIG,

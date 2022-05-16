@@ -20,6 +20,7 @@ sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src'))
 RESULTS_FEAT_PER_TSTEP_PATH = os.path.join(RESULTS_FEAT_PER_TSTEP_PATH, 'rnn')
 
 
+RESULTS_FEAT_PER_TSTEP_PATH="/cluster/tufts/hugheslab/prath01/results/mimic3/rnn/"
 rule evaluate_classifier:
     input:
         script='evaluate_rnn_fits.py',

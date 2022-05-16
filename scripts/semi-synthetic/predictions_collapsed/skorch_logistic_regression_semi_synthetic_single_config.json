@@ -1,11 +1,11 @@
 {
-    "lr": [0.0025],
-    "batch_size": [-1],
+    "lr": [0.0005],
+    "batch_size": [512],
     "weight_decay": [0],
-    "scoring" : ["cross_entropy_loss"],
-    "lamb" : [1000], 
+    "scoring" : ["surrogate_loss_tight"],
+    "lamb" : [10], 
     "warm_start" : ["false"],
     "incremental_min_precision" : ["false"],
     "initialization_gain" : [1.0, 3.0],
-    "seed" : [999999]
+    "seed" : [4213]
 }

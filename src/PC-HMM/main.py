@@ -77,6 +77,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='pchmm fitting')
     parser.add_argument('--outcome_col_name', type=str, required=True)
     parser.add_argument('--train_csv_files', type=str, required=True)
+    parser.add_argument('--valid_csv_files', type=str, default=None)
     parser.add_argument('--test_csv_files', type=str, required=True)
     parser.add_argument('--data_dict_files', type=str, required=True)
     parser.add_argument('--batch_size', type=int, default=1024,
@@ -95,6 +96,11 @@ if __name__ == '__main__':
                         help='prefix for the training history jsons and trained classifier')
     parser.add_argument('--lamb', type=int, default=1111,
                         help='langrange multiplier')
+    parser.add_argument('--missing_handling', type=str, default="no_imp",
+                        help='how to handle missing observations')
+    parser.add_argument('--perc_missing', type=str, default=20,
+                        help='percentage missing observations')
+    
     args = parser.parse_args()
 
     rs = RandomState(args.seed)
@@ -134,15 +140,27 @@ if __name__ == '__main__':
     
     
 #     # add missing values to the train and test data at random
-    n_missing_tr = 900
-    n_missing_te = 100
-    miss_inds_tr = np.random.choice(X_train.size, n_missing_tr, replace=False)
-    miss_inds_te = np.random.choice(X_test.size, n_missing_te, replace=False)
-    X_train.ravel()[miss_inds_tr] = np.nan
-    X_test.ravel()[miss_inds_te] = np.nan
+#     n_missing_tr = 900
+#     n_missing_te = 100
+#     miss_inds_tr = np.random.choice(X_train.size, n_missing_tr, replace=False)
+#     miss_inds_te = np.random.choice(X_test.size, n_missing_te, replace=False)
+#     X_train.ravel()[miss_inds_tr] = np.nan
+#     X_test.ravel()[miss_inds_te] = np.nan
     
-    # split train into train and validation
-    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=args.validation_size, random_state=213)
+    if args.valid_csv_files is None:
+        # split train into train and validation
+        X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=args.validation_size, random_state=213)
+    else:
+        x_valid_csv_filename, y_valid_csv_filename = args.valid_csv_files.split(',')
+        valid_vitals = TidySequentialDataCSVLoader(
+            x_csv_path=x_valid_csv_filename,
+            y_csv_path=y_valid_csv_filename,
+            x_col_names=feature_cols,
+            idx_col_names=id_cols,
+            y_col_name=args.outcome_col_name,
+            y_label_type='per_sequence'
+        )
+        X_val, y_val = valid_vitals.get_batch_data(batch_id=0)
     
     # get the init means and covariances of the observation distribution by clustering
     print('Initializing cluster means with kmeans...')
@@ -153,13 +171,20 @@ if __name__ == '__main__':
     X_flat = np.where(np.isnan(X_flat), ma.array(X_flat, mask=np.isnan(X_flat)).mean(axis=0), X_flat)
         
     # get cluster means
-    n_states = 12
-    kmeans = KMeans(n_clusters=n_states, random_state=42).fit(X_flat)
-    init_means = kmeans.cluster_centers_
+    n_states = 6
+#     init_means = np.array([15., 1.]) * prng.randn(6, 2) + np.array([10, 0.]) # draw from Normal([10, 0], [5., 0; 0, 1])
+    init_means = np.array([15., 1.]) * prng.randn(6, 2) + np.array([10, -0.5]) 
+    
+
+#     kmeans = KMeans(n_clusters=n_states, random_state=42).fit(X_flat)
+#     init_means = kmeans.cluster_centers_
+#     init_means[-1, :] = [15.5, .5]
+#     init_means[-3, :] = [15.5, -.5]
     
     # get cluster covariance in each cluster
-    init_covs = np.stack([np.zeros(F) for i in range(n_states)])
-    
+    init_covs = np.stack([np.array([1., 1.]) for i in range(n_states)])
+#     init_covs[-1, :] = [-1.5, -1.5]
+#     init_covs[-3, :] = [-1.5, -1.5]
     
     X_train = np.expand_dims(X_train, 1)
     X_val = np.expand_dims(X_val, 1)
@@ -174,40 +199,10 @@ if __name__ == '__main__':
     
     
     # train model
-    spacing = 5
+    spacing = 8
     optimizer = get_optimizer('adam', lr = args.lr)
-#     init_means = np.zeros((n_states, F))
-#     init_means[:, 0] = np.arange(0, n_states*spacing, spacing)
-#     init_means[0, :] = [0, .75]
-#     init_means[10, :] = [0, -.75]
-#     init_means[3, :] = [15, .75]
-#     init_means[11, :] = [15, -.75]
-    
-    
-#     # scaled lower triangular covariance
-#     init_covs = np.stack([np.zeros((F,F)) for i in range(n_states)])
-#     init_covs[0,:] = [[0.1, 0], 
-#                       [0, -0.75]]
-#     init_covs[10,:] = [[0.1, 0],
-#                        [0,  -0.75]]
-#     init_covs[3,:] = [[0.1, 0],
-#                       [0,  -0.75]]
-#     init_covs[11,:] = [[0.1, 0], 
-#                        [0,  -0.75]]
-    
-    
-#    diagonal covariance for multivariate diagonal
-    init_covs = np.stack([np.zeros(F) for i in range(n_states)])
-#     init_covs[0,:] = [0.1, -0.75]
-#     init_covs[10,:] = [0.1, -0.75]
-#     init_covs[3,:] = [0.1, -0.75]
-#     init_covs[11,:] = [0.1, -0.75]
     
     init_state_probas = 0.124*np.ones(n_states)
-#     init_state_probas[0] = 0.006
-#     init_state_probas[3] = 0.006
-#     init_state_probas[10] = 0.006
-#     init_state_probas[11] = 0.006
 
     model = HMM(
             states=n_states,                                     
@@ -223,22 +218,26 @@ if __name__ == '__main__':
     
     
     data = custom_dataset(data_dict=data_dict)
-    data.batch_size = args.batch_size
+    
+    if args.batch_size==-1:
+        data.batch_size = data.batch_size=X_train.shape[0]
+    else:
+        data.batch_size = args.batch_size
     model.build(data) 
     
     # set the regression coefficients of the model
     eta_weights = np.zeros((n_states, 2))  
     
     # set the initial etas as the weights from logistic regression classifier with average beliefs as features 
-    x,y = data.train().numpy()
+    x_train,y_train = data.train().numpy()
     
-    pos_inds = np.where(y[:,1]==1)[0]
-    neg_inds = np.where(y[:,0]==1)[0]
+    pos_inds = np.where(y_train[:,1]==1)[0]
+    neg_inds = np.where(y_train[:,0]==1)[0]
     
-    x_pos = x[pos_inds]
-    y_pos = y[pos_inds]
-    x_neg = x[neg_inds]
-    y_neg = y[neg_inds]
+    x_pos = x_train[pos_inds]
+    y_pos = y_train[pos_inds]
+    x_neg = x_train[neg_inds]
+    y_neg = y_train[neg_inds]
     
     # get their belief states of the positive and negative sequences
     z_pos = model.hmm_model.predict(x_pos)
@@ -272,16 +271,36 @@ if __name__ == '__main__':
     init_etas = [opt_eta_weights, opt_eta_intercept]
     model._predictor.set_weights(init_etas)
     
-    model.fit(data, steps_per_epoch=1, epochs=200, batch_size=args.batch_size, lr=args.lr,
+    model.fit(data, steps_per_epoch=1, epochs=750, batch_size=args.batch_size, lr=args.lr,
               initial_weights=model.model.get_weights())
+    
+    
+    z_train = model.hmm_model.predict(x_train)
+    y_train_pred_proba = model._predictor.predict(z_train)
+    train_roc_auc = roc_auc_score(y_train, y_train_pred_proba)
+    print('ROC AUC on train : %.5f'%train_roc_auc)
+    
+    # evaluate on test set
+    x_valid, y_valid = data.valid().numpy()
+    z_valid = model.hmm_model.predict(x_valid)
+    y_valid_pred_proba = model._predictor.predict(z_valid)
+    valid_roc_auc = roc_auc_score(y_valid, y_valid_pred_proba)
+    print('ROC AUC on valid : %.5f'%valid_roc_auc)    
+    
+    # evaluate on test set
+    x_test, y_test = data.test().numpy()
+    z_test = model.hmm_model.predict(x_test)
+    y_test_pred_proba = model._predictor.predict(z_test)
+    test_roc_auc = roc_auc_score(y_test, y_test_pred_proba)
+    print('ROC AUC on test : %.5f'%test_roc_auc)
     
     # get the parameters of the fit distribution
 #     x,y = data.train().numpy()
-    mu_all = model.hmm_model(x).observation_distribution.distribution.mean().numpy()
+    mu_all = model.hmm_model(x_train).observation_distribution.distribution.mean().numpy()
     try:
-        cov_all = model.hmm_model(x).observation_distribution.distribution.covariance().numpy()
+        cov_all = model.hmm_model(x_train).observation_distribution.distribution.covariance().numpy()
     except:
-        cov_all = model.hmm_model(x).observation_distribution.distribution.scale.numpy()
+        cov_all = model.hmm_model(x_train).observation_distribution.distribution.scale.numpy()
         
     eta_all = np.vstack(model._predictor.get_weights())
     
@@ -295,10 +314,20 @@ if __name__ == '__main__':
     # save the loss plots of the model
     save_file = os.path.join(args.output_dir, args.output_filename_prefix+'.csv')
     save_loss_plots(model, save_file, data_dict)
-
-
+    
+    # save the model
+    model_filename = os.path.join(args.output_dir, args.output_filename_prefix+'-weights.h5')
+    model.model.save_weights(model_filename, save_format='h5')
+    
+    # save some additional performance 
+    perf_save_file = os.path.join(args.output_dir, 'final_perf_'+args.output_filename_prefix+'.csv')
+    model_perf_df = pd.DataFrame([{'train_AUC' : train_roc_auc, 
+                                   'valid_AUC' : valid_roc_auc, 
+                                   'test_AUC' : test_roc_auc}])
     
     
+    model_perf_df.to_csv(perf_save_file, index=False)
+        
     '''
     Debugging code
     

@@ -349,7 +349,7 @@ if __name__ == '__main__':
     
 #     make_precision_recall_boxplots(precisions_train_sl_loose, precisions_valid_sl_loose, precisions_test_sl_loose, recalls_train_sl_loose, recalls_valid_sl_loose, recalls_test_sl_loose, 'lr_precision_recall_boxplot_sl_loose', '(Surrogate Loss Hinge Bound)')
     
-    from IPython import embed; embed()
+#     from IPython import embed; embed()
     best_files_dict = dict()
     best_perf_dict = dict()
     for ii, (method, prcs_train, recs_train, prcs_valid, recs_valid, prcs_test, recs_test, tr_files) in enumerate([
@@ -393,8 +393,8 @@ if __name__ == '__main__':
          training_files_sl_loose)
     ]):
         
-        min_prec_tr = 0.9
-        min_prec_va = 0.8
+        min_prec_tr = 0.7
+        min_prec_va = 0.6
         keep_inds = (prcs_train>min_prec_tr)&(prcs_valid>min_prec_va)
         
         if keep_inds.sum()==0:
@@ -437,11 +437,68 @@ if __name__ == '__main__':
         best_perf_dict[method]['recall_test'] = recs_test[best_ind]
 
     
+    ## get the 5th, 50th and 95th percentile of recall scores
+    random_seed_list = [111, 412, 5318, 90, 101, 8491, 8213, 1721, 1, 58, 892, 55, 623, 199, 1829, 902, 1992, 24, 8]  
+    
+    for ii, (method, best_model_fname, thr) in enumerate([
+        ('Sigmoid bound', best_files_dict['direct min precision'], .5),
+        ('BCE + Threshold search', best_files_dict['bce + threshold search'], .9696),
+        ('Hinge Bound', best_files_dict['Surrogate Loss (Hinge Bound)'], .5)
+    ]):
+        
+        skorch_lr_clf = SkorchLogisticRegression(n_features=x_test.shape[1])
+        skorch_lr_clf.initialize()
+        skorch_lr_clf.load_params(f_params=os.path.join(clf_models_dir,
+                                                        best_model_fname.replace('_perf.csv', 'params.pt')))
+
+        y_train_pred_probas = skorch_lr_clf.predict_proba(x_train_transformed)[:,1]
+        y_train_preds = y_train_pred_probas>=thr       
+        
+        y_test_pred_probas = skorch_lr_clf.predict_proba(x_test_transformed)[:,1]
+        y_test_preds = y_test_pred_probas>=thr
+        
+        
+        precisions_train_np, precisions_test_np = np.zeros(len(random_seed_list)), np.zeros(len(random_seed_list))
+        recalls_train_np, recalls_test_np = np.zeros(len(random_seed_list)), np.zeros(len(random_seed_list))
+        for k, seed in enumerate(random_seed_list):
+            rnd_inds_tr = random.sample(range(x_train_transformed.shape[0]), int(0.8*x_train_transformed.shape[0])) 
+            precisions_train_np[k] = precision_score(y_train[rnd_inds_tr], y_train_preds[rnd_inds_tr])
+            recalls_train_np[k] = recall_score(y_train[rnd_inds_tr], y_train_preds[rnd_inds_tr])
+            
+            rnd_inds_te = random.sample(range(x_test.shape[0]), int(0.8*x_test.shape[0])) 
+            precisions_test_np[k] = precision_score(y_test[rnd_inds_te], y_test_preds[rnd_inds_te])
+            recalls_test_np[k] = recall_score(y_test[rnd_inds_te], y_test_preds[rnd_inds_te])           
+        
+        print('Method : %s'%method)
+        train_perf_dict = {'precision_5' : np.percentile(precisions_train_np, 5),
+                             'precision_50' : np.percentile(precisions_train_np, 50),
+                             'precision_95' : np.percentile(precisions_train_np, 95),
+                             'recall_5' : np.percentile(recalls_train_np, 5),
+                             'recall_50' : np.percentile(recalls_train_np, 50),
+                             'recall_95' : np.percentile(recalls_train_np, 95),}
+
+        
+        test_perf_dict = {'precision_5' : np.percentile(precisions_test_np, 5),
+                             'precision_50' : np.percentile(precisions_test_np, 50),
+                             'precision_95' : np.percentile(precisions_test_np, 95),
+                             'recall_5' : np.percentile(recalls_test_np, 5),
+                             'recall_50' : np.percentile(recalls_test_np, 50),
+                             'recall_95' : np.percentile(recalls_test_np, 95),}
+        print('Training set performance : ')
+        print(train_perf_dict)
+        
+        print('Test set performance : ')
+        print(test_perf_dict)
+        
+        
+    
+    
+    
     ### select 1 classifier and plot its precision and recalls across many thresholds on train, valid and test
     f_tr, axs_tr = plt.subplots(1, 1, figsize=(8, 8))
     f_va, axs_va = plt.subplots(1, 1, figsize=(8, 8))
     f_te, axs_te = plt.subplots(1, 1, figsize=(8, 8))
-    sns.set_context("notebook", font_scale=1.25)
+    sns.set_context("notebook", font_scale=1.75)
     sns.set_style("whitegrid")
     fontsize=12
     for ii, (method, best_model_fname, model_color, chosen_prec_recall_dict) in enumerate([
@@ -494,7 +551,7 @@ if __name__ == '__main__':
             axs.plot(recs, precs, color=model_color, label=method, linewidth=3, zorder=1)
 #             axs[jj].plot(chosen_rec, chosen_prec, color=model_color, marker = 'x', markersize=8)
             axs.set_ylabel('Target precision', fontsize=fontsize+2)
-            axs.set_title('Recalls at target precision on %s'%split, fontsize=fontsize+4)
+            axs.set_title('Recalls at target precision (%s set)'%split, fontsize=fontsize+4)
             xmin = -0.003
             xmax = 0.35
             ymin = 0.35
@@ -511,18 +568,18 @@ if __name__ == '__main__':
             
             if ii==2:
                 axs.plot(recs[chosen_thresh_ind], precs[chosen_thresh_ind], color='k', marker='+', mew=3, markersize=25,
-                            label='chosen target_precision', zorder=2)   
+                            label='selected operating point', zorder=2)   
             else:
                 axs.plot(recs[chosen_thresh_ind], precs[chosen_thresh_ind], color='k', marker='+', mew=3, markersize=25, zorder=2)                  
             
             axs.legend(fontsize=fontsize)
 #     f.savefig('skorch_lr_recalls_at_various_target_precisions.png', pad_inches=0)
-#         f.savefig('skorch_lr_recalls_at_various_target_precisions_%s.pdf'%split, bbox_inches='tight', pad_inches=0)
-#         f.savefig('skorch_lr_recalls_at_various_target_precisions_%s.png'%split, bbox_inches='tight', 
-#                   pad_inches=0.5)
+        f.savefig('skorch_lr_recalls_at_various_target_precisions_%s.pdf'%split, bbox_inches='tight', pad_inches=0)
+        f.savefig('skorch_lr_recalls_at_various_target_precisions_%s.png'%split, bbox_inches='tight', 
+                  pad_inches=0.5)
     
     
-    
+    from IPython import embed; embed()
     ## plot the PR curve
     f, axs = plt.subplots(2, 2, figsize=(15, 15))
     sns.set_context("notebook", font_scale=1.25)

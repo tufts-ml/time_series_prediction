@@ -28,6 +28,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from split_dataset import Splitter
 from skorch.dataset import Dataset
 from skorch.helper import predefined_split
+from sklearn.linear_model import LogisticRegression
 
 # define callbacks
 def calc_surrogate_loss_skorch_callback(net, X, y):
@@ -124,7 +125,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int)
     parser.add_argument('--seed', type=int, default=1111)
     parser.add_argument('--n_splits', type=int, default=2)
-    parser.add_argument('--lamb', type=int, default=1000)
+    parser.add_argument('--lamb', type=float, default=1000)
     parser.add_argument('--warm_start', type=str, default='true')
     parser.add_argument('--merge_x_y', default=True,
                                 type=lambda x: (str(x).lower() == 'true'), required=False)
@@ -209,7 +210,8 @@ if __name__ == '__main__':
                  'N_test' : len(x_test),
                  'pos_frac_train' : y_train.sum()/len(y_train),
                  'pos_frac_valid' : y_valid.sum()/len(y_valid),
-                 'pos_frac_test' : y_test.sum()/len(y_test)
+                 'pos_frac_test' : y_test.sum()/len(y_test),
+                 'N_features' : x_tr.shape[1]
                  }
     
     print(split_dict)
@@ -233,7 +235,7 @@ if __name__ == '__main__':
     torch.manual_seed(args.seed)
     
     # set max_epochs 
-    max_epochs=500
+    max_epochs=200
     
     # define callbacks 
     epoch_scoring_precision_train = EpochScoring('precision', lower_is_better=False, on_train=True,
@@ -394,14 +396,137 @@ if __name__ == '__main__':
         else:
             print('Could not find thresholds achieving fixed precision of %.2f. Evaluating with threshold 0.5'%fixed_precision)
         
+    
+    elif args.scoring == 'surrogate_loss_sigmoid_with_wbce_init':
+        class_0_pen = 1.0 
+        class_1_pen = 0.25
+        
+        lr_clf = LogisticRegression(solver='lbfgs', 
+                                    max_iter=10000, 
+                                    tol=1e-6, 
+                                    class_weight={0 : class_0_pen, 1 : class_1_pen}, 
+                                    verbose=1)
+        
+        # initialize with weight cross entropy
+        print('Initializing with weighted cross entropy..')
+        lr_clf.fit(x_train_transformed, y_train)
+        
+        # transfer weights
+        print('Transferring weights and training with surrogate sigmoid loss..')
+        logistic_clf = SkorchLogisticRegression(n_features=len(feature_cols), 
+                                            l2_penalty_weights=args.weight_decay, 
+                                            lr=1e-5, 
+                                            batch_size=args.batch_size,  
+                                            max_epochs=6,# temporary 
+                                            train_split=predefined_split(valid_ds), 
+                                            loss_name='surrogate_loss_tight', 
+                                            min_precision=fixed_precision, 
+                                            constraint_lambda=0.2, 
+                                            callbacks=[epoch_scoring_precision_train, 
+                                                       epoch_scoring_precision_valid, 
+                                                       epoch_scoring_recall_train, 
+                                                       epoch_scoring_recall_valid, 
+                                                       epoch_scoring_surr_loss_train, 
+                                                       epoch_scoring_surr_loss_valid, 
+                                                       epoch_scoring_bce_loss_train, 
+                                                       epoch_scoring_bce_loss_valid, 
+                                                       tpl_bound_train, 
+                                                       tpl_bound_valid, 
+                                                       fpu_bound_train, 
+                                                       fpu_bound_valid, 
+                                                       calc_tp_train, 
+                                                       calc_tp_valid, 
+                                                       calc_fp_train, 
+                                                       calc_fp_valid,
+                                                       cp, train_end_cp], 
+                                            optimizer=torch.optim.Adam) 
+        
+        logistic_clf.initialize()
+        
+        D = len(feature_cols) 
+        
+        # get sklearn weights and bias stacked into np array
+        sklearn_lr_balanced_weights_ = np.hstack((lr_clf.coef_, lr_clf.intercept_[:,None]))[0]  
+        
+        
+        
+        logistic_clf.module_.linear_transform_layer.weight.data[0] = torch.tensor(sklearn_lr_balanced_weights_[:D],
+                                                                              dtype=torch.float64)
+        logistic_clf.module_.linear_transform_layer.bias.data = torch.tensor(sklearn_lr_balanced_weights_[-1], 
+                                                                         dtype=torch.float64) 
+        
+        logistic_clf.partial_fit(x_train_transformed, y_train) 
+        
+    elif args.scoring == 'surrogate_loss_hinge_with_wbce_init':
+        class_0_pen = 1.0 
+        class_1_pen = 0.5
+        
+        lr_clf = LogisticRegression(solver='lbfgs', 
+                                    max_iter=10000, 
+                                    tol=1e-6, 
+                                    class_weight={0 : class_0_pen, 1 : class_1_pen}, 
+                                    verbose=1)
+        
+        # initialize with weight cross entropy
+        print('Initializing with weighted cross entropy..')
+        lr_clf.fit(x_train_transformed, y_train)
+        
+        # transfer weights
+        print('Transferring weights and training with surrogate hinge loss..')
+        logistic_clf = SkorchLogisticRegression(n_features=len(feature_cols), 
+                                            l2_penalty_weights=args.weight_decay, 
+                                            lr=1e-5, 
+                                            batch_size=args.batch_size,  
+                                            max_epochs=6,# temporary 
+                                            train_split=predefined_split(valid_ds), 
+                                            loss_name='surrogate_loss_loose', 
+                                            min_precision=fixed_precision, 
+                                            constraint_lambda=0.2, 
+                                            callbacks=[epoch_scoring_precision_train, 
+                                                       epoch_scoring_precision_valid, 
+                                                       epoch_scoring_recall_train, 
+                                                       epoch_scoring_recall_valid, 
+                                                       epoch_scoring_surr_loss_train, 
+                                                       epoch_scoring_surr_loss_valid, 
+                                                       epoch_scoring_bce_loss_train, 
+                                                       epoch_scoring_bce_loss_valid, 
+                                                       tpl_bound_train, 
+                                                       tpl_bound_valid, 
+                                                       fpu_bound_train, 
+                                                       fpu_bound_valid, 
+                                                       calc_tp_train, 
+                                                       calc_tp_valid, 
+                                                       calc_fp_train, 
+                                                       calc_fp_valid,
+                                                       cp, train_end_cp], 
+                                            optimizer=torch.optim.Adam) 
+        
+        logistic_clf.initialize()
+        
+        D = len(feature_cols) 
+        
+        # get sklearn weights and bias stacked into np array
+        sklearn_lr_balanced_weights_ = np.hstack((lr_clf.coef_, lr_clf.intercept_[:,None]))[0]  
+        
+        
+        
+        logistic_clf.module_.linear_transform_layer.weight.data[0] = torch.tensor(sklearn_lr_balanced_weights_[:D],
+                                                                              dtype=torch.float64)
+        logistic_clf.module_.linear_transform_layer.bias.data = torch.tensor(sklearn_lr_balanced_weights_[-1], 
+                                                                         dtype=torch.float64) 
+        
+        logistic_clf.partial_fit(x_train_transformed, y_train) 
+    
+    
     elif (args.scoring == 'surrogate_loss_tight')|(args.scoring == 'surrogate_loss_loose'):
         if args.warm_start == 'true':
             print('Warm starting by minimizing cross entropy loss first...')
             # warm start classifier and train with miminizing cross entropy loss first
+            
             logistic_init = SkorchLogisticRegression(n_features=len(feature_cols),
                                                 l2_penalty_weights=args.weight_decay,
     #                                             l2_penalty_bias=args.weight_decay,
-                                                lr=0.05,
+                                                lr=0.001,
                                                 batch_size=args.batch_size, 
                                                 max_epochs=max_epochs,
                                                 train_split=predefined_split(valid_ds),
@@ -414,6 +539,8 @@ if __name__ == '__main__':
                                                            epoch_scoring_surr_loss_valid,
                                                            epoch_scoring_bce_loss_train,
                                                            epoch_scoring_bce_loss_valid,
+                                                           epoch_scoring_auprc_train,
+                                                           epoch_scoring_auprc_valid,
                                                            tpl_bound_train,
                                                            tpl_bound_valid,
                                                            fpu_bound_train,
@@ -431,8 +558,7 @@ if __name__ == '__main__':
 
             # transfer the weights and to a new instance of SkorchLogisticRegression and train minimizing surrogate loss
             print('Transferring weights and training to minimize surrogate loss...')
-
-
+            
             D = len(feature_cols)
             logistic = SkorchLogisticRegression(n_features=len(feature_cols),
                                                 l2_penalty_weights=args.weight_decay,
@@ -469,9 +595,10 @@ if __name__ == '__main__':
             # load the past history
             logistic.load_params(checkpoint=cp)
             
-            # add perturbation to weights ~ NormPDF(0,1)
-            buffer_w = 0.5*torch.randn(D).double()
-            buffer_b = 0.5*torch.randn(1).double()
+            torch.manual_seed(args.seed)
+            # add perturbation to weights ~ NormPDF(0,0.1)
+            buffer_w = 0.001*torch.randn(D).double()
+            buffer_b = 0.001*torch.randn(1).double()
             
             # load the weights
             logistic.module_.linear_transform_layer.weight.data = logistic_init_clf.module_.linear_transform_layer.weight.data + buffer_w
@@ -513,7 +640,6 @@ if __name__ == '__main__':
                                                            cp, train_end_cp],
                                                optimizer=torch.optim.Adam)
             
-#            from IPython import embed; embed()
             logistic_clf = logistic.fit(x_train_transformed, y_train)
 
         

@@ -10,6 +10,8 @@ snakemake --cores 1 --snakefile handle_missing_data_and_split_train_test_feature
 
 snakemake --cores 1 --snakefile handle_missing_data_and_split_train_test_features_per_tslice.smk split_into_train_and_test
 
+snakemake --cores 1 --snakefile handle_missing_data_and_split_train_test_features_per_tslice.smk split_first_24_hours_into_train_and_test
+
 snakemake --cores 1 --snakefile handle_missing_data_and_split_train_test_features_per_tslice.smk impute_missing_values_and_normalize_data_first_24_hours
 
 '''
@@ -116,11 +118,13 @@ rule split_first_24_hours_into_train_and_test:
         y_json=os.path.join(DATASET_STD_PATH, 'Spec_OutcomesPerSequence.json')
 
     output:
-        x_dict=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_dict.json'),
+        x_dict=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_dict_first_24_hours.json'),
         y_dict=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_dict.json'),
         x_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_train_first_24_hours.csv'),
+        x_valid_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_valid_first_24_hours.csv'),
         x_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_test_first_24_hours.csv'),
         y_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_train_first_24_hours.csv'),
+        y_valid_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_valid_first_24_hours.csv'),
         y_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_test_first_24_hours.csv')
 
     conda:
@@ -135,6 +139,7 @@ rule split_first_24_hours_into_train_and_test:
                 --test_size {split_test_size} \
                 --group_cols {split_key_col_names} \
                 --train_csv_filename {{output.x_train_csv}} \
+                --valid_csv_filename {{output.x_valid_csv}} \
                 --test_csv_filename {{output.x_test_csv}} \
                 --output_data_dict_filename {{output.x_dict}} \
 
@@ -145,6 +150,7 @@ rule split_first_24_hours_into_train_and_test:
                 --test_size {split_test_size} \
                 --group_cols {split_key_col_names} \
                 --train_csv_filename {{output.y_train_csv}} \
+                --valid_csv_filename {{output.y_valid_csv}} \
                 --test_csv_filename {{output.y_test_csv}} \
                 --output_data_dict_filename {{output.y_dict}} \
         '''.format(

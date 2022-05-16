@@ -63,7 +63,7 @@ rule make_collapsed_features_for_dynamic_output_prediction:
             --dynamic_collapsed_features_data_dict "{output.collapsed_features_dynamic_json}" \
             --dynamic_outcomes_csv "{output.outputs_dynamic_features_csv}" \
             --features_to_summarize "std time_since_measured count slope median min max last_value_measured" \
-            --percentile_ranges_to_summarize "[('90', '100'), ('0', '100')]" \
+            --percentile_ranges_to_summarize "[('50', '100'), ('0', '100'), ('T-16h','T-0h'), ('T-24h','T-0h')]" \
         '''
 
 rule split_into_train_and_test:

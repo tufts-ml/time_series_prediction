@@ -3,7 +3,9 @@ Train PC-HMM ON Toy Overheat Binary Classification
 
 Usage
 -----
-snakemake --cores all --snakefile train_pchmm.smk train_and_evaluate_classifier_many_hyperparams
+snakemake --cores 1 --snakefile train_pchmm.smk train_and_evaluate_classifier_many_hyperparams
+
+snakemake --snakefile train_pchmm.smk --profile ../../../../profiles/hugheslab_cluster/ 
 
 '''
 
@@ -23,24 +25,26 @@ print("Results will be saved in : %s"%RESULTS_FEAT_PER_TSTEP_PATH)
 
 rule train_and_evaluate_classifier_many_hyperparams:
     input:
-        [os.path.join(RESULTS_FEAT_PER_TSTEP_PATH,"pchmm-lr={lr}-seed={seed}-batch_size={batch_size}-lamb={lamb}.csv").format(lr=lr, seed=seed, batch_size=batch_size, lamb=lamb) for lr in config['lr'] for seed in config['seed'] for batch_size in config['batch_size'] for lamb in config['lamb']]
+        [os.path.join(RESULTS_FEAT_PER_TSTEP_PATH,"pchmm-missing_handling={missing_handling}-perc_obs={perc_obs}-lr={lr}-seed={seed}-batch_size={batch_size}-lamb={lamb}.csv").format(lr=lr, seed=seed, perc_obs=perc_obs, batch_size=batch_size, lamb=lamb, missing_handling=missing_handling) for missing_handling in config['missing_handling'] for perc_obs in config['perc_obs'] for lr in config['lr'] for seed in config['seed'] for batch_size in config['batch_size'] for lamb in config['lamb']]
         
 rule train_and_evaluate_classifier:
     input:
         script=os.path.join(PROJECT_REPO_DIR, 'src', 'PC-HMM', 'main.py'),
-        x_train_csv=os.path.join(DATASET_SPLIT_PATH, 'x_train.csv'),
-        x_test_csv=os.path.join(DATASET_SPLIT_PATH, 'x_test.csv'),
-        y_train_csv=os.path.join(DATASET_SPLIT_PATH, 'y_train.csv'),
-        y_test_csv=os.path.join(DATASET_SPLIT_PATH, 'y_test.csv'),
-        x_dict_json=os.path.join(DATASET_SPLIT_PATH, 'x_dict.json'),
-        y_dict_json=os.path.join(DATASET_SPLIT_PATH, 'y_dict.json')
+        x_train_csv=os.path.join(DATASET_SPLIT_PATH, 'x_train_{missing_handling}_observed={perc_obs}_perc.csv'),
+        x_valid_csv=os.path.join(DATASET_SPLIT_PATH, 'x_valid_{missing_handling}_observed={perc_obs}_perc.csv'),
+        x_test_csv=os.path.join(DATASET_SPLIT_PATH, 'x_test_{missing_handling}_observed={perc_obs}_perc.csv'),
+        y_train_csv=os.path.join(DATASET_SPLIT_PATH, 'y_train_{missing_handling}_observed={perc_obs}_perc.csv'),
+        y_valid_csv=os.path.join(DATASET_SPLIT_PATH, 'y_valid_{missing_handling}_observed={perc_obs}_perc.csv'),
+        y_test_csv=os.path.join(DATASET_SPLIT_PATH, 'y_test_{missing_handling}_observed={perc_obs}_perc.csv'),
+        x_dict_json=os.path.join(DATASET_SPLIT_PATH, 'x_dict_{missing_handling}_observed={perc_obs}_perc.json'),
+        y_dict_json=os.path.join(DATASET_SPLIT_PATH, 'y_dict_{missing_handling}_observed={perc_obs}_perc.json')
 
     params:
         output_dir=RESULTS_FEAT_PER_TSTEP_PATH,
-        fn_prefix="pchmm-lr={lr}-seed={seed}-batch_size={batch_size}-lamb={lamb}"
+        fn_prefix="pchmm-missing_handling={missing_handling}-perc_obs={perc_obs}-lr={lr}-seed={seed}-batch_size={batch_size}-lamb={lamb}"
     
     output:
-        os.path.join(RESULTS_FEAT_PER_TSTEP_PATH, "pchmm-lr={lr}-seed={seed}-batch_size={batch_size}-lamb={lamb}.csv")
+        os.path.join(RESULTS_FEAT_PER_TSTEP_PATH, "pchmm-missing_handling={missing_handling}-perc_obs={perc_obs}-lr={lr}-seed={seed}-batch_size={batch_size}-lamb={lamb}.csv")
         
     conda:
         PROJECT_CONDA_ENV_YAML
@@ -52,6 +56,7 @@ rule train_and_evaluate_classifier:
             --outcome_col_name did_overheat_binary_label \
             --output_dir {params.output_dir} \
             --train_csv_files {input.x_train_csv},{input.y_train_csv} \
+            --valid_csv_files {input.x_valid_csv},{input.y_valid_csv} \
             --test_csv_files {input.x_test_csv},{input.y_test_csv} \
             --data_dict_files {input.x_dict_json},{input.y_dict_json} \
             --validation_size 0.15 \
@@ -60,4 +65,5 @@ rule train_and_evaluate_classifier:
             --batch_size {wildcards.batch_size} \
             --output_filename_prefix {params.fn_prefix} \
             --lamb {wildcards.lamb} \
+            --missing_handling {wildcards.missing_handling} \
         '''

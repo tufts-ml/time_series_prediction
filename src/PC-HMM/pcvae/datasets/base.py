@@ -115,7 +115,9 @@ class classification_dataset(labeled_dataset):
         return ynew
 
     def get_metrics(self):
-        return [tf.keras.metrics.CategoricalAccuracy(name='accuracy'), tf.keras.metrics.AUC(name='AUC')]
+        return [tf.keras.metrics.CategoricalAccuracy(name='accuracy'), 
+                tf.keras.metrics.AUC(name='AUC'),
+                tf.keras.metrics.AUC(curve='PR', name='AUPRC')]
 
 
 class regression_dataset(labeled_dataset):

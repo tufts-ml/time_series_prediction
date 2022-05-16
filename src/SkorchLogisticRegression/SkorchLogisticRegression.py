@@ -318,7 +318,7 @@ class SkorchLogisticRegression(skorch.NeuralNet):
                                                                 lamb=self.constraint_lambda, bounds='loose') 
             
         loss_.backward()
-        torch.nn.utils.clip_grad_norm_(self.module_.parameters(), self.clip)
+#         torch.nn.utils.clip_grad_norm_(self.module_.parameters(), self.clip)
         self.notify(
             'on_grad_computed',
             named_parameters=TeeGenerator(self.module_.named_parameters()),

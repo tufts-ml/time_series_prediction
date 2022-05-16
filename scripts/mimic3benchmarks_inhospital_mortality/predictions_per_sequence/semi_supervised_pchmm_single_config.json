@@ -1,8 +1,10 @@
 {
-    "lr": [0.03],
-    "seed" : [5121],
-    "batch_size" : [256],
-    "lamb" : [100000],
-    "n_states" : [10],
-    "perc_labelled" : [10],
+    "lr": [0.1],
+    "seed" : [1231, 542, 856, 3421],
+    "batch_size" : [128, 512],
+    "lamb" : [100],
+    "n_states" : [30],
+    "perc_labelled" : [100],
+    "predictor_l2_penalty" : [0, 1e-3],
+    "init_strategy" : ["kmeans"]
 }

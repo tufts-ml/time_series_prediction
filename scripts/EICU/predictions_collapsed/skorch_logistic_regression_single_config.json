@@ -1,11 +1,12 @@
 {
-    "lr": [0.05],
-    "batch_size": [-1],
-    "weight_decay": [1e-3],
-    "scoring" : ["cross_entropy_loss"],
-    "lamb" : [10000],
+    "lr": [1e-7],
+    "batch_size": [512],
+    "weight_decay": [1e-5],
+    "scoring" : ["surrogate_loss_hinge_with_wbce_init"],
+    "lamb" : [0.2],
     "incremental_min_precision" : ["false"],
-    "initialization_gain" : [1.0],
+    "initialization_gain" : [5.0],
     "warm_start" : ["false"],
-    "seed" : [111]
+    "tighten_bounds" : ["false"],
+    "seed" : [5666]
 }

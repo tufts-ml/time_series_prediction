@@ -29,6 +29,7 @@ import random
 import pickle
 import glob
 import seaborn as sns
+from split_dataset import Splitter
 
 def get_best_model(clf_models_dir, filename_aka):
     ''' Get the best model from training history'''
@@ -188,7 +189,6 @@ def get_all_precision_recalls(clf_models_dir, filename_aka):
         recall_test_np[i] = training_hist_df.recall_test.values[-1]
         
     
-#     from IPython import embed; embed()
     precision_train_unfiltered = precision_train_np
     precision_valid_unfiltered = precision_valid_np
     precision_test_unfiltered = precision_test_np
@@ -210,7 +210,7 @@ def get_all_precision_recalls(clf_models_dir, filename_aka):
 #     best_model_ind = np.argmax(recall_valid_np)
     
 
-    return precision_train_unfiltered, precision_valid_unfiltered, precision_test_unfiltered, recall_train_unfiltered, recall_valid_unfiltered, recall_test_unfiltered
+    return precision_train_unfiltered, precision_valid_unfiltered, precision_test_unfiltered, recall_train_unfiltered, recall_valid_unfiltered, recall_test_unfiltered, training_files
   
 def make_precision_recall_boxplots(precision_train_np, precision_valid_np, precision_test_np, recall_train_np, recall_valid_np, recall_test_np, plt_name, title_str=''):
     # plot he boxplot of precision recall
@@ -251,9 +251,15 @@ if __name__ == '__main__':
     
     ## get the test patient id's
     # get the test set's csv and dict
+    x_train_df = pd.read_csv(os.path.join(args.clf_train_test_split_dir, 'x_train.csv'))
+    y_train_df = pd.read_csv(os.path.join(args.clf_train_test_split_dir, 'y_train.csv'))
+    
+#     x_valid_df = pd.read_csv(os.path.join(args.clf_train_test_split_dir, 'x_valid.csv'))
+#     y_valid_df = pd.read_csv(os.path.join(args.clf_train_test_split_dir, 'y_valid.csv'))
+    
+    x_test_df = pd.read_csv(os.path.join(args.clf_train_test_split_dir, 'x_test.csv'))
     y_test_df = pd.read_csv(os.path.join(args.clf_train_test_split_dir, 'y_test.csv'))
     y_test_dict_file = os.path.join(args.clf_train_test_split_dir, 'y_dict.json')
-    x_test_df = pd.read_csv(os.path.join(args.clf_train_test_split_dir, 'x_test.csv'))
     x_test_dict_file = os.path.join(args.clf_train_test_split_dir, 'x_dict.json')
     
     # import the y dict to get the id cols
@@ -261,16 +267,36 @@ if __name__ == '__main__':
     x_test_dict = load_data_dict_json(x_test_dict_file)
     id_cols = parse_id_cols(y_test_dict)
     feature_cols = parse_feature_cols(x_test_dict)
-    
     outcome_col = args.outcome_column_name
-    y_test_ids_df = y_test_df[id_cols].drop_duplicates(subset=id_cols).reset_index(drop=True)
-    
 #     # get performance metrics
-    x_test = x_test_df[feature_cols].values
-    y_test = y_test_df[outcome_col].values
+    x_train = x_train_df[feature_cols].values.astype(np.float32)
+    y_train = y_train_df[outcome_col].values
 
+    x_test = x_test_df[feature_cols].values.astype(np.float32)
+    y_test = y_test_df[outcome_col].values
+    
+    
+    # get the validation data
+    splitter = Splitter(size=0.25, random_state=41,
+                        n_splits=1, 
+                        cols_to_group='subject_id')
+    # Assign training instances to splits by provided keys
+    key_train = splitter.make_groups_from_df(x_train_df[id_cols])
+    
+    for ss, (tr_inds, va_inds) in enumerate(splitter.split(x_train, y_train, groups=key_train)):
+        x_tr = x_train[tr_inds].copy()
+        y_tr = y_train[tr_inds].copy()
+        x_valid = x_train[va_inds]
+        y_valid = y_train[va_inds]
+    
+    y_train = y_tr
+    del(y_tr)
+    
+    
     # load the scaler
     scaler = pickle.load(open(os.path.join(clf_models_dir, 'scaler.pkl'), 'rb'))
+    x_train_transformed = scaler.transform(x_tr)
+    x_valid_transformed = scaler.transform(x_valid)
     x_test_transformed = scaler.transform(x_test)
 
     '''    
@@ -286,46 +312,49 @@ if __name__ == '__main__':
     
 #     plot_all_models_training_plots(clf_models_dir, sl_rand_init_direct_min_precision_filename_aka, 'skorch_mlp_direct_min_precision')
     
-    precisions_train_direct_min_precision, precisions_valid_direct_min_precision, precisions_test_direct_min_precision, recalls_train_direct_min_precision, recalls_valid_direct_min_precision, recalls_test_direct_min_precision = get_all_precision_recalls(clf_models_dir, sl_rand_init_direct_min_precision_filename_aka.replace('history.json', '.csv'))
+    precisions_train_direct_min_precision, precisions_valid_direct_min_precision, precisions_test_direct_min_precision, recalls_train_direct_min_precision, recalls_valid_direct_min_precision, recalls_test_direct_min_precision, training_files_direct_min_precision = get_all_precision_recalls(clf_models_dir, sl_rand_init_direct_min_precision_filename_aka.replace('history.json', '.csv'))
     
-   
-    make_precision_recall_boxplots(precisions_train_direct_min_precision, precisions_valid_direct_min_precision, precisions_test_direct_min_precision, recalls_train_direct_min_precision, recalls_valid_direct_min_precision, recalls_test_direct_min_precision, 'mlp_precision_recall_boxplot_direct_min_precision', '(Direct)')
+    
+#     make_precision_recall_boxplots(precisions_train_direct_min_precision, precisions_valid_direct_min_precision, precisions_test_direct_min_precision, recalls_train_direct_min_precision, recalls_valid_direct_min_precision, recalls_test_direct_min_precision, 'mlp_precision_recall_boxplot_direct_min_precision', '(Direct)')
 
-    sl_bce_perturb_filename_aka = 'skorch_mlp*surrogate_loss_tight*warm_start=true*history.json'
+#     sl_bce_perturb_filename_aka = 'skorch_mlp*surrogate_loss_tight*warm_start=true*history.json'
     
 #     plot_all_models_training_plots(clf_models_dir, sl_bce_perturb_filename_aka, 'skorch_mlp_bce_perturb')
     
-    precisions_train_bce_perturb, precisions_valid_bce_perturb, precisions_test_bce_perturb, recalls_train_bce_perturb, recalls_valid_bce_perturb, recalls_test_bce_perturb = get_all_precision_recalls(clf_models_dir, sl_bce_perturb_filename_aka.replace('history.json', '.csv'))
+#     precisions_train_bce_perturb, precisions_valid_bce_perturb, precisions_test_bce_perturb, recalls_train_bce_perturb, recalls_valid_bce_perturb, recalls_test_bce_perturb = get_all_precision_recalls(clf_models_dir, sl_bce_perturb_filename_aka.replace('history.json', '.csv'))
     
     
-    make_precision_recall_boxplots(precisions_train_bce_perturb, precisions_valid_bce_perturb, precisions_test_bce_perturb, recalls_train_bce_perturb, recalls_valid_bce_perturb, recalls_test_bce_perturb, 'mlp_precision_recall_boxplot_bce_perturb', '(BCE + Perturbation)')
+#     make_precision_recall_boxplots(precisions_train_bce_perturb, precisions_valid_bce_perturb, precisions_test_bce_perturb, recalls_train_bce_perturb, recalls_valid_bce_perturb, recalls_test_bce_perturb, 'mlp_precision_recall_boxplot_bce_perturb', '(BCE + Perturbation)')
     
     bce_plus_thresh_filename_aka = 'skorch_mlp*cross_entropy_loss*warm_start=false*history.json'
     
 #     plot_all_models_training_plots(clf_models_dir, bce_plus_thresh_filename_aka, 'skorch_mlp_bce_plus_thresh')
     
-    precisions_train_bce_plus_thresh, precisions_valid_bce_plus_thresh, precisions_test_bce_plus_thresh, recalls_train_bce_plus_thresh, recalls_valid_bce_plus_thresh, recalls_test_bce_plus_thresh = get_all_precision_recalls(clf_models_dir, bce_plus_thresh_filename_aka.replace('history.json', '.csv'))
+    precisions_train_bce_plus_thresh, precisions_valid_bce_plus_thresh, precisions_test_bce_plus_thresh, recalls_train_bce_plus_thresh, recalls_valid_bce_plus_thresh, recalls_test_bce_plus_thresh, training_files_bce_plus_thresh = get_all_precision_recalls(clf_models_dir, bce_plus_thresh_filename_aka.replace('history.json', '.csv'))
     
     
-    make_precision_recall_boxplots(precisions_train_bce_plus_thresh, precisions_valid_bce_plus_thresh, precisions_test_bce_plus_thresh, recalls_train_bce_plus_thresh, recalls_valid_bce_plus_thresh, recalls_test_bce_plus_thresh, 'lr_precision_recall_boxplot_bce_plus_thresh', '(BCE + Threshold Search)')
+#     make_precision_recall_boxplots(precisions_train_bce_plus_thresh, precisions_valid_bce_plus_thresh, precisions_test_bce_plus_thresh, recalls_train_bce_plus_thresh, recalls_valid_bce_plus_thresh, recalls_test_bce_plus_thresh, 'lr_precision_recall_boxplot_bce_plus_thresh', '(BCE + Threshold Search)')
    
     sl_loose_filename_aka = 'skorch_mlp*surrogate_loss_loose*warm_start=false*history.json'
     
 #     plot_all_models_training_plots(clf_models_dir, sl_loose_filename_aka, 'skorch_mlp_sl_loose')
     
-    precisions_train_sl_loose, precisions_valid_sl_loose, precisions_test_sl_loose, recalls_train_sl_loose, recalls_valid_sl_loose, recalls_test_sl_loose = get_all_precision_recalls(clf_models_dir, sl_loose_filename_aka.replace('history.json', '.csv'))
+    precisions_train_sl_loose, precisions_valid_sl_loose, precisions_test_sl_loose, recalls_train_sl_loose, recalls_valid_sl_loose, recalls_test_sl_loose, training_files_sl_loose = get_all_precision_recalls(clf_models_dir, sl_loose_filename_aka.replace('history.json', '.csv'))
     
     
-    make_precision_recall_boxplots(precisions_train_sl_loose, precisions_valid_sl_loose, precisions_test_sl_loose, recalls_train_sl_loose, recalls_valid_sl_loose, recalls_test_sl_loose, 'mlp_precision_recall_boxplot_sl_loose', '(Surrogate Loss Hinge Bound)')
+#     make_precision_recall_boxplots(precisions_train_sl_loose, precisions_valid_sl_loose, precisions_test_sl_loose, recalls_train_sl_loose, recalls_valid_sl_loose, recalls_test_sl_loose, 'mlp_precision_recall_boxplot_sl_loose', '(Surrogate Loss Hinge Bound)')
 
-    for ii, (method, prcs_train, recs_train, prcs_valid, recs_valid, prcs_test, recs_test) in enumerate([
+    best_files_dict = dict()
+    best_perf_dict = dict()
+    for ii, (method, prcs_train, recs_train, prcs_valid, recs_valid, prcs_test, recs_test, tr_files) in enumerate([
         ('direct min precision', 
          precisions_train_direct_min_precision,
          recalls_train_direct_min_precision,
          precisions_valid_direct_min_precision,
          recalls_valid_direct_min_precision,
          precisions_test_direct_min_precision,
-         recalls_test_direct_min_precision),
+         recalls_test_direct_min_precision,
+         training_files_direct_min_precision),
 #         ('incremental min precision',
 #          precisions_train_incremental_min_precision,
 #          recalls_train_incremental_min_precision,
@@ -333,47 +362,53 @@ if __name__ == '__main__':
 #          recalls_valid_incremental_min_precision,
 #          precisions_test_incremental_min_precision,
 #          recalls_test_incremental_min_precision),
-        ('bce + perturbaton',
-         precisions_train_bce_perturb,
-         recalls_train_bce_perturb,
-         precisions_valid_bce_perturb,
-         recalls_valid_bce_perturb,
-         precisions_test_bce_perturb,         
-         recalls_test_bce_perturb),
+#         ('bce + perturbaton',
+#          precisions_train_bce_perturb,
+#          recalls_train_bce_perturb,
+#          precisions_valid_bce_perturb,
+#          recalls_valid_bce_perturb,
+#          precisions_test_bce_perturb,         
+#          recalls_test_bce_perturb),
         ('bce + threshold search',
          precisions_train_bce_plus_thresh,
          recalls_train_bce_plus_thresh,
          precisions_valid_bce_plus_thresh,
          recalls_valid_bce_plus_thresh, 
          precisions_test_bce_plus_thresh,
-         recalls_test_bce_plus_thresh),
+         recalls_test_bce_plus_thresh,
+         training_files_bce_plus_thresh),
         ('Surrogate Loss (Hinge Bound)',
          precisions_train_sl_loose,
          recalls_train_sl_loose,
          precisions_valid_sl_loose,
          recalls_valid_sl_loose, 
          precisions_test_sl_loose,
-         recalls_test_sl_loose)
+         recalls_test_sl_loose,
+         training_files_sl_loose)
     ]):
         
-        keep_inds = (prcs_train>0.9)&(prcs_valid>0.8)#&(prcs_test>0.77)
-        if keep_inds.sum()==0:
-            keep_inds = prcs_train>0.85
-
+        min_prec_tr = 0.9
+        min_prec_va = 0.8
+        keep_inds = (prcs_train>min_prec_tr)&(prcs_valid>min_prec_va)
+#         if keep_inds.sum()==0:
+#             keep_inds = (prcs_train>min_prec_tr)
+        
+        
         fracs_above_min_precision = (keep_inds).sum()/len(prcs_train)
         prcs_train = prcs_train[keep_inds]
         prcs_valid = prcs_valid[keep_inds]
         prcs_test = prcs_test[keep_inds]        
         recs_train = recs_train[keep_inds]
         recs_valid = recs_valid[keep_inds]
-        recs_test = recs_test[keep_inds]        
+        recs_test = recs_test[keep_inds] 
+        tr_files = np.array(tr_files)[keep_inds]
         
         best_ind = np.argmax(recs_valid)
         
 #         max_recall = max(recs[keep_inds])
         print('\nMethod - %s'%method)
         print('=================================================')
-        print('Frac hypers achieving above 0.9 on training set : %.5f'%(fracs_above_min_precision))
+        print('Frac hypers achieving above %.4f on training set : %.5f'%(min_prec_tr, fracs_above_min_precision))
         print('Precision on train/valid/test with best model :')
         print('--------------------------------------------------')
         print('Train : %.5f'%prcs_train[best_ind])
@@ -383,8 +418,72 @@ if __name__ == '__main__':
         print('--------------------------------------------------')
         print('Train : %.5f'%recs_train[best_ind])
         print('Valid : %.5f'%recs_valid[best_ind])
-        print('Test : %.5f'%recs_test[best_ind])       
+        print('Test : %.5f'%recs_test[best_ind])  
+        print('--------------------------------------------------')
+        print('best training file : %s'%tr_files[best_ind])
+        best_files_dict[method] = tr_files[best_ind]
+        best_perf_dict[method] = dict()
+        best_perf_dict[method]['precision_train'] = prcs_train[best_ind]
+        best_perf_dict[method]['precision_valid'] = prcs_valid[best_ind]
+        best_perf_dict[method]['precision_test'] = prcs_test[best_ind]
+        best_perf_dict[method]['recall_train'] = recs_train[best_ind]
+        best_perf_dict[method]['recall_valid'] = recs_valid[best_ind]
+        best_perf_dict[method]['recall_test'] = recs_test[best_ind]
+    
+    
+    ## get the 5th, 50th and 95th percentile of recall scores
+    random_seed_list = [111, 412, 5318, 90, 101, 8491, 8213, 1721, 1, 58, 892, 55, 623, 199, 1829, 902, 1992, 24, 8]  
+    
+    from IPython import embed; embed()
+    for ii, (method, best_model_fname, thr) in enumerate([
+        ('Sigmoid bound', best_files_dict['direct min precision'], .5),
+        ('BCE + Threshold search', best_files_dict['bce + threshold search'], .676),
+        ('Hinge Bound', best_files_dict['Surrogate Loss (Hinge Bound)'], .5)
+    ]):
         
+        skorch_lr_clf = SkorchMLP(n_features=x_test.shape[1], n_hiddens=32, n_layers=1)
+        skorch_lr_clf.initialize()
+        skorch_lr_clf.load_params(f_params=os.path.join(clf_models_dir,
+                                                        best_model_fname.replace('_perf.csv', 'params.pt')))
+
+        y_train_pred_probas = skorch_lr_clf.predict_proba(x_train_transformed)[:,1]
+        y_train_preds = y_train_pred_probas>=thr       
+        
+        y_test_pred_probas = skorch_lr_clf.predict_proba(x_test_transformed)[:,1]
+        y_test_preds = y_test_pred_probas>=thr
+        
+        
+        precisions_train_np, precisions_test_np = np.zeros(len(random_seed_list)), np.zeros(len(random_seed_list))
+        recalls_train_np, recalls_test_np = np.zeros(len(random_seed_list)), np.zeros(len(random_seed_list))
+        for k, seed in enumerate(random_seed_list):
+            rnd_inds_tr = random.sample(range(x_train_transformed.shape[0]), int(0.8*x_train_transformed.shape[0])) 
+            precisions_train_np[k] = precision_score(y_train[rnd_inds_tr], y_train_preds[rnd_inds_tr])
+            recalls_train_np[k] = recall_score(y_train[rnd_inds_tr], y_train_preds[rnd_inds_tr])
+            
+            rnd_inds_te = random.sample(range(x_test.shape[0]), int(0.8*x_test.shape[0])) 
+            precisions_test_np[k] = precision_score(y_test[rnd_inds_te], y_test_preds[rnd_inds_te])
+            recalls_test_np[k] = recall_score(y_test[rnd_inds_te], y_test_preds[rnd_inds_te])           
+        
+        print('Method : %s'%method)
+        train_perf_dict = {'precision_5' : np.percentile(precisions_train_np, 5),
+                             'precision_50' : np.percentile(precisions_train_np, 50),
+                             'precision_95' : np.percentile(precisions_train_np, 95),
+                             'recall_5' : np.percentile(recalls_train_np, 5),
+                             'recall_50' : np.percentile(recalls_train_np, 50),
+                             'recall_95' : np.percentile(recalls_train_np, 95),}
+
+        
+        test_perf_dict = {'precision_5' : np.percentile(precisions_test_np, 5),
+                             'precision_50' : np.percentile(precisions_test_np, 50),
+                             'precision_95' : np.percentile(precisions_test_np, 95),
+                             'recall_5' : np.percentile(recalls_test_np, 5),
+                             'recall_50' : np.percentile(recalls_test_np, 50),
+                             'recall_95' : np.percentile(recalls_test_np, 95),}
+        print('Training set performance : ')
+        print(train_perf_dict)
+        
+        print('Test set performance : ')
+        print(test_perf_dict)      
     from IPython import embed; embed()
     
  

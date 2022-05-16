@@ -23,7 +23,10 @@ if __name__ == '__main__':
     rnn_perf_csv = glob.glob(os.path.join(args.performance_csv_dir,'**','rnn_performance_with_unlabelled_examples.csv'), recursive=True)[0]
     fs_pchmm_perf_csv = glob.glob(os.path.join(args.performance_csv_dir,'**','fully_supervised_pchmm_performance.csv'), recursive=True)[0] 
     
-    perf_csvs = [pchmm_perf_csv, rnn_perf_csv, fs_pchmm_perf_csv]
+    perf_csvs = [pchmm_perf_csv, 
+                 rnn_perf_csv, 
+                 fs_pchmm_perf_csv
+                ]
     perf_df = pd.DataFrame()
     for perf_csv in perf_csvs:
         curr_perf_df = pd.read_csv(perf_csv)
