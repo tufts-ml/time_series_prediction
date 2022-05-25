@@ -76,7 +76,7 @@ def plotGauss2DContour(
     # Rotate according to eigenvectors
     Zrotellipse_DG = np.dot(rot_DD, Zellipse_DG)
 
-    radius_lengths=[0.3, 0.6, 0.9, 1.2, 1.5]
+    radius_lengths=[0.3, 0.6, 0.9]
 
     # Plot contour lines across several radius lengths
     for r in radius_lengths:
@@ -232,11 +232,8 @@ if __name__ == '__main__':
     data = custom_dataset(data_dict=data_dict)
 
 
-    for perc_labelled in ['1.2', '3.7', '11.1', '33.3', '100']:#'3.7', '11.1', '33.3', '100'
-        f, axs = plt.subplots(1, 1, figsize=(12, 8))
-        sns.set_style("whitegrid") # or use "white" if we don't want grid lines
-        sns.set_context("notebook", font_scale=1.4)
-        for states in ['10', '30', '60', '90']:#'10', '30', '60', '90'
+    for perc_labelled in ['100']:#'1.2', '3.7', '11.1', '33.3', '100'
+        for states in ['90']:#'10', '30', '60', '90'
 
             saved_model_files_aka = os.path.join(clf_models_dir, 
                                                  "final_perf_*semi-supervised-pchmm*perc_labelled=%s-*n_states=%s-*lamb=*.csv"%(perc_labelled, states))
@@ -257,14 +254,8 @@ if __name__ == '__main__':
             '''
             if (perc_labelled=='100')&(states=='90'):
                 sorted_inds = np.argsort(model._predictor.get_weights()[0][:, 1])[::-1]
-#                 keep_features_cols = ['age', 'heart rate', 
-#                                       'diastolic blood pressure', 'systolic blood pressure', 
-#                                       'blood urea nitrogen', 'oxygen saturation', 
-#                                       'white blood cell count', 'red blood cell count']
-
-                keep_features_cols = ['age', 
-                                      'blood urea nitrogen',
-                                      'oxygen saturation']
+                from IPython import embed; embed()
+                keep_features_cols = ['BUN', 'age', 'creatinine', 'glucose', 'heart_rate', 'sao2']
 
                 keep_features_inds = np.where(np.isin(feature_cols, keep_features_cols))
                 n_influential = 3 # number of influential states to retain from predictor
@@ -280,27 +271,19 @@ if __name__ == '__main__':
                     curr_feature_combo_inds = np.isin(keep_features_cols, combo)
                     curr_feature_combo = np.array(keep_features_cols)[curr_feature_combo_inds]
                     for kk in range(n_influential):
-                        mu = mu_KD_influential[kk, curr_feature_combo_inds]
-                        Sigma = np.diag(cov_KD_influential[kk, curr_feature_combo_inds])
+                        mu = mu_KD_influential[kk, curr_feature_combo_inds][::-1]
+                        Sigma = np.diag(cov_KD_influential[kk, curr_feature_combo_inds][::-1])
                         axs = plotGauss2DContour(mu, Sigma, ax_handle=axs, 
                                                  label='Cohort %s'%kk, 
                                                  color=cohort_colors[kk])
                     
                     axs.legend()
                     axs = legend_without_duplicate_labels(axs)
-                    axs.set_xlabel(curr_feature_combo[0])
-                    axs.set_ylabel(curr_feature_combo[1])
-                    f.savefig('interpretability_%s_%s.pdf'%(curr_feature_combo[0], curr_feature_combo[1]), 
+                    axs.set_xlabel(curr_feature_combo[1])
+                    axs.set_ylabel(curr_feature_combo[0])
+                    f.savefig('interpretability_%s_%s_EICU.pdf'%(curr_feature_combo[0], curr_feature_combo[1]), 
                               bbox_inches='tight', 
                               pad_inches=0)
-                    
-#                 cohorts_from_pchmm_df = pd.DataFrame(mu_KD_influential, columns=feature_cols_reindexed)
-#                 cohorts_from_pchmm_df['cohort'] = range(n_influential)
-#                 sns.set_style("white") # or use "white" if we don't want grid lines
-#                 sns.set_context("notebook", font_scale=1.3)
-#                 sns.pairplot(cohorts_from_pchmm_df, hue='cohort', palette='bright', diag_kind=None, plot_kws={"s": 80})
-#                 plt.savefig('interpretability.png')
-            
             '''
             
             x_test, y_test = data.test().numpy()
@@ -308,15 +291,10 @@ if __name__ == '__main__':
             z_test = model.hmm_model.predict(x_test)
             y_test_pred_proba = model._predictor.predict(z_test)
             
-
-            precisions, recalls, thresholds_pr = precision_recall_curve(y_test[:, 1], y_test_pred_proba[:, 1])
-            axs.plot(recalls, precisions, label='PCHMM-n_states=%s (AUPRC = %.2f)'%(states, 
-                                                                                    average_precision_score(y_test[:, 1],
-                                                                                                    y_test_pred_proba[:, 1])))
-            
-            
             print('Evaluating PCHMM with perc_labelled =%s and states =%s with model %s'%(perc_labelled, states, best_model_file))
-
+            
+            
+            from IPython import embed; embed()
             # bootstrapping to get CI on metrics
             roc_auc_np = np.zeros(len(random_seed_list))
 #                     balanced_accuracy_np = np.zeros(len(random_seed_list))
@@ -338,7 +316,7 @@ if __name__ == '__main__':
 #                         precision_np[k] = precision_score(np.argmax(curr_y_test,-1), curr_y_pred)
 #                         recall_np[k] = recall_score(np.argmax(curr_y_test,-1), curr_y_pred)
                 log_loss_np[k] = log_loss(curr_y_test, curr_y_pred_proba, normalize=True) / np.log(2)
-                avg_precision_np[k] = average_precision_score(curr_y_test[:, 1], curr_y_pred_proba[:, 1])
+                avg_precision_np[k] = average_precision_score(curr_y_test, curr_y_pred_proba)
 
 
             print('perc_labelled = %s, states = %s, \nROC-AUC : %.2f'%(perc_labelled, states, np.percentile(roc_auc_np, 50)))
@@ -362,14 +340,9 @@ if __name__ == '__main__':
                 row_dict['n_states'] = states
 #                     row_dict['imputation_strategy'] = imputation_strategy
 
-                perf_df = perf_df.append(row_dict, ignore_index=True) 
-        axs.set_xlabel('recall')
-        axs.set_ylabel('precision')
-        axs.legend()
-        axs.set_title('Percent labeled sequences = %s'%perc_labelled)
-        f.savefig(os.path.join('pr_curves', 'PR_curve_perc_labeled=%s.pdf'%perc_labelled),
-                  bbox_inches='tight',
-                  pad_inches=0)
+                perf_df = perf_df.append(row_dict, ignore_index=True)      
+
+    
     perf_csv = os.path.join(args.output_dir, 'semi_supervised_pchmm_performance.csv')
     print('Saving semi-supervised PCHMM performance to %s'%perf_csv)
-    perf_df.to_csv(perf_csv, index=False)
+#     perf_df.to_csv(perf_csv, index=False)

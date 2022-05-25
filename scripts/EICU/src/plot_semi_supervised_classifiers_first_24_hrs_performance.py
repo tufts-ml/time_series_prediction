@@ -41,26 +41,23 @@ if __name__ == '__main__':
     for perf_csv in perf_csvs:
         curr_perf_df = pd.read_csv(perf_csv)
         perf_df = perf_df.append(curr_perf_df, ignore_index=True)
-    
-    
+        
     # add pseudo label performance from Kyle's implementation
     pseudo_label_perf_df = curr_perf_df.copy()
     pseudo_label_perf_df['model']='Pseudo Label'
-    pseudo_label_perf_df.loc[pseudo_label_perf_df.perc_labelled==1.2, 'average_precision']=0.2
-    pseudo_label_perf_df.loc[pseudo_label_perf_df.perc_labelled==3.7, 'average_precision']=0.33
-    pseudo_label_perf_df.loc[pseudo_label_perf_df.perc_labelled==11.1, 'average_precision']=0.42
-    pseudo_label_perf_df.loc[pseudo_label_perf_df.perc_labelled==33.3, 'average_precision']=0.53
-    pseudo_label_perf_df.loc[pseudo_label_perf_df.perc_labelled==100.0, 'average_precision']=0.60
+    pseudo_label_perf_df.loc[pseudo_label_perf_df.perc_labelled==1.2, 'average_precision']=0.15
+    pseudo_label_perf_df.loc[pseudo_label_perf_df.perc_labelled==3.7, 'average_precision']=0.20
+    pseudo_label_perf_df.loc[pseudo_label_perf_df.perc_labelled==11.1, 'average_precision']=0.22
+    pseudo_label_perf_df.loc[pseudo_label_perf_df.perc_labelled==33.3, 'average_precision']=0.27
+    pseudo_label_perf_df.loc[pseudo_label_perf_df.perc_labelled==100.0, 'average_precision']=0.30
     
-    pseudo_label_perf_df.loc[pseudo_label_perf_df.perc_labelled==1.2, 'roc_auc']=0.70
-    pseudo_label_perf_df.loc[pseudo_label_perf_df.perc_labelled==3.7, 'roc_auc']=0.76
-    pseudo_label_perf_df.loc[pseudo_label_perf_df.perc_labelled==11.1, 'roc_auc']=0.81
-    pseudo_label_perf_df.loc[pseudo_label_perf_df.perc_labelled==33.3, 'roc_auc']=0.87
-    pseudo_label_perf_df.loc[pseudo_label_perf_df.perc_labelled==100.0, 'roc_auc']=0.89
+    pseudo_label_perf_df.loc[pseudo_label_perf_df.perc_labelled==1.2, 'roc_auc']=0.68
+    pseudo_label_perf_df.loc[pseudo_label_perf_df.perc_labelled==3.7, 'roc_auc']=0.70
+    pseudo_label_perf_df.loc[pseudo_label_perf_df.perc_labelled==11.1, 'roc_auc']=0.72
+    pseudo_label_perf_df.loc[pseudo_label_perf_df.perc_labelled==33.3, 'roc_auc']=0.76
+    pseudo_label_perf_df.loc[pseudo_label_perf_df.perc_labelled==100.0, 'roc_auc']=0.77
     
     
-    
-#     pseudo_label_perf_df.loc[:, 'roc_auc']=0.8
     perf_df = perf_df.append(pseudo_label_perf_df, ignore_index=True)
     
     
@@ -68,7 +65,8 @@ if __name__ == '__main__':
     perc_labelled_list = perf_df['perc_labelled'].unique()
     
     exclude_perc_labels = [30]
-    perc_labelled_vals = [float(i) for i in perc_labelled_list if i not in exclude_perc_labels]
+    perc_labelled_vals = [int(i) for i in perc_labelled_list if i not in exclude_perc_labels]
+    
     
     for i in exclude_perc_labels:
         drop_inds = perf_df['perc_labelled']==i
@@ -76,8 +74,8 @@ if __name__ == '__main__':
     print('Saving plots to : \n%s'%(args.output_dir))
 
     perf_measures = ['roc_auc', 'average_precision']
-    fontsize=16
-    suffix = 'first_24_hours'
+    fontsize=18
+    suffix = 'first_24_hours_EICU'
     
     yticks = np.arange(.1, 1, .05)
     for perf_measure in perf_measures:
@@ -108,17 +106,17 @@ if __name__ == '__main__':
         
         if perf_measure == 'roc_auc':
             axs.set_ylabel('Area under ROC Curve (test set) ', fontsize=fontsize)
-            axs.set_ylim([0.1, 1])
+            axs.set_ylim([0.45, 0.8])
+            axs.legend(fontsize=fontsize-2, bbox_to_anchor=(1.05, 1))
         elif perf_measure == 'average_precision':
             axs.set_ylabel('Area under PR Curve (test set) ', fontsize=fontsize)
             axs.set_ylim([0.05, 0.7])
             axs.set_xlim([0.9, 110])
         
-#         axs.set_ylabel('test set %s'%perf_measure, fontsize=fontsize)
-        axs.legend(fontsize=fontsize-2)
+#         axs.legend(fontsize=fontsize-2)
         axs.tick_params(labelsize=fontsize-2)
         fig_name = os.path.join(args.output_dir, fig_aka)
-        plt.suptitle('Predicting in-hospital mortality in first 24 hours (MIMIC)', fontsize=fontsize)
+        plt.suptitle('Predicting in-hospital mortality in first 24 hours (eICU)', fontsize=fontsize)
 #         plt.grid(True)
         f.savefig(fig_name,bbox_inches='tight', pad_inches=0)
 #         f.savefig(fig_name)

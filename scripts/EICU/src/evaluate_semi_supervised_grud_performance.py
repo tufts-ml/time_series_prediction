@@ -53,7 +53,39 @@ def plot_best_model_training_plots(best_model_file):
     axs[3].plot(train_perf_df.epochs, train_perf_df.val_predictor_AUC, label = 'val AUC')
     axs[3].legend()
     
-    f.savefig('GRUD-semi-supervised-best-model-training-plots.png')
+    f.savefig('MixMatch-semi-supervised-best-model-training-plots.png')
+
+# def get_best_model_file(saved_model_files_aka):
+    
+#     training_files = glob.glob(saved_model_files_aka)
+#     aucroc_per_fit_list = []
+#     loss_per_fit_list = []
+    
+#     for i, training_file in enumerate(training_files):
+#         train_perf_df = pd.read_csv(training_file)
+#         aucroc_per_fit_list.append(train_perf_df['val_predictor_AUC'].values[-1])
+#         curr_lamb = int(training_file.split('lamb=')[1].replace('.csv', ''))
+#         loss_per_fit_list.append((train_perf_df['val_predictor_loss'].values[-1])/curr_lamb)
+
+#     aucroc_per_fit_np = np.array(aucroc_per_fit_list)
+#     aucroc_per_fit_np[np.isnan(aucroc_per_fit_np)]=0
+
+#     loss_per_fit_np = np.array(loss_per_fit_list)
+#     loss_per_fit_np[np.isnan(loss_per_fit_np)]=10^8
+
+# #    best_model_ind = np.argmax(aucroc_per_fit_np)
+#     best_model_ind = np.argmin(loss_per_fit_np)
+
+#     best_model_file = training_files[best_model_ind]
+#     plot_best_model_training_plots(best_model_file)
+# #     
+#     # get the number of states of best file
+#     best_fit_params = best_model_file.split('-')
+#     n_states_param = [s for s in best_fit_params if 'n_states' in s][0]
+#     n_states = int(n_states_param.split('=')[-1])
+    
+# #     from IPython import embed; embed()
+#     return best_model_file, n_states
 
 
 def get_best_model_file(saved_model_files_aka):
@@ -136,6 +168,12 @@ if __name__ == '__main__':
         X_test[:, :, d] = np.nan_to_num(X_test[:, :, d], nan=fill_vals)        
         
         
+        # min max normalization
+#         den = np.nanmax(X_train[:, :, d])-np.nanmin(X_train[:, :, d])
+#         X_train[:, :, d] = (X_train[:, :, d] - np.nanmin(X_train[:, :, d]))/den
+#         X_valid[:, :, d] = (X_valid[:, :, d] - np.nanmin(X_train[:, :, d]))/den
+#         X_test[:, :, d] = (X_test[:, :, d] - np.nanmin(X_train[:, :, d]))/den
+        
         # zscore normalization
         den = np.nanstd(X_train_fs[:, :, d])
         X_train[:, :, d] = (X_train[:, :, d] - np.nanmean(X_train_fs[:, :, d]))/den
@@ -146,7 +184,7 @@ if __name__ == '__main__':
     perf_df = pd.DataFrame()
     prctile_vals = [5, 50, 95]
     random_seed_list = args.random_seed_list.split(' ')
-    for perc_labelled in ['1.2', '3.7', '11.1', '33.3', '100']:#'3.7', '11.1', '33.3', '100'
+    for perc_labelled in ['100' ]:#'1.2', '3.7', '11.1','33.3', '100' 
 
         saved_model_files_aka = os.path.join(clf_models_dir, 
                                              "final_perf*GRUD*perc_labelled=%s*.csv"%(perc_labelled))
@@ -157,11 +195,14 @@ if __name__ == '__main__':
         output_activation = 'sigmoid'
         predefined_model = 'GRUD'
         use_bidirectional_rnn=False
+        
         outcome="did_overheat_binary_label"
-        recurrent_dim = [256]
-        hidden_dim = [128]
+        
+        try:
+            recurrent_dim = [32]#256
+            hidden_dim = [8]#128
 
-        model = create_grud_model(input_dim=input_dim,
+            model = create_grud_model(input_dim=input_dim,
                                   output_dim=output_dim,
                                   output_activation=output_activation,
                                   recurrent_dim=recurrent_dim,
@@ -169,7 +210,21 @@ if __name__ == '__main__':
                                   predefined_model=predefined_model,
                                   use_bidirectional_rnn=use_bidirectional_rnn)
                 
-        model.load_weights(best_model_file)
+            model.load_weights(best_model_file)
+        except:
+            recurrent_dim = [256]
+            hidden_dim = [128]
+
+            model = create_grud_model(input_dim=input_dim,
+                                  output_dim=output_dim,
+                                  output_activation=output_activation,
+                                  recurrent_dim=recurrent_dim,
+                                  hidden_dim=hidden_dim,
+                                  predefined_model=predefined_model,
+                                  use_bidirectional_rnn=use_bidirectional_rnn)
+                
+            model.load_weights(best_model_file)
+            
         
         
 #         bootstrapping to get CI on metrics
@@ -178,6 +233,7 @@ if __name__ == '__main__':
         outputs = model.predict([X_test, test_x_mask_NTD, test_timestep])
         targets = y_test.copy()
         
+        from IPython import embed; embed()
         for k, seed in enumerate(random_seed_list):
             random.seed(int(seed))
             rnd_inds = random.sample(range(targets.shape[0]), int(0.8*targets.shape[0])) 

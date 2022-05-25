@@ -1,8 +1,8 @@
 {
-    "lr": [0.005],
-    "seed" : [2943],
-    "batch_size" : [-1],
-    "lamb" : [10],
+    "lr": [0],
+    "seed" : [98],
+    "batch_size" : [50],
+    "lamb" : [100000],
     "missing_handling" : ["no_imp"],
-    "perc_obs" : [20]
+    "perc_obs" : [100]
 }

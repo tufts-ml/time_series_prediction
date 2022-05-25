@@ -105,7 +105,8 @@ class BaseVAE(object):
             self.model.load_weights(os.path.join(load_from, 'weights.h5'), by_name=True, skip_mismatch=True)
         elif load_checkpoint:
             self.model.load_weights(os.path.join(load_from, 'checkpoints', 'checkpoint'), by_name=True, skip_mismatch=True)
-
+        
+        
         # Handle different learning rate schedules
         cblr = self.callbacks
         cblr.append(TqdmCallback(verbose=verbose))
@@ -152,8 +153,10 @@ class BaseVAE(object):
         vd = data.valid().numpy()
         vd = tf.data.Dataset.from_tensor_slices((vd, vd)).batch(np.sum(data.batch_size).astype(int))
         
-        training_engine = self.model.fit if use_fit_generator else self.model.fit
+        training_engine = self.model.fit
         training_generator = data.optimize(labeled_only)
+        
+        from IPython import embed; embed()
         self.history = training_engine(training_generator, validation_data=vd,
                                        steps_per_epoch=steps_per_epoch,
                                        epochs=epochs, use_multiprocessing=use_multiprocessing,

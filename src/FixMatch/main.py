@@ -8,7 +8,7 @@ import random
 import sys
 import numpy as np
 PROJECT_REPO_DIR = os.path.abspath(os.path.join(__file__, '../../../'))
-sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src', 'MixMatch', 'MixMatch-pytorch'))
+sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src', 'FixMatch', 'FixMatch-pytorch'))
 import torch
 import torch.nn as nn
 import torch.nn.parallel
@@ -23,7 +23,7 @@ import torch.nn.functional as F
 
 # import models.wideresnet as models
 # import dataset.cifar10 as dataset
-from utils import Bar, Logger, AverageMeter, accuracy, mkdir_p, savefig
+from utils import AverageMeter
 # from tensorboardX import SummaryWriter
 PROJECT_SRC_DIR = '/cluster/tufts/hugheslab/prath01/projects/time_series_prediction/src/'
 sys.path.append(PROJECT_SRC_DIR)
@@ -35,8 +35,8 @@ from sklearn.metrics import (roc_auc_score, average_precision_score)
 
 parser = argparse.ArgumentParser(description='PyTorch MixMatch Training')
 # Optimization options
-parser.add_argument('--train_np_files', type=str, required=True)
-parser.add_argument('--test_np_files', type=str, required=True)
+# parser.add_argument('--train_np_files', type=str, required=True)
+# parser.add_argument('--test_np_files', type=str, required=True)
 parser.add_argument('--valid_np_files', type=str, default=None)
 parser.add_argument('--epochs', default=100, type=int, metavar='N',
                     help='number of total epochs to run')
@@ -66,7 +66,10 @@ parser.add_argument('--lambda-u', default=75, type=float)
 parser.add_argument('--T', default=0.5, type=float)
 parser.add_argument('--ema-decay', default=0.999, type=float)
 parser.add_argument('--perc_labelled', default='33.3')
-
+parser.add_argument('--threshold', default=0.6, type=float,
+                        help='pseudo label threshold')
+parser.add_argument('--mu', default=7, type=int,
+                        help='coefficient of unlabeled batch size')
 
 args = parser.parse_args()
 state = {k: v for k, v in args._get_kwargs()}
@@ -107,18 +110,18 @@ def data_dataloader(train_data, train_outcomes, valid_data, valid_outcomes, test
 
 def main():
     
-#     data_save_dir = '/cluster/tufts/hugheslab/prath01/datasets/mimic3_ssl/percentage_labelled_sequnces=11.1/'
-#     x_train_np_filename = os.path.join(data_save_dir, 'X_train.npy')
-#     x_valid_np_filename = os.path.join(data_save_dir, 'X_valid.npy')
-#     x_test_np_filename = os.path.join(data_save_dir, 'X_test.npy')
-#     y_train_np_filename = os.path.join(data_save_dir, 'y_train.npy')
-#     y_valid_np_filename = os.path.join(data_save_dir, 'y_valid.npy')
-#     y_test_np_filename = os.path.join(data_save_dir, 'y_test.npy')    
+    data_save_dir = '/cluster/tufts/hugheslab/prath01/datasets/mimic3_ssl/percentage_labelled_sequnces=11.1/'
+    x_train_np_filename = os.path.join(data_save_dir, 'X_train.npy')
+    x_valid_np_filename = os.path.join(data_save_dir, 'X_valid.npy')
+    x_test_np_filename = os.path.join(data_save_dir, 'X_test.npy')
+    y_train_np_filename = os.path.join(data_save_dir, 'y_train.npy')
+    y_valid_np_filename = os.path.join(data_save_dir, 'y_valid.npy')
+    y_test_np_filename = os.path.join(data_save_dir, 'y_test.npy')    
 
 
-    x_train_np_filename, y_train_np_filename = args.train_np_files.split(',')
-    x_test_np_filename, y_test_np_filename = args.test_np_files.split(',')
-    x_valid_np_filename, y_valid_np_filename = args.valid_np_files.split(',')
+#     x_train_np_filename, y_train_np_filename = args.train_np_files.split(',')
+#     x_test_np_filename, y_test_np_filename = args.test_np_files.split(',')
+#     x_valid_np_filename, y_valid_np_filename = args.valid_np_files.split(',')
     
     
     X_train = np.load(x_train_np_filename)
@@ -332,64 +335,32 @@ def train(labeled_trainloader, unlabeled_trainloader, model, optimizer, ema_opti
         data_time.update(time.time() - end)
 
         batch_size = inputs_x.size(0)
-
-        # Transform label to one-hot
+        
+        inputs = interleave(
+            torch.cat((inputs_x, inputs_u, inputs_u2)), 2*args.mu+1)
+        logits = model(inputs)
+        logits = de_interleave(logits, 2*args.mu+1)
+        logits_x = logits[:batch_size]
+        logits_u, logits_u2 = logits[batch_size:].chunk(2)
+        del logits
+        
         targets_x = torch.zeros(batch_size, 2).scatter_(1, targets_x.view(-1,1).long(), 1)
+        Lx = F.cross_entropy(logits_x, targets_x[:, 1].long(), reduction='mean')
 
-        if use_cuda:
-            inputs_x, targets_x = inputs_x.cuda(), targets_x.cuda(non_blocking=True)
-            inputs_u = inputs_u.cuda()
-            inputs_u2 = inputs_u2.cuda()
+        pseudo_label = torch.softmax(logits_u.detach()/args.T, dim=-1)
+        max_probs, targets_u = torch.max(pseudo_label, dim=-1)
+        mask = max_probs.ge(args.threshold).float()
 
+        Lu = (F.cross_entropy(logits_u2, targets_u,
+                              reduction='none') * mask).mean()
 
-        with torch.no_grad():
-            # compute guessed labels of unlabel samples
-            outputs_u = model(inputs_u)
-            outputs_u2 = model(inputs_u2)
-#             p = (torch.softmax(outputs_u, dim=1) + torch.softmax(outputs_u2, dim=1)) / 2
-            p = (outputs_u + outputs_u2) / 2
-            pt = p**(1/args.T)
-            targets_u = pt / pt.sum(dim=1, keepdim=True)
-            targets_u = targets_u.detach()
-
-        # mixup
-        all_inputs = torch.cat([inputs_x, inputs_u, inputs_u2], dim=0)
-        all_targets = torch.cat([targets_x, targets_u, targets_u], dim=0)
-
-        l = np.random.beta(args.alpha, args.alpha)
-
-        l = max(l, 1-l)
-
-        idx = torch.randperm(all_inputs.size(0))
-
-        input_a, input_b = all_inputs, all_inputs[idx]
-        target_a, target_b = all_targets, all_targets[idx]
-
-        mixed_input = l * input_a + (1 - l) * input_b
-        mixed_target = l * target_a + (1 - l) * target_b
-
-        # interleave labeled and unlabed samples between batches to get correct batchnorm calculation 
-        mixed_input = list(torch.split(mixed_input, batch_size))
-        mixed_input = interleave(mixed_input, batch_size)
-
-        logits = [model(mixed_input[0])]
-        for input in mixed_input[1:]:
-            logits.append(model(input))
-
-        # put interleaved samples back
-        logits = interleave(logits, batch_size)
-        logits_x = logits[0]
-        logits_u = torch.cat(logits[1:], dim=0)
-        
-        Lx, Lu, w = criterion(logits_x, mixed_target[:batch_size], logits_u, mixed_target[batch_size:], epoch+batch_idx/len(labeled_trainloader))
-        
-        loss = Lx + w * Lu
+        loss = Lx + args.lambda_u * Lu
         
         # record loss
         losses.update(loss.item(), inputs_x.size(0))
         losses_x.update(Lx.item(), inputs_x.size(0))
         losses_u.update(Lu.item(), inputs_x.size(0))
-        ws.update(w, inputs_x.size(0))
+#         ws.update(w, inputs_x.size(0))
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
@@ -402,14 +373,13 @@ def train(labeled_trainloader, unlabeled_trainloader, model, optimizer, ema_opti
         end = time.time()
 
         # plot progress
-        print('({batch}/{size}) Data: {data:.3f}s | Loss: {loss:.4f} | Loss_x: {loss_x:.4f} | Loss_u: {loss_u:.4f} | W: {w:.4f}'.format(
+        print('({batch}/{size}) Data: {data:.3f}s | Loss: {loss:.4f} | Loss_x: {loss_x:.4f} | Loss_u: {loss_u:.4f} '.format(
                     batch=batch_idx + 1,
                     size=len(labeled_trainloader),
                     data=data_time.avg,
                     loss=losses.avg,
                     loss_x=losses_x.avg,
-                    loss_u=losses_u.avg,
-                    w=ws.avg,
+                    loss_u=losses_u.avg
                     ))
 
     return (losses.avg, losses_x.avg, losses_u.avg,)
@@ -428,6 +398,7 @@ def validate(valloader, model, criterion, epoch, use_cuda, mode):
     end = time.time()
 #     bar = Bar(f'{mode}', max=len(valloader))
     valid_iter = iter(valloader)
+    
     with torch.no_grad():
 #         for batch_idx, (inputs, targets) in enumerate(valloader):
         for batch_idx in range(len(valloader)):
@@ -445,7 +416,8 @@ def validate(valloader, model, criterion, epoch, use_cuda, mode):
 
             # Transform label to one-hot
             targets = torch.zeros(batch_size, 2).scatter_(1, targets.view(-1,1).long(), 1)
-            loss = criterion(outputs, targets[:, 1].long()) 
+#             loss = criterion(outputs, targets[:, 1].long()) 
+            loss = F.cross_entropy(outputs, targets[:, 1].long(), reduction='mean')
             
             roc_auc_valid = roc_auc_score(targets, outputs)
             auprc_valid = average_precision_score(targets, outputs)
@@ -519,13 +491,24 @@ def interleave_offsets(batch, nu):
     return offsets
 
 
-def interleave(xy, batch):
-    nu = len(xy) - 1
-    offsets = interleave_offsets(batch, nu)
-    xy = [[v[offsets[p]:offsets[p + 1]] for p in range(nu + 1)] for v in xy]
-    for i in range(1, nu + 1):
-        xy[0][i], xy[i][i] = xy[i][i], xy[0][i]
-    return [torch.cat(v, dim=0) for v in xy]
+# def interleave(xy, batch):
+#     nu = len(xy) - 1
+#     offsets = interleave_offsets(batch, nu)
+#     xy = [[v[offsets[p]:offsets[p + 1]] for p in range(nu + 1)] for v in xy]
+#     for i in range(1, nu + 1):
+#         xy[0][i], xy[i][i] = xy[i][i], xy[0][i]
+#     return [torch.cat(v, dim=0) for v in xy]
+def interleave(x, size):
+    s = list(x.shape)
+    while x.numel()%(size*s[1]*s[2])!=0: 
+        size+=1 
+    return x.reshape([-1, size] + s[1:]).transpose(0, 1).reshape([-1] + s[1:])
+
+def de_interleave(x, size):
+    s = list(x.shape)
+    while x.numel()%(size*s[1])!=0: 
+        size+=1 
+    return x.reshape([size, -1] + s[1:]).transpose(0, 1).reshape([-1] + s[1:])
 
 if __name__ == '__main__':
     main()

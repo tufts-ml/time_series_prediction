@@ -33,10 +33,10 @@ import glob
 import torch.utils.data as data
 from RNNBinaryClassifierModule import RNNBinaryClassifierModule
 
-def create_model(ema=False):
+def create_model(ema=False, n_hiddens=32):
     model = RNNBinaryClassifierModule(rnn_type='GRU', 
                                       n_inputs=D, 
-                                      n_hiddens=32, 
+                                      n_hiddens=n_hiddens, 
                                       n_layers=1,
                                       dropout_proba=0.0, 
                                       dropout_proba_non_recurrent=0.0, 
@@ -193,14 +193,19 @@ if __name__ == '__main__':
     perf_df = pd.DataFrame()
     prctile_vals = [5, 50, 95]
     random_seed_list = args.random_seed_list.split(' ')
-    for perc_labelled in ['3.7', '11.1', '33.3', '100']:
+    for perc_labelled in ['1.2', '3.7', '11.1', '33.3', '100']:
 
         saved_model_files_aka = os.path.join(clf_models_dir, 
                                              "MixMatch*perc_labelled=%s*.csv"%(perc_labelled))
         best_model_file = get_best_model_file(saved_model_files_aka).replace('.csv', '.pt')
         print('Evaluating Mixmatch model with perc_labelled =%s \nfile=%s'%(perc_labelled, best_model_file))
         model = create_model()
-        model.load_state_dict(torch.load(best_model_file))  
+        
+        try:
+            model.load_state_dict(torch.load(best_model_file))
+        except:
+            model = create_model(n_hiddens=128)
+            model.load_state_dict(torch.load(best_model_file))
         model.eval()
         
         with torch.no_grad():      
@@ -210,7 +215,7 @@ if __name__ == '__main__':
                 # Transform label to one-hot
                 targets = torch.zeros(batch_size, 2).scatter_(1, targets.view(-1,1).long(), 1)            
                 test_auroc = roc_auc_score(targets, outputs)
-                test_auprc = average_precision_score(targets, outputs)
+                test_auprc = average_precision_score(targets[:, 1], outputs[:, 1])
                 
         
 #         bootstrapping to get CI on metrics
@@ -226,7 +231,7 @@ if __name__ == '__main__':
             curr_y_pred_proba = outputs[rnd_inds]
 
             roc_auc_np[k] = roc_auc_score(curr_y_test, curr_y_pred_proba)
-            avg_precision_np[k] = average_precision_score(curr_y_test, curr_y_pred_proba)
+            avg_precision_np[k] = average_precision_score(curr_y_test[:, 1], curr_y_pred_proba[:, 1])
 
         print('perc_labelled = %s, \nMedian ROC-AUC : %.3f'%(perc_labelled, np.percentile(roc_auc_np, 50)))
         print('Median average precision : %.3f'%np.percentile(avg_precision_np, 50))

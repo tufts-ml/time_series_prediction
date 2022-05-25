@@ -140,7 +140,8 @@ class HMM(BaseVAE):
         self.model.compile(optimizer=self.optimizer, loss=[nll_data(prior_weight=self.prior_weight),
                                                            nll_labels(self.lam)],
                            run_eagerly=self.debug, 
-                           metrics=[[None], self.metric], experimental_run_tf_function=True)
+                           metrics=[[None], self.metric], 
+                           experimental_run_tf_function=True)
 
 
     def build(self, data=None):
@@ -150,5 +151,8 @@ class HMM(BaseVAE):
         self.build_model()
 
         self.predictor = tf.keras.Sequential(
-            [self.hmm_model, self._predictor, Lambda(lambda x: x.mean())])
+            [self.hmm_model, 
+             self._predictor, 
+             Lambda(lambda x: x.mean())
+            ])
         self.autoencoder = tf.keras.Sequential([Lambda(lambda x: x)])

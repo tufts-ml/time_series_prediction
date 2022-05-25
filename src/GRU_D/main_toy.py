@@ -137,8 +137,8 @@ if __name__ == '__main__':
     predefined_model = 'GRUD'
     use_bidirectional_rnn=False
     outcome="did_overheat_binary_label"
-    recurrent_dim = [256]
-    hidden_dim = [128]
+    recurrent_dim = [32]#256
+    hidden_dim = [8]#128
     l2_penalty = args.l2_penalty
     dropout=args.dropout
     
@@ -159,7 +159,8 @@ if __name__ == '__main__':
     model.compile(optimizer=optimizer, loss='binary_crossentropy',
              metrics = [tf.keras.metrics.AUC(name='AUC'), 
                         tf.keras.metrics.AUC(curve='PR', name='AUPRC')])
-
+    
+    model.summary()
     model.fit(x=[train_x_NTD, train_x_mask_NTD, train_timestep], y=train_y,
          epochs=500,
          batch_size=train_x_NTD.shape[0],
@@ -170,7 +171,7 @@ if __name__ == '__main__':
                          tf.keras.callbacks.EarlyStopping(monitor='val_AUC', mode='max', verbose=1, patience=50),
 #                          tf.keras.callbacks.LearningRateScheduler(scheduler)
                         ])
-
+    
     model_hist_df = pd.DataFrame(model.history.history)
     
     

@@ -47,8 +47,7 @@ if __name__ == '__main__':
             print('--------------------------------------')
             final_perf_df_list.append(final_perf_df)
     
-    
     final_perf_df = pd.concat(final_perf_df_list).reset_index(drop=True)
     final_perf_df.to_csv('GRUD_performance_toy_data.csv', index=False)
-    from IPython import embed; embed()
+    
         

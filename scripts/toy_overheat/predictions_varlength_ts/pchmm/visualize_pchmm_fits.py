@@ -62,8 +62,8 @@ def visualize2D_new(data_DTN=None, y_N=None, mu_all=None, cov_all=None, levels=3
                     missing_handling="", perc_obs='20'):
     
     f, ax = plt.subplots(figsize=(15, 5))
-    sns.set_context("notebook", font_scale=1.6)
-    
+    sns.set_context("notebook", font_scale=1.7)
+    sns.set_style("whitegrid")
     
     inds_label_0 = np.flatnonzero(y_N==0)
     inds_label_1 = np.flatnonzero(y_N==1)
@@ -110,7 +110,7 @@ def visualize2D_new(data_DTN=None, y_N=None, mu_all=None, cov_all=None, levels=3
         # Rotate according to eigenvectors
         Zrotellipse_DG = np.dot(rot_DD, Zellipse_DG)
         
-        radius_lengths=[0.3, 0.6, 0.9, 1.2, 1.5]
+        radius_lengths=[0.3, 0.6, 0.9, 1.2]
         
         # Plot contour lines across several radius lengths
         for r in radius_lengths:
@@ -131,7 +131,6 @@ def visualize2D_new(data_DTN=None, y_N=None, mu_all=None, cov_all=None, levels=3
     else:
         ax.set_title("PC-HMM fits : no missing data AUROC : %.4f"%(best_fit_auc))  
         
-    ax.grid(True)
     f.savefig(os.path.join('toydata_with_missing_results', 
                            'pchmm_fits_%s_perc_obs=%s.png'%(missing_handling, str(perc_obs))))
     f.savefig(os.path.join('toydata_with_missing_results', 
@@ -150,7 +149,7 @@ if __name__ == '__main__':
     final_perf_df_list = []
     for missing_handling in ['no_imp', 'ffill_imp', 'mean_imp']:
         for perc_obs in ['20', '40', '60', '80', '100']:
-            all_fits_csvs = glob.glob(os.path.join(args.fits_dir, "pchmm-*missing_handling=%s-*perc_obs=%s-*-lamb=*.csv"%(missing_handling, perc_obs)))
+            all_fits_csvs = glob.glob(os.path.join(args.fits_dir, "pchmm-*missing_handling=%s-*perc_obs=%s-*-lamb=10*.csv"%(missing_handling, perc_obs)))
             losses_per_fit_list = []
             auc_per_fit_list = []
             for fit_csv in all_fits_csvs:

@@ -134,22 +134,6 @@ if __name__ == '__main__':
 
     # Center data at 0 and only use estimates from training set
     _, T, D = train_x_NTD.shape
-
-
-    # I get good performance only when I normalize to 0-1. 
-#     for d in range(D):
-#         den = np.nanstd(train_x_NTD[:, :, d])
-
-#         train_x_NTD[:, :, d] = (train_x_NTD[:, :, d] - np.nanmean(train_x_NTD[:, :, d]))
-
-#         valid_x_NTD[:, :, d] = (valid_x_NTD[:, :, d] - np.nanmean(train_x_NTD[:, :, d]))
-
-#         test_x_NTD[:, :, d] = (test_x_NTD[:, :, d] - np.nanmean(train_x_NTD[:, :, d]))
-
-    # Make missing data not nan
-#     train_x_NTD[np.isnan(train_x_NTD)] = 0
-#     valid_x_NTD[np.isnan(valid_x_NTD)] = 0
-#     test_x_NTD[np.isnan(test_x_NTD)] = 0
     
     
     just_T_hrs = np.arange(0, T)
@@ -163,9 +147,9 @@ if __name__ == '__main__':
     output_activation = 'sigmoid'
     predefined_model = 'GRUD'
     use_bidirectional_rnn=False
-    outcome="did_overheat_binary_label"
-    recurrent_dim = [256]
-    hidden_dim = [128]
+    outcome="mort_hosp"
+    recurrent_dim = [256]#256#32
+    hidden_dim = [128]#128#8
     l2_penalty = args.l2_penalty
     dropout=args.dropout
     
@@ -188,12 +172,12 @@ if __name__ == '__main__':
                         tf.keras.metrics.AUC(curve='PR', name='AUPRC')])
 
     model.fit(x=[train_x_NTD, train_x_mask_NTD, train_timestep], y=train_y,
-         epochs=10,
+         epochs=500,
          batch_size=args.batch_size,
          validation_data=([valid_x_NTD, valid_x_mask_NTD, valid_timestep],
                          valid_y),
               callbacks=[
-                         tf.keras.callbacks.EarlyStopping(monitor='val_AUC', mode='max', verbose=1, patience=20),
+                         tf.keras.callbacks.EarlyStopping(monitor='val_AUC', mode='max', verbose=1, patience=5),
 #                          tf.keras.callbacks.LearningRateScheduler(scheduler)
                         ])
 

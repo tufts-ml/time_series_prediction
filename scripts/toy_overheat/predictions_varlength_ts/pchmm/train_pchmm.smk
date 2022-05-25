@@ -11,7 +11,7 @@ snakemake --snakefile train_pchmm.smk --profile ../../../../profiles/hugheslab_c
 
 # Default environment variables
 # Can override with local env variables
-configfile:"pchmm.json"
+configfile:"pchmm_single_config.json"
 
 TOY_OVERHEAT_VERSION = os.environ.get('TOY_OVERHEAT_VERSION', 'v20200515')
 PROJECT_REPO_DIR = os.environ.get("PROJECT_REPO_DIR", os.path.abspath("../../../../"))

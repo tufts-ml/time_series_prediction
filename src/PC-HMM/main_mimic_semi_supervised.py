@@ -193,11 +193,15 @@ if __name__ == '__main__':
             initial_state_alpha=1.,
             initial_state_initializer=np.log(init_state_probas),
             transition_alpha=1.,
-            transition_initializer=None, optimizer=optimizer)
+            transition_initializer=None, 
+        optimizer=optimizer)
     
     
     data = custom_dataset(data_dict=data_dict)
-    data.batch_size = args.batch_size
+    if args.batch_size==-1:
+        data.batch_size=X_train.shape[0]
+    else:
+        data.batch_size = args.batch_size
     model.build(data) 
     
     # set the regression coefficients of the model
@@ -229,7 +233,7 @@ if __name__ == '__main__':
     penalty = ['l2']
     C = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e2, 1e3, 1e4, 1e5]
     hyperparameters = dict(C=C, penalty=penalty)
-    classifier = GridSearchCV(logistic, hyperparameters, cv=5, verbose=10, scoring = 'roc_auc')
+    classifier = GridSearchCV(logistic, hyperparameters, cv=5, verbose=10, scoring = 'average_precision')
     
     X_tr = np.vstack([beliefs_pos, beliefs_neg])
     y_tr = np.vstack([y_pos, y_neg])
@@ -250,13 +254,15 @@ if __name__ == '__main__':
     model.fit(data, steps_per_epoch=1, epochs=100, batch_size=args.batch_size, lr=args.lr,
               initial_weights=model.model.get_weights())
     
+    
+    from IPython import embed; embed()
     # evaluate on test set
 #     x_train, y_train = data.train().numpy()
     z_train = model.hmm_model.predict(x_train)
     y_train_pred_proba = model._predictor.predict(z_train)
     labelled_inds_tr = ~np.isnan(y_train[:,0])
-    train_roc_auc = roc_auc_score(y_train[labelled_inds_tr], y_train_pred_proba[labelled_inds_tr])
-    train_auprc = average_precision_score(y_train[labelled_inds_tr], y_train_pred_proba[labelled_inds_tr])
+    train_roc_auc = roc_auc_score(y_train[labelled_inds_tr, 1], y_train_pred_proba[labelled_inds_tr, 1])
+    train_auprc = average_precision_score(y_train[labelled_inds_tr, 1], y_train_pred_proba[labelled_inds_tr, 1])
     print('ROC AUC on train : %.4f'%train_roc_auc)
     print('AUPRC on train : %.4f'%train_auprc)
     
@@ -267,7 +273,7 @@ if __name__ == '__main__':
     y_valid_pred_proba = model._predictor.predict(z_valid)
     labelled_inds_va = ~np.isnan(y_valid[:,0])
     valid_roc_auc = roc_auc_score(y_valid[labelled_inds_va], y_valid_pred_proba[labelled_inds_va])
-    valid_auprc = average_precision_score(y_valid[labelled_inds_va], y_valid_pred_proba[labelled_inds_va])
+    valid_auprc = average_precision_score(y_valid[labelled_inds_va, 1], y_valid_pred_proba[labelled_inds_va, 1])
     print('ROC AUC on valid : %.4f'%valid_roc_auc)
     print('AUPRC on valid : %.4f'%valid_auprc)
     
@@ -278,7 +284,7 @@ if __name__ == '__main__':
     y_test_pred_proba = model._predictor.predict(z_test)
     labelled_inds_te = ~np.isnan(y_test[:,0])
     test_roc_auc = roc_auc_score(y_test[labelled_inds_te], y_test_pred_proba[labelled_inds_te])
-    test_auprc = average_precision_score(y_test[labelled_inds_te], y_test_pred_proba[labelled_inds_te])
+    test_auprc = average_precision_score(y_test[labelled_inds_te, 1], y_test_pred_proba[labelled_inds_te, 1])
     print('ROC AUC on test : %.4f'%test_roc_auc)
     print('AUPRC on test : %.4f'%test_auprc)
     

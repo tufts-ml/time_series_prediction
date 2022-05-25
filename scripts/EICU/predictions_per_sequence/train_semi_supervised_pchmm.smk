@@ -1,5 +1,5 @@
 '''
-Train PC-HMM ON MIMIC Inhospital Mortality Task
+Train PC-HMM ON EICU Inhospital Mortality Task
 
 Usage
 -----
@@ -13,21 +13,19 @@ $ snakemake --snakefile train_semi_supervised_pchmm.smk --profile ../../../profi
 
 # Default environment variables
 # Can override with local env variables
-configfile:"semi_supervised_pchmm_single_config.json"
+configfile:"semi_supervised_pchmm.json"
 
 # Default environment variables
 # Can override with local env variables
 sys.path.append(os.path.abspath('../predictions_collapsed'))
 from config_loader import (
     D_CONFIG,
-    DATASET_SPLIT_PATH,
-    PROJECT_REPO_DIR, PROJECT_CONDA_ENV_YAML,
-    DATASET_SPLIT_FEAT_PER_TSLICE_PATH)
+    PROJECT_REPO_DIR, PROJECT_CONDA_ENV_YAML)
 sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src'))
 
 
-RESULTS_FEAT_PER_TSTEP_PATH="/cluster/tufts/hugheslab/prath01/results/mimic3/semi_supervised_pchmm/v05112022/"
-CLF_TRAIN_TEST_SPLIT_PATH = "/cluster/tufts/hugheslab/prath01/datasets/mimic3_ssl/"
+RESULTS_FEAT_PER_TSTEP_PATH="/cluster/tufts/hugheslab/prath01/results/eicu/semi_supervised_pchmm/v05112022/"
+CLF_TRAIN_TEST_SPLIT_PATH = "/cluster/tufts/hugheslab/prath01/datasets/eicu_ssl/"
 
 
 rule train_and_evaluate_classifier_many_hyperparams:
