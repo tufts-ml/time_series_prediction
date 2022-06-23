@@ -2,8 +2,9 @@ Toy Overheat dataset
 
 # Background
 
-Toy "overheat" is a simple time series dataset with fictional "temperature" measurements for a device over a multi-day operating period (50-200 hours).
-We measure one temperature measurement per hour. 
+The `toy_overheat` dataset is a simple univariate time series dataset with fictional "temperature" measurements for a device over a multi-day operating period (50-200 hours).
+
+Many such devices are observed (many sequences). For each one, we measure one temperature measurement per hour.  The period of observation changes across sequences (some are longer, some are shorter).
 
 6 example sequences are shown here (left column: no overheating, right: overheating)
 
