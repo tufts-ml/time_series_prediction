@@ -2,9 +2,15 @@ Toy Overheat dataset
 
 # Background
 
-Toy "overheat" is a simple time series dataset with regular fictional temperature measurements (1d) over time, which we pretend is from a fictional device operating in the world.
+Toy "overheat" is a simple time series dataset with fictional "temperature" measurements for a device over a multi-day operating period (50-200 hours).
+We measure one temperature measurement per hour. 
 
-We want to look at temperature over time and answer the binary question "did the device" overheat?
+6 example sequences are shown here (left column: no overheating, right: overheating)
+
+![image](https://user-images.githubusercontent.com/2365444/175380946-27c518b6-630b-436d-9dfa-7a381c97bb1d.png)
+
+The classification goal is to look at temperature over time and answer the binary question "did the device" overheat?
+In this context, overheating means a spike in temperature that exceeded ~5 degrees C.
 
 Code to generate multiple sequences and their labels is here:
 
