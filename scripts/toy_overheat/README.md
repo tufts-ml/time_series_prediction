@@ -57,6 +57,7 @@ CSV data files and JSON data-dictionary files on disk.
 ```console
 $ cd predictions_collapsed/
 $ snakemake --cores 4 -s make_collapsed_dataset_and_split_train_test.smk all
+```
 
 **Expected output**
 
