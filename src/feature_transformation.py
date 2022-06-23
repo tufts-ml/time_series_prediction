@@ -228,9 +228,9 @@ def collapse_np(ts_df, data_dict, collapse_range_features, range_pairs, tstops_d
                     cur_feat_arr, start, stop,
                     cur_timestamp_arr=cur_timestamp_arr)
             
-            if op_ind==0:
-                print('Percentage of empty slices in %s to %s is %.2f'%(
-                    low, high, (empty_arrays/n_rows)*100))
+#             if op_ind==0:
+#                 print('Percentage of empty slices in %s to %s is %.2f'%(
+#                     low, high, (empty_arrays/n_rows)*100))
             list_of_collapsed_feat_arr.append(collapsed_feat_arr)
             list_of_collapsed_feat_names.extend([x+'_'+op+'_'+str(low)+'_to_'+str(high) for x in feature_cols])
         

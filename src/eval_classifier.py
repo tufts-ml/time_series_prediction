@@ -126,7 +126,6 @@ if __name__ == '__main__':
                 assert val.count(' ') == 0
                 assert val.startswith('sklearn')
                 for ii, name in enumerate(val.split('.')):
-                    from IPython import embed; embed()
                     if ii == 0:
                         mod = globals().get(name)
                     else:
