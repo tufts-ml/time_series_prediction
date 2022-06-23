@@ -742,7 +742,7 @@ if __name__ == '__main__':
     # ------------------
 #     os.chdir(fig_dir)
     doc, tag, text = Doc().tagtext()
-    pd.set_option('precision', 4)
+    pd.set_option('display.precision', 4)
     with tag('html'):
         if os.path.exists(TEMPLATE_HTML_PATH):
             with open(TEMPLATE_HTML_PATH, 'r') as f:
