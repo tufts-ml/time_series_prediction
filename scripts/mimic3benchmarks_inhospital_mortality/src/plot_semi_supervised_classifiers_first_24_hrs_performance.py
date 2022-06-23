@@ -108,7 +108,7 @@ if __name__ == '__main__':
         
         if perf_measure == 'roc_auc':
             axs.set_ylabel('Area under ROC Curve (test set) ', fontsize=fontsize)
-            axs.set_ylim([0.1, 1])
+            axs.set_ylim([0.45, 1])
         elif perf_measure == 'average_precision':
             axs.set_ylabel('Area under PR Curve (test set) ', fontsize=fontsize)
             axs.set_ylim([0.05, 0.7])

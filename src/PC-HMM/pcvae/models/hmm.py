@@ -117,6 +117,7 @@ class HMM(BaseVAE):
                                            sample=False, name='prediction')
         self._predictor = Model(inputs=input, outputs=output_dist, name='predictor')
         
+        
     def build_hmm_model(self):
         # Model inputs
         input_x = Input(self.input_shape, name='model_input')

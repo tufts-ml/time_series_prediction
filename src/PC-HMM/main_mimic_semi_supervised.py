@@ -179,9 +179,20 @@ if __name__ == '__main__':
     optimizer = get_optimizer('adam', lr = args.lr)
 
     # draw the initial probabilities from dirichlet distribution
-    prng = np.random.RandomState(args.seed)
-    init_state_probas = prng.dirichlet(5*np.ones(n_states))
-
+#     prng = np.random.RandomState(args.seed)
+#     init_state_probas = prng.dirichlet(5*np.ones(n_states))
+#     initial_state_logits = np.log(init_state_probas)
+    
+    initial_state_logits = tf.zeros([n_states]) # uniform distribution
+    daily_change_prob = 0.05
+    transition_probs = tf.fill([n_states, n_states],
+                               daily_change_prob / (n_states - 1))
+    transition_logits = np.log(tf.linalg.set_diag(transition_probs,
+                                          tf.fill([n_states], 
+                                                  1 - daily_change_prob)))
+    
+    
+    
     model = HMM(
             states=n_states,                                     
             lam=args.lamb,                                      
@@ -191,9 +202,9 @@ if __name__ == '__main__':
             observation_initializer=dict(loc=init_means, 
                 scale=init_covs),
             initial_state_alpha=1.,
-            initial_state_initializer=np.log(init_state_probas),
+            initial_state_initializer=initial_state_logits,
             transition_alpha=1.,
-            transition_initializer=None, 
+            transition_initializer=transition_logits, 
         optimizer=optimizer)
     
     
@@ -203,6 +214,7 @@ if __name__ == '__main__':
     else:
         data.batch_size = args.batch_size
     model.build(data) 
+    
     
     # set the regression coefficients of the model
     eta_weights = np.zeros((n_states, 2))  
@@ -250,12 +262,61 @@ if __name__ == '__main__':
     init_etas = [opt_eta_weights, opt_eta_intercept]
     model._predictor.set_weights(init_etas)
     
+    steps_per_epoch = np.ceil(N/args.batch_size)
+        
+    # temporarily using pre-trained weights
+    '''
+    best_model_weights = '/cluster/tufts/hugheslab/prath01/results/mimic3/semi_supervised_pchmm/v05112022/semi-supervised-pchmm-lr=0.05-seed=2577-init_strategy=uniform-batch_size=512-perc_labelled=100-predictor_l2_penalty=0-n_states=5-lamb=1000-weights.h5'
     
-    model.fit(data, steps_per_epoch=1, epochs=100, batch_size=args.batch_size, lr=args.lr,
+    model_init = HMM(
+            states=5,                                     
+            lam=args.lamb,                                      
+            observation_dist='NormalWithMissing')
+    
+    model_init.build(data)
+    model_init.model.load_weights(best_model_weights)
+    init_model_weights = model_init.model.get_weights()
+    transfer_model_weights = model.model.get_weights()
+    for ii, ww in enumerate(transfer_model_weights):
+        if ii<=1:
+            continue
+        if ii==1:
+            ww[:5, :5]=init_model_weights[ii]
+        else:
+            ww[:5] = init_model_weights[ii]
+    
+    model.model.set_weights(transfer_model_weights)
+    '''
+    
+    model.fit(data, steps_per_epoch=steps_per_epoch, epochs=50, batch_size=args.batch_size, lr=args.lr,
               initial_weights=model.model.get_weights())
     
+    # train just the predictor after training HMM if lambda=0
+    if args.lamb==0:
+        print('Training the predictor only since lambda=0')
+        z_train = model.hmm_model.predict(x_train)
+        z_train_mean = np.mean(z_train, axis=1)
+        
+        logistic = LogisticRegression(solver='lbfgs', random_state = 42)
+        penalty = ['l2']
+        C = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e2, 1e3, 1e4, 1e5]
+        hyperparameters = dict(C=C, penalty=penalty)
+        classifier = GridSearchCV(logistic, hyperparameters, cv=5, verbose=10, scoring = 'average_precision')
+        
+        labeled_inds = ~np.isnan(y_train[:,1])
+        cv = classifier.fit(z_train_mean[labeled_inds], y_train[labeled_inds,1])
+
+        # get the logistic regression coefficients. These are the optimal eta coefficients.
+        lr_weights = cv.best_estimator_.coef_
+
+        # set the K logistic regression weights as K x 2 eta coefficients
+        opt_eta_weights = np.vstack([np.zeros_like(lr_weights), lr_weights]).T
+
+        # set the intercept of the eta coefficients
+        opt_eta_intercept = np.asarray([0, cv.best_estimator_.intercept_[0]])
+        final_etas = [opt_eta_weights, opt_eta_intercept]
+        model._predictor.set_weights(final_etas)
     
-    from IPython import embed; embed()
     # evaluate on test set
 #     x_train, y_train = data.train().numpy()
     z_train = model.hmm_model.predict(x_train)
@@ -431,5 +492,23 @@ if __name__ == '__main__':
     axs.set_xticklabels(['50 negative samples', '50 positive samples'])
     f.savefig('predicted_proba_viz.png')
     ''' 
+    '''
+    Train only the predictor
+    -------------------------
+    mlp = MLPClassifier(solver='lbfgs', random_state = 42)
+    alpha = [1e-3, 1e-2, 1e-1, 1e0]
+    hidden_layer_sizes = [(8, 8, ), (16, 16, ), (32, 32, )]
+    hyperparameters = dict(alpha=alpha, hidden_layer_sizes=hidden_layer_sizes)
+    classifier = GridSearchCV(mlp, hyperparameters, cv=5, verbose=10, scoring = 'average_precision')
     
+
+    
+    rf = RandomForestClassifier(n_estimators=100, class_weight='balanced')
+    max_features = [0.33, 0.66, .99]
+    max_samples = [0.33, 0.66, .99]
+    hyperparameters = dict(max_features=max_features, max_samples=max_samples)
+    classifier = GridSearchCV(rf, hyperparameters, cv=5, verbose=10, scoring = 'average_precision')
+
+    cv = classifier.fit(z_train_mean, y_train[:,1])
+    '''
 

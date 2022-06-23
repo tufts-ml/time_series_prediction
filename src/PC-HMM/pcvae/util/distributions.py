@@ -35,7 +35,7 @@ def nll_data(weight=1., noise=0., include_base_dist_loss=False, prior_weight=Fal
             llik = llik - weight * p_x.distribution.log_prob(x)
         if prior_weight:
             llik = llik + prior_weight * p_x.prior_loss()
-        return llik
+        return llik/tf.cast(len(x), tf.float32)
     return loglik
 
 def nll_labels(weight=1., noise=0., include_base_dist_loss=False, predictor_weight=False):

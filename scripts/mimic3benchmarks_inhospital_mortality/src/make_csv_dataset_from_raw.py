@@ -68,7 +68,10 @@ if __name__ == '__main__':
     features_df = pd.merge(labs_vitals_df, static_features_df, on=id_cols, how='inner')  
     
     
-    from IPython import embed; embed()
+    # get the stay lengths
+    stay_lengths_df = features_df[id_time_cols].groupby(id_cols).max().reset_index()
+    outcomes_df = pd.merge(outcomes_df, stay_lengths_df, on=id_cols, how='inner').rename(columns={'hours_in' : 'stay_length'})
+    
     '''
     # create spec-sheet
     features_specs_df = pd.DataFrame(columns=['ColumnName', 'Role', 'Type', 'Minimum', 

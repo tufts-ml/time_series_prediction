@@ -104,7 +104,7 @@ def get_predictor_network(network, predictor_l2_weight=0., predictor_time_reduce
             x = Dense(predictor_dense_units, activation=predictor_dense_activation,
                                                 kernel_regularizer=kernel_reg,
                                                 bias_regularizer=bias_reg)(x)
-            x = tf.keras.layers.BatchNormalization(gamma_initializer='glorot_uniform')(x)
+#             x = tf.keras.layers.BatchNormalization(gamma_initializer='glorot_uniform')(x)
 
         params, tensors = [], []
         for (param, shape) in output_shapes.items():

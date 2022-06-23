@@ -3,9 +3,9 @@ Reproducible workflow for building mimic3
 
 Usage
 -----
-$ snakemake --cores 1 build_spec_json_from_csv
+>> snakemake --cores 1 build_spec_json_from_csv
 
-snakemake --cores 1 build_csv_dataset
+>> snakemake --cores 1 build_csv_dataset
 
 '''
 
@@ -45,7 +45,7 @@ DATASET_RAW_PATH = "/cluster/tufts/hugheslab/datasets/mimic-iii-v1.4/v20201130/e
 
 print("Building standardized dataset")
 print("Output will go to folder:")
-print(DATASET_STD_PATH)
+print(DATASET_RAW_PATH)
 
 # Spec config file
 with open('spec_config.json', 'r') as f:
@@ -93,12 +93,12 @@ rule build_csv_dataset:
         script=os.path.join(DATASET_SCRIPTS_ROOT, 'src', 'make_csv_dataset_from_raw.py')
 
     output:
-        x_std_data_csv=os.path.join(DATASET_STD_PATH, 'features_per_tstep.csv'),
-        y_std_data_csv=os.path.join(DATASET_STD_PATH, 'outcomes_per_seq.csv')
+        x_std_data_csv=os.path.join(DATASET_RAW_PATH, 'features_per_tstep.csv'),
+        y_std_data_csv=os.path.join(DATASET_RAW_PATH, 'outcomes_per_seq.csv')
 
     params:
         raw_data_dir=DATASET_RAW_PATH,
-        output_dir=DATASET_STD_PATH
+        output_dir=DATASET_RAW_PATH
 
     conda:
         PROJECT_CONDA_ENV_YAML
@@ -120,14 +120,14 @@ rule build_spec_json_from_csv:
         row_template_json_path=os.path.expandvars(os.path.join(PROJECT_SPEC_UTILS_DIR, 'row_template.json')),
         spec_config_path='spec_config.json',
         spec_csvs=[os.path.join(
-                DATASET_STD_PATH,
+                DATASET_RAW_PATH,
                 SPEC_CONFIG['output_csv_path_pattern'].replace(
                     '{{sheet_name}}', sname))
                 for sname in SPEC_CONFIG['spec_sheet_name_list']]
 
     output:
         spec_jsons=[os.path.join(
-                DATASET_STD_PATH,
+                DATASET_RAW_PATH,
                 SPEC_CONFIG['output_json_path_pattern'].replace(
                     '{{sheet_name}}', sname))
                 for sname in SPEC_CONFIG['spec_sheet_name_list']]
@@ -142,6 +142,6 @@ rule build_spec_json_from_csv:
             --sheet_template_json {{input.sheet_template_json_path}} \
             --row_template_json {{input.row_template_json_path}} \
             --output_dir {output_dir}
-        '''.format(output_dir=DATASET_STD_PATH)
+        '''.format(output_dir=DATASET_RAW_PATH)
 
 

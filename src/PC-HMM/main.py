@@ -271,7 +271,7 @@ if __name__ == '__main__':
     init_etas = [opt_eta_weights, opt_eta_intercept]
     model._predictor.set_weights(init_etas)
     
-    model.fit(data, steps_per_epoch=1, epochs=750, batch_size=args.batch_size, lr=args.lr,
+    model.fit(data, steps_per_epoch=100, epochs=750, batch_size=args.batch_size, lr=args.lr,
               initial_weights=model.model.get_weights())
     
     

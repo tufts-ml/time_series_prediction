@@ -204,4 +204,4 @@ if __name__ == '__main__':
 
     perf_csv = os.path.join(args.output_dir, 'GRUD_performance.csv')
     print('Saving GRUD performance to %s'%perf_csv)
-#     perf_df.to_csv(perf_csv, index=False)
+    perf_df.to_csv(perf_csv, index=False)

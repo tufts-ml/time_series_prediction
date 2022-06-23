@@ -116,3 +116,4 @@ venv.bak/
 *.m
 *.pt
 *.csv.gz
+*.npy

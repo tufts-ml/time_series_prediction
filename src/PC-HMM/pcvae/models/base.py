@@ -113,7 +113,7 @@ class BaseVAE(object):
         if reduce_lr:
             cblr.append(ReduceLROnPlateau(monitor='val_loss', factor=0.2, verbose=1,
                                           patience=10, min_lr=0.00001))
-            cblr.append(EarlyStopping(patience=30))
+            cblr.append(EarlyStopping(patience=200))
         elif expon_decay:
             def dfunc(epoch):
                 if epoch <= decay_warmup:
@@ -156,7 +156,6 @@ class BaseVAE(object):
         training_engine = self.model.fit
         training_generator = data.optimize(labeled_only)
         
-        from IPython import embed; embed()
         self.history = training_engine(training_generator, validation_data=vd,
                                        steps_per_epoch=steps_per_epoch,
                                        epochs=epochs, use_multiprocessing=use_multiprocessing,

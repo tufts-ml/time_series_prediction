@@ -38,11 +38,11 @@ rule train_and_evaluate_classifier:
     input:
         script=os.path.join(PROJECT_REPO_DIR, 'src', 'PC-HMM', 'main_mimic_semi_supervised.py'),
         x_train_np=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'percentage_labelled_sequnces={perc_labelled}', 'X_train.npy'),
-        x_valid_np=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'percentage_labelled_sequnces={perc_labelled}', 'X_valid.npy'),
-        x_test_np=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'percentage_labelled_sequnces={perc_labelled}', 'X_test.npy'),
+        x_valid_np=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'percentage_labelled_sequnces={perc_labelled}', 'X_valid_fully_observed.npy'),
+        x_test_np=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'percentage_labelled_sequnces={perc_labelled}', 'X_test_fully_observed.npy'),
         y_train_np=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'percentage_labelled_sequnces={perc_labelled}', 'y_train.npy'),
-        y_valid_np=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'percentage_labelled_sequnces={perc_labelled}', 'y_valid.npy'),
-        y_test_np=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'percentage_labelled_sequnces={perc_labelled}', 'y_test.npy')
+        y_valid_np=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'percentage_labelled_sequnces={perc_labelled}', 'y_valid_fully_observed.npy'),
+        y_test_np=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'percentage_labelled_sequnces={perc_labelled}', 'y_test_fully_observed.npy')
 
     params:
         output_dir=RESULTS_FEAT_PER_TSTEP_PATH,
