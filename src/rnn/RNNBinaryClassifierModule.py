@@ -46,6 +46,7 @@ class RNNBinaryClassifierModule(nn.Module):
                 dropout=dropout_proba)
         else:
             raise ValueError("Invalid option for --rnn_type: %s" % rnn_type)
+
         self.output = nn.Linear(
             in_features=n_hiddens,
             out_features=2,
@@ -97,7 +98,7 @@ class RNNBinaryClassifierModule(nn.Module):
             for n in range(N):
                 bmask_T = torch.all(inputs_NTF[n] == pad_val, dim=-1)
                 seq_lens_N[n] = np.searchsorted(bmask_T, 1)
-
+        
         ## Create PackedSequence representation to handle variable-length sequences
         # Requires sorting all sequences in current batch in descending order by length
         sorted_seq_lens_N, ids_N = seq_lens_N.sort(0, descending=True)

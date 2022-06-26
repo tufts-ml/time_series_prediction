@@ -10,6 +10,7 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import (roc_curve, accuracy_score, log_loss, 
                             balanced_accuracy_score, confusion_matrix, 
                             roc_auc_score, make_scorer, precision_score, recall_score, average_precision_score)
+
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from SkorchMLP import SkorchMLP
@@ -29,6 +30,7 @@ from split_dataset import Splitter
 from skorch.dataset import Dataset
 from skorch.helper import predefined_split
 from sklearn.neural_network import MLPClassifier
+
 
 # define callbacks
 def calc_surrogate_loss_skorch_callback(net, X, y):
@@ -106,6 +108,8 @@ if __name__ == '__main__':
 
     parser.add_argument('--train_csv_files', type=str, required=True,
                         help='csv files for training')
+    parser.add_argument('--valid_csv_files', type=str, default=None, required=False,
+                        help='csv files for testing')
     parser.add_argument('--test_csv_files', type=str, required=True,
                         help='csv files for testing')
     parser.add_argument('--outcome_col_name', type=str, required=True,
@@ -122,23 +126,21 @@ if __name__ == '__main__':
     parser.add_argument('--scoring', type=str,
                         help='loss scoring. Choose amongst binary_cross_entropy or surrogate_loss_tight') 
     parser.add_argument('--n_hiddens', type=int, help='number of hidden units') 
-    parser.add_argument('--n_layers', type=int, help='number of hidden layers') 
     parser.add_argument('--lr', type=float, help='learning rate')    
     parser.add_argument('--weight_decay', type=float, help='penalty for weights')
     parser.add_argument('--batch_size', type=int)
     parser.add_argument('--seed', type=int, default=1111)
     parser.add_argument('--n_splits', type=int, default=2)
-    parser.add_argument('--lamb', type=float, default=0.1)
+
+    parser.add_argument('--n_layers', type=int, default=2)
+    parser.add_argument('--lamb', type=int, default=1000)
     parser.add_argument('--merge_x_y', default=True,
                                 type=lambda x: (str(x).lower() == 'true'), required=False)
-    parser.add_argument('--warm_start', type=str, default='true')
-    parser.add_argument('--tighten_bounds', type=str, default='false')
+    parser.add_argument('--warm_start', type=str, default='false')
     parser.add_argument('--initialization_gain', type=float, default=1.0)
-    parser.add_argument('--incremental_min_precision', type=str, default='true')
+    parser.add_argument('--incremental_min_precision', type=str, default='false')
+    parser.add_argument('--tighten_bounds', type=str, default='false')
     args = parser.parse_args()
-    
-    device = torch.device("cpu")
-    
     
     if args.incremental_min_precision=="true":
         args.incremental_min_precision=True
@@ -182,27 +184,37 @@ if __name__ == '__main__':
     y_train = np.ravel(df_by_split['train'][outcome_col_name])
     
     x_test = df_by_split['test'][feature_cols].values.astype(np.float32)
-    y_test = np.ravel(df_by_split['test'][outcome_col_name])    
+    y_test = np.ravel(df_by_split['test'][outcome_col_name])        
     
-    # get the validation set
-    splitter = Splitter(
-        size=args.validation_size, random_state=41,
-        n_splits=args.n_splits, cols_to_group=args.key_cols_to_group_when_splitting)
-    # Assign training instances to splits by provided keys
-    key_train = splitter.make_groups_from_df(df_by_split['train'][key_cols])
+    if args.valid_csv_files is None:
+        # get the validation set
+        splitter = Splitter(
+            size=args.validation_size, random_state=41,
+            n_splits=args.n_splits, cols_to_group=args.key_cols_to_group_when_splitting)
+        # Assign training instances to splits by provided keys
+        key_train = splitter.make_groups_from_df(df_by_split['train'][key_cols])
+
+
+        # get the train and validation splits
+        for ss, (tr_inds, va_inds) in enumerate(splitter.split(x_train, y_train, groups=key_train)):
+            x_tr = x_train[tr_inds].copy()
+            y_tr = y_train[tr_inds].copy()
+            x_valid = x_train[va_inds]
+            y_valid = y_train[va_inds]
+
+        x_train = x_tr
+        y_train = y_tr
+        del(x_tr, y_tr)
     
-    
-    # get the train and validation splits
-    for ss, (tr_inds, va_inds) in enumerate(splitter.split(x_train, y_train, groups=key_train)):
-        x_tr = x_train[tr_inds].copy()
-        y_tr = y_train[tr_inds].copy()
-        x_valid = x_train[va_inds]
-        y_valid = y_train[va_inds]
-    
-    y_train = y_tr
-    del(y_tr)
-    
-    split_dict = {'N_train' : len(x_tr),
+    else:
+        x_valid_csv, y_valid_csv = args.valid_csv_files.split(',')
+        x_valid_df = pd.read_csv(x_valid_csv)
+        y_valid_df = pd.read_csv(y_valid_csv)
+        
+        x_valid = x_valid_df[feature_cols].values.astype(np.float32)
+        y_valid = np.ravel(y_valid_df[outcome_col_name])
+        
+    split_dict = {'N_train' : len(x_train),
                  'N_valid' : len(x_valid),
                  'N_test' : len(x_test),
                  'pos_frac_train' : y_train.sum()/len(y_train),
@@ -218,8 +230,9 @@ if __name__ == '__main__':
     
     # normalize data
     scaler = StandardScaler()
-    scaler.fit(x_tr)
-    x_train_transformed = scaler.transform(x_tr) 
+
+    scaler.fit(x_train)
+    x_train_transformed = scaler.transform(x_train) 
     x_valid_transformed = scaler.transform(x_valid)
     x_test_transformed = scaler.transform(x_test) 
     
@@ -229,9 +242,9 @@ if __name__ == '__main__':
     
     # set random seed
     torch.manual_seed(args.seed)
-        
+
     # set max_epochs 
-    max_epochs=50
+    max_epochs=100
     
     # define callbacks 
     epoch_scoring_precision_train = EpochScoring('precision', lower_is_better=False, on_train=True,
@@ -246,6 +259,13 @@ if __name__ == '__main__':
     epoch_scoring_recall_valid = EpochScoring('recall', lower_is_better=False, on_train=False,
                                                   name='recall_valid')
     
+
+    epoch_scoring_auprc_train = EpochScoring('average_precision', lower_is_better=False, on_train=True,
+                                                                    name='auprc_train')
+    
+    epoch_scoring_auprc_valid = EpochScoring('average_precision', lower_is_better=False, on_train=False,
+                                                  name='auprc_valid')
+    
     early_stopping_cp = EarlyStopping(monitor='precision_valid',
                                           patience=25, threshold=1e-10, threshold_mode='rel', 
                                           lower_is_better=False)
@@ -254,6 +274,10 @@ if __name__ == '__main__':
                                           patience=5, threshold=1e-10, threshold_mode='rel', 
                                           lower_is_better=True)
 
+
+    auprc_early_stopping_cp = EarlyStopping(monitor='auprc_valid', patience=15, threshold=1e-10, threshold_mode='rel',
+                                            lower_is_better=False)
+    
     epoch_scoring_surr_loss_train = EpochScoring(calc_surrogate_loss_skorch_callback, lower_is_better=True, on_train=True,
                                          name='surr_loss_train')
 
@@ -297,6 +321,7 @@ if __name__ == '__main__':
 #     cp = Checkpoint(monitor='precision_valid_best',
 #                     dirname=args.output_dir,
 #                     fn_prefix=args.output_filename_prefix)
+
     
     train_end_cp = TrainEndCheckpoint(dirname=args.output_dir,
                                           fn_prefix=args.output_filename_prefix)
@@ -307,6 +332,7 @@ if __name__ == '__main__':
 #     n_cv_folds = int(np.floor(1/args.validation_size))
     ## start training
     fixed_precision = 0.7
+
     thr_list = [0.5]
     if args.scoring == 'cross_entropy_loss':
         mlp = SkorchMLP(n_features=len(feature_cols),
@@ -342,17 +368,21 @@ if __name__ == '__main__':
         
         # search multiple decision thresolds and pick the threshold that performs best on validation set
         print('Searching thresholds that maximize recall at fixed precision %.4f'%fixed_precision)
-        y_train_proba_vals = mlp_clf.predict_proba(x_train_transformed)
-        unique_probas = np.unique(y_train_proba_vals)
+
+        x_train_valid_transformed = np.vstack([x_train_transformed, x_valid_transformed])
+        y_train_valid = np.concatenate([y_train, y_valid])     
+        
+        y_train_valid_proba_vals = mlp_clf.predict_proba(x_train_valid_transformed)
+        unique_probas = np.unique(y_train_valid_proba_vals)
         thr_grid = np.linspace(np.percentile(unique_probas,1), np.percentile(unique_probas, 99), 100)
         
         precision_scores_G, recall_scores_G = [np.zeros(thr_grid.size), np.zeros(thr_grid.size)]
+#         y_train_valid_pred_probas = mlp_clf.predict_proba(x_train_valid_transformed)
         for gg, thr in enumerate(thr_grid): 
-            curr_thr_y_preds = mlp_clf.predict_proba(x_train_transformed)[:,1]>=thr_grid[gg] 
-            precision_scores_G[gg] = precision_score(y_train, curr_thr_y_preds)
-            recall_scores_G[gg] = recall_score(y_train, curr_thr_y_preds) 
-        
-        
+            curr_thr_y_preds = y_train_valid_proba_vals[:,1]>=thr_grid[gg] 
+            precision_scores_G[gg] = precision_score(y_train_valid, curr_thr_y_preds)
+            recall_scores_G[gg] = recall_score(y_train_valid, curr_thr_y_preds) 
+
         keep_inds = precision_scores_G>=fixed_precision
         if keep_inds.sum()>0:
             precision_scores_G = precision_scores_G[keep_inds]
@@ -373,6 +403,7 @@ if __name__ == '__main__':
             print('Could not find thresholds achieving fixed precision of %.2f. Evaluating with threshold that achieves precision %.3f'%(fixed_precision, np.max(precision_scores_G)))
         
         thr_list.append(best_thr)  
+
         
     elif (args.scoring == 'surrogate_loss_tight')|(args.scoring == 'surrogate_loss_loose'):
         if args.warm_start == 'true':
@@ -384,6 +415,7 @@ if __name__ == '__main__':
                                                 lr=0.001,
                                                 batch_size=args.batch_size, 
                                                 max_epochs=20,
+
                                                 train_split=predefined_split(valid_ds),
                                                 loss_name='cross_entropy_loss',
                                                 n_hiddens=args.n_hiddens,
@@ -411,12 +443,12 @@ if __name__ == '__main__':
                                                optimizer=torch.optim.Adam)
             
             
+
             mlp_init_clf = mlp_init.fit(x_train_transformed, y_train)
 
             # transfer the weights and to a new instance of SkorchLogisticRegression and train minimizing surrogate loss
             print('Transferring weights and training to minimize surrogate loss...')
-            
-            
+
             mlp = SkorchMLP(n_features=len(feature_cols),
                                                 l2_penalty_weights=args.weight_decay,
     #                                             l2_penalty_bias=args.weight_decay,
@@ -450,6 +482,7 @@ if __name__ == '__main__':
                                                            cp, 
                                                            train_end_cp
                                                           ],
+
                                                optimizer=torch.optim.Adam)
 
             mlp.initialize()
@@ -464,6 +497,7 @@ if __name__ == '__main__':
             
             
             '''
+
             buffer_hiddens_w = 0.5*torch.randn(mlp_init_clf.module_.hidden_layer.weight.data.size()).double() 
             buffer_outputs_w = 0.5*torch.randn(mlp_init_clf.module_.output_layer.weight.data.size()).double()
             
@@ -514,6 +548,7 @@ if __name__ == '__main__':
 
             thr_list.append(best_thr)            
             
+
         else:
             print('Training with surrogate loss with random initialization...')
             # Train with random initialization
@@ -552,7 +587,7 @@ if __name__ == '__main__':
             
             mlp_clf = mlp.fit(x_train_transformed, y_train)
         
-        
+
     # save the scaler
     pickle_file = os.path.join(args.output_dir, 'scaler.pkl')
     dump(scaler, open(pickle_file, 'wb'))
@@ -566,18 +601,19 @@ if __name__ == '__main__':
         precision_train = precision_score(y_train, y_train_pred)
         recall_train = recall_score(y_train, y_train_pred)
         auprc_train = average_precision_score(y_train, y_train_pred_probas)
-
         y_valid_pred_probas = mlp_clf.predict_proba(x_valid_transformed)[:,1]
         y_valid_pred = y_valid_pred_probas>=thr
         precision_valid = precision_score(y_valid, y_valid_pred)
         recall_valid = recall_score(y_valid, y_valid_pred)   
         auprc_valid = average_precision_score(y_valid, y_valid_pred_probas)
+
         
         y_test_pred_probas = mlp_clf.predict_proba(x_test_transformed)[:,1]
         y_test_pred = y_test_pred_probas>=thr
         precision_test = precision_score(y_test, y_test_pred)
         recall_test = recall_score(y_test, y_test_pred)
         auprc_test = average_precision_score(y_test, y_test_pred_probas)
+
 
         TP_train = np.sum(np.logical_and(y_train == 1, y_train_pred == 1))
         FP_train = np.sum(np.logical_and(y_train == 0, y_train_pred == 1))
@@ -631,6 +667,7 @@ if __name__ == '__main__':
                 'N_test':len(x_test),
                 'auprc_test':auprc_test,
                 'threshold':thr_list[-1]}
+
     
     
     perf_df = pd.DataFrame([perf_dict])

@@ -9,13 +9,17 @@ Usage : make a single set of features containing from all patient-stays and outc
 ----------------------------------------------------------------------------------------------------------
 >>  snakemake --cores 1 --snakefile make_features_and_outcomes_and_split_train_test.smk make_features_and_outcomes
 
+Usage : make  features containing from all patient-stays and outcomes per timestep before clinical deterioration
+----------------------------------------------------------------------------------------------------------
+>>  snakemake --cores 1 --snakefile make_features_and_outcomes_and_split_train_test.smk make_features_and_outcomes_for_dynamic_output_prediction
+
 Usage : Split into train and test sets containing sequences
 -----------------------------------------------------------
 >> snakemake --cores 1 --snakefile make_features_and_outcomes_and_split_train_test.smk split_into_train_and_test
 
 Usage : Impute missing values for train and test sets seaparately by carry forward and population mean
 ------------------------------------------------------------------------------------------------------
->> snakemake --cores 1 --snakefile make_features_and_outcomes_and_split_train_test.smk impute_missing_values
+>> snakemake --cores 1 --snakefile make_features_and_outcomes_and_split_train_test.smk impute_missing_values_and_normalize_data
 
 
 '''
@@ -37,7 +41,7 @@ CLF_TRAIN_TEST_SPLIT_PATH = os.path.join(DATASET_FEAT_PER_TSLICE_PATH, 'classifi
 evaluate_tslice_hours_list=D_CONFIG['EVALUATE_TIMESLICE_LIST']
 
 # filtered sequences
-filtered_pertslice_csvs=[os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}","{feature}_before_icu_filtered_{tslice}_hours.csv").format(feature=feature, tslice=str(tslice)) for tslice in evaluate_tslice_hours_list for feature in ['vitals', 'labs']]
+filtered_pertslice_csvs=[os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}","{feature}_before_icu_filtered_{tslice}_hours.csv.gz").format(feature=feature, tslice=str(tslice)) for tslice in evaluate_tslice_hours_list for feature in ['vitals', 'labs', 'medications']]
 
 rule filter_admissions_by_tslice_many_tslices:
     input:
@@ -52,10 +56,10 @@ rule filter_admissions_by_tslice:
         output_dir=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}")
     
     output:
-        filtered_demographics_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "demographics_before_icu_filtered_{tslice}_hours.csv"),
-        filtered_vitals_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "vitals_before_icu_filtered_{tslice}_hours.csv"),
-        filtered_labs_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "labs_before_icu_filtered_{tslice}_hours.csv"),
-        filtered_y_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "clinical_deterioration_outcomes_filtered_{tslice}_hours.csv")
+        filtered_demographics_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "demographics_before_icu_filtered_{tslice}_hours.csv.gz"),
+        filtered_vitals_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "vitals_before_icu_filtered_{tslice}_hours.csv.gz"),
+        filtered_labs_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "labs_before_icu_filtered_{tslice}_hours.csv.gz"),
+        filtered_y_csv=os.path.join(DATASET_FEAT_PER_TSLICE_PATH, "TSLICE={tslice}", "clinical_deterioration_outcomes_filtered_{tslice}_hours.csv.gz")
     
     shell:
         '''
@@ -74,21 +78,43 @@ rule make_features_and_outcomes:
         output_dir=CLF_TRAIN_TEST_SPLIT_PATH
     
     output:
-        features_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "features.csv"),
-        outcomes_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "outcomes.csv")
+        features_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "features.csv.gz"),
+        outcomes_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "outcomes.csv.gz")
     
     shell:
         '''
             python -u {input.script} \
                 --preproc_data_dir {params.preproc_data_dir} \
                 --output_dir {params.output_dir} \
+                --include_medications "True" \
         '''
+
+rule make_features_and_outcomes_for_dynamic_output_prediction:
+    input:
+        script=os.path.join(os.path.abspath('../'), 'src', 'make_features_and_outcomes_for_dynamic_output_prediction.py'),
+    
+    params:
+        preproc_data_dir=DATASET_SITE_PATH,
+        output_dir=CLF_TRAIN_TEST_SPLIT_PATH
+    
+    output:
+        features_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "features_per_tstep.csv.gz"),
+        outcomes_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "outcomes_per_tstep.csv.gz")
+    
+    shell:
+        '''
+            python -u {input.script} \
+                --preproc_data_dir {params.preproc_data_dir} \
+                --output_dir {params.output_dir} \
+                --include_medications "True" \
+        '''
+
 
 rule split_into_train_and_test:
     input:
         script=os.path.join(PROJECT_REPO_DIR, 'src', 'split_dataset.py'),
-        features_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'features.csv'),
-        outcomes_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "outcomes.csv"),
+        features_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "features_per_tstep.csv.gz"),
+        outcomes_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "outcomes_per_tstep.csv.gz"),
         features_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "features_dict.json"),
         outcomes_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, "outcomes_dict.json"),
 
@@ -96,10 +122,10 @@ rule split_into_train_and_test:
         train_test_split_dir=CLF_TRAIN_TEST_SPLIT_PATH
  
     output:  
-        x_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_train.csv'),
-        x_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_test.csv'),
-        y_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_train.csv'),
-        y_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_test.csv'),
+        x_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_train.csv.gz'),
+        x_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_test.csv.gz'),
+        y_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_train.csv.gz'),
+        y_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_test.csv.gz'),
         x_dict_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_dict.json'),
         y_dict_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_dict.json')
 
@@ -135,11 +161,11 @@ rule split_into_train_and_test:
             )
 
 
-rule impute_missing_values:
+rule impute_missing_values_and_normalize_data:
     input:
-        script=os.path.join(os.path.abspath('../'), 'src', 'impute_missing_values.py'),
-        x_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_train.csv'),
-        x_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_test.csv'),
+        script=os.path.join(os.path.abspath('../'), 'src', 'impute_missing_values_and_normalize_data.py'),
+        x_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_train.csv.gz'),
+        x_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_test.csv.gz'),
         x_dict_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_dict.json')
     
     params:
@@ -150,4 +176,5 @@ rule impute_missing_values:
             python -u {input.script} \
                 --train_test_split_dir {params.train_test_split_dir} \
                 --output_dir {params.train_test_split_dir} \
+                --normalization "zscore" \
         '''     

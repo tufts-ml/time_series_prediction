@@ -115,10 +115,17 @@ def main():
         data_output = '{}_transformed.csv'.format(file_name)
     elif args.output[-4:] == '.csv':
         data_output = args.output
+    elif args.output[-7:] == '.csv.gz':
+        data_output = args.output
     else:
         data_output = '{}.csv'.format(args.output)
-    ts_df.to_csv(data_output, index=False)
-    print("Wrote to output CSV:\n%s" % (data_output))
+        
+    if data_output[-3:] == '.gz':
+        ts_df.to_csv(data_output, index=False, compression='gzip')
+        print("Wrote to output compressed CSV:\n%s" % (data_output))
+    else:
+        ts_df.to_csv(data_output, index=False)
+        print("Wrote to output CSV:\n%s" % (data_output))
     
     # save data dictionary to file
     if args.data_dict_output is None:
@@ -141,11 +148,12 @@ def collapse_np(ts_df, data_dict, collapse_range_features, range_pairs, tstops_d
 
     time_cols = parse_time_cols(data_dict)
     time_cols = remove_col_names_from_list_if_not_in_df(time_cols, ts_df)
-
+    
     if len(time_cols) == 0:
         raise ValueError("Expected at least one variable with role='time'")
     elif len(time_cols) > 1:
-        raise ValueError("More than one time variable found. Expected exactly one.")
+#         raise ValueError("More than one time variable found. Expected exactly one.")
+          print("More than one time variable found. Choosing %s"%time_cols[-1])
     time_col = time_cols[-1]
 
     # Obtain fenceposts based on where any key differs
@@ -162,14 +170,15 @@ def collapse_np(ts_df, data_dict, collapse_range_features, range_pairs, tstops_d
 
     # Start timer
     total_time = 0
-    timestamp_arr = np.asarray(ts_df[time_col].values.copy(), dtype=np.float64)
+    #ts_df[feature_cols] = ts_df[feature_cols].astype(np.float32)
+    timestamp_arr = np.asarray(ts_df[time_col].values.copy(), dtype=np.float32)
     features_arr = ts_df[feature_cols].values
     
     if tstops_df is None:
         ts_with_max_tstop_df = ts_df[id_cols + [time_col]].groupby(id_cols, as_index=False).max().rename(columns={time_col:'max_tstop'})
-        tstops_arr = np.asarray(pd.merge(ts_df, ts_with_max_tstop_df, on=id_cols, how='left')['max_tstop'], dtype=np.float64)
+        tstops_arr = np.asarray(pd.merge(ts_df, ts_with_max_tstop_df, on=id_cols, how='left')['max_tstop'], dtype=np.float32)
     else:
-        tstops_arr = np.asarray(pd.merge(ts_df, tstops_df, on=id_cols, how='left')['tstop'], dtype=np.float64)
+        tstops_arr = np.asarray(pd.merge(ts_df, tstops_df, on=id_cols, how='left')['tstop'], dtype=np.float32)
     
     for op_ind, op in enumerate(collapse_range_features.split(' ')):
         print('Collapsing with func %s'%op)
@@ -181,7 +190,7 @@ def collapse_np(ts_df, data_dict, collapse_range_features, range_pairs, tstops_d
             # initialize collapsed dataframe for the current summary function
             n_rows = len(fp) - 1
             n_feats = len(feature_cols)
-            collapsed_feat_arr = np.zeros([n_rows, n_feats])
+            collapsed_feat_arr = np.zeros([n_rows, n_feats], dtype=np.float32)
 
             is_str_lo_and_hi = isinstance(low, str) and isinstance(high, str)
             do_case_percentage = is_str_lo_and_hi and (
@@ -232,8 +241,9 @@ def collapse_np(ts_df, data_dict, collapse_range_features, range_pairs, tstops_d
 #                 print('Percentage of empty slices in %s to %s is %.2f'%(
 #                     low, high, (empty_arrays/n_rows)*100))
             list_of_collapsed_feat_arr.append(collapsed_feat_arr)
+
             list_of_collapsed_feat_names.extend([x+'_'+op+'_'+str(low)+'_to_'+str(high) for x in feature_cols])
-        
+            
         t2 = time.time()
         print('done in %d seconds'%(t2-t1))
         total_time = total_time + t2-t1
@@ -250,7 +260,10 @@ def collapse_np(ts_df, data_dict, collapse_range_features, range_pairs, tstops_d
 def calc_start_and_stop_indices_from_percentages(timestamp_arr, start_percentage, end_percentage, tstops_array=None):
     ''' Find start and stop indices selecting start percentage to stop percentage of  time in tstop array'''
     tstop = np.max(tstops_array)
-    lower_bound = np.searchsorted(timestamp_arr, start_percentage*tstop/100)
+    if start_percentage==0:
+        lower_bound=0
+    else:
+        lower_bound = np.searchsorted(timestamp_arr, start_percentage*tstop/100)
     upper_bound = np.searchsorted(timestamp_arr, (end_percentage+0.001)*tstop/100)
 
     # if lower bound and upper bound are the same, add 1 to the upper bound
@@ -468,7 +481,13 @@ def parse_time_cols(data_dict):
             time_cols.append(col['name'])
     return time_cols
             
-    
+def parse_time_col(data_dict):
+    time_cols = []
+    for col in data_dict['fields']:
+        # TODO avoid hardcoding a column name
+        if (col['name'] == 'hours' or col['role']=='timestamp_relative'):
+            time_cols.append(col['name'])
+    return time_cols[-1]
 
 def remove_col_names_from_list_if_not_in_df(col_list, df):
     ''' Remove column names from provided list if not in dataframe

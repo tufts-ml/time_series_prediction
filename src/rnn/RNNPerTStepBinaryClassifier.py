@@ -15,6 +15,7 @@ class RNNPerTStepBinaryClassifier(skorch.NeuralNet):
             constraint_lambda=10000,
             clip=100.0,
             scoring='cross_entropy_loss',
+
             lr=1.00,
             *args,
             **kwargs,
@@ -32,6 +33,7 @@ class RNNPerTStepBinaryClassifier(skorch.NeuralNet):
         self.delta_tp = 0.035 
         self.m_tp = 5.19 
         self.b_tp = -3.54 
+
         kwargs.update(module=RNNPerTStepBinaryClassifierModule)
         super(RNNPerTStepBinaryClassifier, self).__init__(
             criterion=criterion, lr=lr, *args, **kwargs)
@@ -128,6 +130,7 @@ class RNNPerTStepBinaryClassifier(skorch.NeuralNet):
         ## TODO Add the l2 norm on weights and bias
         loss_ = (cross_ent_loss
             + self.l2_penalty_weights * torch.sum(torch.mul(weights_, weights_))
+
 #             + self.l2_penalty_bias * torch.sum(torch.mul(bias_, bias_))
             ) / (denom * np.log(2.0))
         
@@ -227,6 +230,7 @@ class RNNPerTStepBinaryClassifier(skorch.NeuralNet):
             return loss_    
     
     
+
     def train_step_single(self, X, y, **fit_params):
         ''' Perform one gradient descent update step on provided batch (X,y)
         Returns
@@ -244,6 +248,7 @@ class RNNPerTStepBinaryClassifier(skorch.NeuralNet):
                                                           alpha=self.min_precision, 
                                                           lamb=self.constraint_lambda,
                                                           bounds='tight')
+
 
         loss_.backward()
         torch.nn.utils.clip_grad_norm_(self.module_.parameters(), self.clip)
@@ -282,6 +287,7 @@ class RNNPerTStepBinaryClassifier(skorch.NeuralNet):
                                                               lamb=self.constraint_lambda,
                                                               bounds='tight')
 
+
                 
             y_pred_ = self.predict(X)
             
@@ -290,3 +296,4 @@ class RNNPerTStepBinaryClassifier(skorch.NeuralNet):
                 'y_pred' : y_pred_,
                 'y_logproba' : y_logproba_
                 }
+

@@ -153,6 +153,7 @@ def main():
     
     rnn = RNNBinaryClassifier(
               max_epochs=100,
+
               batch_size=args.batch_size,
               device=device,
               lr=args.lr,

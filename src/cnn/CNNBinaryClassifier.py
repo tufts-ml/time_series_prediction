@@ -49,3 +49,4 @@ class CNNBinaryClassifier(skorch.NeuralNet):
     def predict(self, X):
         return np.argmax(super().predict_proba(X), -1)
     '''
+

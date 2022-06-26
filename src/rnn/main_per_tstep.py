@@ -19,6 +19,7 @@ from utils import load_data_dict_json
 from joblib import dump
 from split_dataset import Splitter
 
+
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -41,6 +42,7 @@ def calc_auprc(net, X, y):
     seq_lens_N = torch.sum(keep_inds, axis=1)
     keep_inds = keep_inds[:, :max(seq_lens_N)]
     y = y[:, :max(seq_lens_N)]
+
     return average_precision_score(y[keep_inds], y_pred_probas_NT2[keep_inds][:,1].detach().numpy())
 
 def calc_auroc(net, X, y):
@@ -67,6 +69,7 @@ def calc_recall(net, X, y):
     y_pred = y_pred_proba_pos>=0.5
     return recall_score(y[keep_inds], y_pred)
 
+
 def main():
     parser = argparse.ArgumentParser(description='PyTorch RNN with variable-length numeric sequences wrapper')
     parser.add_argument('--outcome_col_name', type=str, required=True)
@@ -75,6 +78,7 @@ def main():
     parser.add_argument('--test_csv_files', type=str, required=True)
     parser.add_argument('--data_dict_files', type=str, required=True)
     parser.add_argument('--key_cols_to_group_when_splitting', type=str)
+
     parser.add_argument('--batch_size', type=int, default=1024,
                         help='Number of sequences per minibatch')
     parser.add_argument('--epochs', type=int, default=50,
@@ -93,6 +97,7 @@ def main():
                         help='random seed')
     parser.add_argument('--scoring', type=str, default='cross_entropy_loss',
                         help='chose between BCE and tight sigmoid for precision-recall control')
+
     parser.add_argument('--validation_size', type=float, default=0.15,
                         help='validation split size')
     parser.add_argument('--is_data_simulated', type=bool, default=False,
@@ -103,6 +108,7 @@ def main():
                         help='prefix for the training history jsons and trained classifier')
     parser.add_argument('--merge_x_y', default=True,
                                 type=lambda x: (str(x).lower() == 'true'), required=False)
+
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
@@ -150,6 +156,7 @@ def main():
     X_test, y_test = test_vitals.get_batch_data(batch_id=0)
     N,T,F = X_train.shape
     
+
     
     valid_ds = Dataset(X_valid, y_valid) 
     
@@ -164,7 +171,7 @@ def main():
     print('Ratio positive in train : %.2f'%((y_train==1).sum()/len(y_train)))
     print('Ratio positive in test : %.2f'%((y_test==1).sum()/len(y_test)))
     
-#     from IPython import embed; embed()
+
     # callback to compute gradient norm
     compute_grad_norm = ComputeGradientNorm(norm_type=2)
 
@@ -301,6 +308,7 @@ def main():
         clf = rnn.fit(X_train, y_train) 
         best_thr=0.5
         
+
     splits = ['train', 'valid', 'test']
 #     data_splits = ((x_tr, y_tr), (x_va, y_va), (X_test, y_test))
     auroc_per_split,  auprc_per_split, precisions_per_split, recalls_per_split = [np.zeros(len(splits)),
@@ -313,6 +321,7 @@ def main():
         keep_inds = torch.logical_not(torch.all(torch.isnan(torch.FloatTensor(X)), dim=-1))
         y_pred_proba_pos = clf.predict_proba(X)[keep_inds][:,1].detach().numpy()
         auroc_per_split[ii] = roc_auc_score(y[keep_inds], y_pred_proba_pos)
+
         auprc_per_split[ii] = average_precision_score(y[keep_inds], y_pred_proba_pos)
         y_pred = y_pred_proba_pos>=best_thr
         precisions_per_split[ii] = precision_score(y[keep_inds], y_pred)
@@ -404,3 +413,4 @@ def get_sequence_lengths(X_NTF, pad_val):
 
 if __name__ == '__main__':
     main()
+

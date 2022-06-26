@@ -40,6 +40,7 @@ class SkorchLogisticRegression(skorch.NeuralNet):
         self.loss_name=loss_name
         self.min_precision = min_precision
         self.constraint_lambda=constraint_lambda
+
         self.gamma_fp = 7.00
         self.delta_fp = 0.03  
         self.m_fp = 6.85 
@@ -59,6 +60,15 @@ class SkorchLogisticRegression(skorch.NeuralNet):
                                 m_tp = [5.19, 6.192, 9.778, 17.009, 34.448],
                                 b_tp = [-3.54, -3.646, -3.784, -3.97, -4.229])
         
+        self.gamma_fp = 7.00 #2.001 #4.00 #1.001
+        self.delta_fp = 0.021 #0.006 #0.012 #0.003
+        self.m_fp = 8.264 #170.73 #32.47  #1231.95
+        self.b_fp = 2.092 #5.12 #3.33  #12.708
+        self.gamma_tp =  7.00 #2.001 #4.00  #1.001
+        self.delta_tp = 0.035 #0.01 #0.02  #0.005
+        self.m_tp = 5.19 #92.3 #17.00 #680.072
+        self.b_tp = -3.54 #-4.61 #-3.97 #-5.297
+        self.precision_ind = None
         self.incremental_min_precision=incremental_min_precision
         self.initialization_gain=initialization_gain
         kwargs.update(dict(module=SkorchLogisticRegressionModule, 
@@ -82,7 +92,6 @@ class SkorchLogisticRegression(skorch.NeuralNet):
         y_proba_N2 : 2D array, (n_examples, 2)
         '''
         self.module_.eval()
-                
         if isinstance(x_NF, skorch.dataset.Dataset):
             y_logproba_ = self.module_.forward(torch.DoubleTensor(x_NF.X))
         else:
@@ -172,7 +181,6 @@ class SkorchLogisticRegression(skorch.NeuralNet):
     def calc_fp_tp_bounds_better(self, y_true_, y_est_logits_):
         
         current_epoch = self.history[-1]['epoch']
-        
         fp_upper_bound_N = (1+self.gamma_fp*self.delta_fp)*torch.sigmoid(self.m_fp*y_est_logits_+self.b_fp)
         fp_upper_bound = torch.sum(fp_upper_bound_N[y_true_==0])
         
@@ -195,6 +203,7 @@ class SkorchLogisticRegression(skorch.NeuralNet):
         return fp_upper_bound, tp_lower_bound
     
     
+
     def calc_surrogate_loss(self, y_true, y_est_logits_=None, X=None, return_y_logproba=False, 
                             alpha=0.8, lamb=1, bounds='tight'):
         
@@ -255,7 +264,7 @@ class SkorchLogisticRegression(skorch.NeuralNet):
             loss_, y_logproba_ = self.calc_bce_loss(y, X=X, return_y_logproba=True)
         elif (self.loss_name == 'surrogate_loss_tight')&(self.incremental_min_precision):
             current_epoch = self.history[-1]['epoch']
-            
+
             # slowly increment the min precision over epochs
             n_increments = 4
             epochs_per_increment = int(self.max_epochs/n_increments)
@@ -280,10 +289,12 @@ class SkorchLogisticRegression(skorch.NeuralNet):
                 
                 
         elif (self.loss_name == 'surrogate_loss_tight')&(not(self.incremental_min_precision))&(not(self.tighten_bounds)):
+
             
             loss_, y_logproba_ = self.calc_surrogate_loss(y, X=X, return_y_logproba=True,
                                                                 alpha=self.min_precision,
                                                                 lamb=self.constraint_lambda, bounds='tight') 
+
             
         elif (self.loss_name == 'surrogate_loss_tight')&(self.tighten_bounds):
             
@@ -311,6 +322,7 @@ class SkorchLogisticRegression(skorch.NeuralNet):
                                                     lamb=self.constraint_lambda, bounds='tight')
             
         
+
         elif (self.loss_name == 'surrogate_loss_loose'):
             
             loss_, y_logproba_ = self.calc_surrogate_loss(y, X=X, return_y_logproba=True,
@@ -319,6 +331,7 @@ class SkorchLogisticRegression(skorch.NeuralNet):
             
         loss_.backward()
 #         torch.nn.utils.clip_grad_norm_(self.module_.parameters(), self.clip)
+
         self.notify(
             'on_grad_computed',
             named_parameters=TeeGenerator(self.module_.named_parameters()),
@@ -369,6 +382,7 @@ class SkorchLogisticRegression(skorch.NeuralNet):
                 loss_, y_logproba_ = self.calc_surrogate_loss(y, X=X, return_y_logproba=True,
                                                                     alpha=min_precision_grid[self.precision_ind],
                                                                     lamb=self.constraint_lambda, bounds='tight')                
+
             
             elif (self.loss_name == 'surrogate_loss_tight')&(not(self.incremental_min_precision))&(not(self.tighten_bounds)):
 
@@ -399,6 +413,7 @@ class SkorchLogisticRegression(skorch.NeuralNet):
                                                         lamb=self.constraint_lambda, bounds='tight')
             
             
+
             elif self.loss_name == 'surrogate_loss_loose':
                 loss_, y_logproba_ = self.calc_surrogate_loss(y, X=X, return_y_logproba=True, 
                                                                 alpha=self.min_precision, lamb=self.constraint_lambda,
@@ -484,3 +499,4 @@ if __name__ == '__main__':
     
     classifier = GridSearchCV(lr_clf, params, cv=5, scoring = roc_auc_scorer)
     classifier.fit(x_NF, true_y_N)
+

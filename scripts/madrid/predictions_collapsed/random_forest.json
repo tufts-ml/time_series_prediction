@@ -1,0 +1,5 @@
+{
+    "min_samples_leaf": [1024],
+    "n_estimators" : [100],
+    "frac_features_for_clf": [0.33, 0.66]
+}

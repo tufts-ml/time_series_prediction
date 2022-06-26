@@ -1,0 +1,10 @@
+{	
+    "clf_constructor": "sklearn.neural_network.MLPClassifier",
+    "solver": "adam",
+    "hidden_layer_sizes": "(1028, )",
+    "activation": "relu",
+    "batch_size":10000,
+    "learning_rate_init":0.01,
+    "max_iter":500,
+    "grid__alpha": [1e-7, 1e-5, 0.001, 0.1, 1, 10]
+}

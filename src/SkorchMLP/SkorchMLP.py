@@ -78,9 +78,14 @@ class SkorchMLP(skorch.NeuralNet):
         y_proba_N2 : 2D array, (n_examples, 2)
         '''
         self.module_.eval()
-        y_logproba_ = self.module_.forward(torch.DoubleTensor(x_NF))
+        
+        if isinstance(x_NF, skorch.dataset.Dataset):
+            y_logproba_ = self.module_.forward(torch.DoubleTensor(x_NF.X))
+        else:
+            y_logproba_ = self.module_.forward(torch.DoubleTensor(x_NF))
+        
         y_logproba_N1 = y_logproba_.detach().numpy()
-        y_proba_N2 = np.empty((x_NF.shape[0], 2))
+        y_proba_N2 = np.empty((len(y_logproba_N1), 2))
         y_proba_N2[:,1] = np.exp(y_logproba_N1[:,0])
         y_proba_N2[:,0] = 1 - y_proba_N2[:,1]
         return y_proba_N2
@@ -122,7 +127,6 @@ class SkorchMLP(skorch.NeuralNet):
         else:
             y_true_ = torch.DoubleTensor(y_true)
         
-        
         weights_arr = []
         bias_arr = []
         for layer_num in range(self.n_layers):
@@ -137,6 +141,7 @@ class SkorchMLP(skorch.NeuralNet):
         bias_ = torch.cat([bias_, self.module_.output_layer.bias])
         
         
+
         ry_N = torch.sign(y_true_-0.01)*y_est_logits_
         cross_ent_loss = -1.0*torch.sum(torch.nn.functional.logsigmoid(ry_N))
         
@@ -204,8 +209,7 @@ class SkorchMLP(skorch.NeuralNet):
             y_true_ = y_true.type(torch.DoubleTensor)
         else:
             y_true_ = torch.DoubleTensor(y_true)
-        
-        
+
         weights_arr = []
         bias_arr = []
         for layer_num in range(self.n_layers):
@@ -218,7 +222,6 @@ class SkorchMLP(skorch.NeuralNet):
         weights_ = torch.cat([weights_, self.module_.output_layer.weight.flatten()])
         bias_ = torch.cat([bias_, self.module_.output_layer.bias])
         
-    
         
         if bounds=='tight':
             fp_upper_bound, tp_lower_bound = self.calc_fp_tp_bounds_better(y_true_, y_est_logits_)
@@ -299,6 +302,7 @@ class SkorchMLP(skorch.NeuralNet):
             
         loss_.backward()
 #         torch.nn.utils.clip_grad_norm_(self.module_.parameters(), self.clip)
+
         self.notify(
             'on_grad_computed',
             named_parameters=TeeGenerator(self.module_.named_parameters()),
@@ -387,6 +391,7 @@ if __name__ == '__main__':
         train_split=None,
         max_epochs=100, 
         loss_name='surrogate_loss_tight')
+
     
 
 
@@ -404,4 +409,3 @@ if __name__ == '__main__':
 
     # fit classifier
     mlp_clf.fit(x_NF, true_y_N)
-

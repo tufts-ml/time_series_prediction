@@ -17,6 +17,7 @@ sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src', 'rnn'))
 
 from dataset_loader import TidySequentialDataCSVLoader
 from RNNBinaryClassifier import RNNBinaryClassifier
+
 from feature_transformation import (parse_id_cols, parse_feature_cols)
 from utils import load_data_dict_json
 from joblib import dump
@@ -131,6 +132,7 @@ def main():
 #     model.add(keras.layers.Flatten()) 
 #     model.add(keras.layers.Dense(128, activation='relu')) 
 #     model.add(keras.layers.Dense(2, activation='softmax'))    
+
     
     set_random_seed(args.seed)
     model = keras.Sequential()
@@ -162,6 +164,7 @@ def main():
 #     test_auc = test_perf[-1]
 #     print('AUC on test set : %.4f'%test_auc)
 
+
     y_score_val = model.predict_proba(X_val)
     val_auc = roc_auc_score(y_val, y_score_val)
     print('AUC on val set : %.4f'%val_auc)
@@ -182,7 +185,8 @@ def main():
     model.save(model_file)
     
     from IPython import embed; embed()
-    
+
+    model.save(model_file)    
             
 def get_sequence_lengths(X_NTF, pad_val):
     N = X_NTF.shape[0]
@@ -197,4 +201,5 @@ def get_sequence_lengths(X_NTF, pad_val):
 if __name__ == '__main__':
     main()
     
+
 
