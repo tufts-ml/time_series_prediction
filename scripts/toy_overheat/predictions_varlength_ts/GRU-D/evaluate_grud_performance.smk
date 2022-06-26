@@ -1,0 +1,31 @@
+'''
+Visualize fit pchmm models
+
+Usage
+-----
+snakemake --cores 1 --snakefile evaluate_grud_performance.smk
+
+'''
+PROJECT_REPO_DIR = os.environ.get("PROJECT_REPO_DIR", os.path.abspath("../../../../"))
+PROJECT_CONDA_ENV_YAML = os.path.join(PROJECT_REPO_DIR, "ts_pred.yml")
+RESULTS_FEAT_PER_TSTEP_PATH = "/cluster/tufts/hugheslab/prath01/results/toy_overheat/GRUD/"
+DATASET_DIR = os.path.join(PROJECT_REPO_DIR, "datasets", "toy_overheat", "v20200515", "")
+
+
+rule visualize_pchmm_fits:
+    input:
+        script='evaluate_grud_performance.py'
+
+    params:
+        fits_dir=RESULTS_FEAT_PER_TSTEP_PATH,
+        data_dir=DATASET_DIR
+        
+    conda:
+        PROJECT_CONDA_ENV_YAML
+
+    shell:
+        '''
+        python -u {input.script} \
+            --data_dir {params.data_dir} \
+            --fits_dir {params.fits_dir} \
+        '''

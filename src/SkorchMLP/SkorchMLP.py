@@ -17,7 +17,7 @@ class SkorchMLP(skorch.NeuralNet):
             self,
             n_features=0,
             n_hiddens=32,
-            n_layers=2,
+            n_layers=1,
             dropout=0.0,
             l2_penalty_weights=0.0,
             l2_penalty_bias=0.0,
@@ -42,14 +42,14 @@ class SkorchMLP(skorch.NeuralNet):
         self.loss_name=loss_name
         self.min_precision = min_precision
         self.constraint_lambda=constraint_lambda
-        self.gamma_fp = 7.00 #2.001 #4.00 #1.001
-        self.delta_fp = 0.021 #0.006 #0.012 #0.003
-        self.m_fp = 8.264 #170.73 #32.47  #1231.95
-        self.b_fp = 2.092 #5.12 #3.33  #12.708
-        self.gamma_tp =  7.00 #2.001 #4.00  #1.001
-        self.delta_tp = 0.035 #0.01 #0.02  #0.005
-        self.m_tp = 5.19 #92.3 #17.00 #680.072
-        self.b_tp = -3.54 #-4.61 #-3.97 #-5.297
+        self.gamma_fp = 7.00
+        self.delta_fp = 0.035 #0.045 #0.03 
+        self.m_fp = 6.85 #6.98 #11.78 
+        self.b_fp = 1.59 #3.14 #3.53
+        self.gamma_tp =  7.00 
+        self.delta_tp = 0.035 #0.027 #0.018
+        self.m_tp = 6.85 #8.086 #13.35 
+        self.b_tp = -3.54 #-3.63 #-4.035
         self.incremental_min_precision=incremental_min_precision
         self.initialization_gain=initialization_gain
         self.precision_ind = None
@@ -57,8 +57,8 @@ class SkorchMLP(skorch.NeuralNet):
         kwargs.update(dict(module=SkorchMLPModule, 
                            module__n_features=n_features, 
                            module__n_hiddens=n_hiddens,
-                           module__n_layers=n_layers,
                            module__initialization_gain=initialization_gain,
+                           module__n_layers=n_layers,
                            module__dropout=dropout,
                            criterion=criterion, 
                            lr=lr,           
@@ -134,12 +134,14 @@ class SkorchMLP(skorch.NeuralNet):
             bias_arr.append(self.module_.hidden_layer._modules['fc_%d'%layer_num].bias)
         
         
-#         weights_ = torch.cat([self.module_.hidden_layer.weight.flatten(), self.module_.output_layer.weight.flatten()])
-#         bias_ = torch.cat([self.module_.hidden_layer.bias, self.module_.output_layer.bias])
-        
         weights_ = torch.cat(weights_arr)
         bias_ = torch.cat(bias_arr)
         
+        weights_ = torch.cat([weights_, self.module_.output_layer.weight.flatten()])
+        bias_ = torch.cat([bias_, self.module_.output_layer.bias])
+        
+        
+
         ry_N = torch.sign(y_true_-0.01)*y_est_logits_
         cross_ent_loss = -1.0*torch.sum(torch.nn.functional.logsigmoid(ry_N))
         
@@ -214,12 +216,12 @@ class SkorchMLP(skorch.NeuralNet):
             weights_arr.append(self.module_.hidden_layer._modules['fc_%d'%layer_num].weight.flatten())
             bias_arr.append(self.module_.hidden_layer._modules['fc_%d'%layer_num].bias)
         
-        
-#         weights_ = torch.cat([self.module_.hidden_layer.weight.flatten(), self.module_.output_layer.weight.flatten()])
-#         bias_ = torch.cat([self.module_.hidden_layer.bias, self.module_.output_layer.bias])
-        
         weights_ = torch.cat(weights_arr)
         bias_ = torch.cat(bias_arr)
+        
+        weights_ = torch.cat([weights_, self.module_.output_layer.weight.flatten()])
+        bias_ = torch.cat([bias_, self.module_.output_layer.bias])
+        
         
         if bounds=='tight':
             fp_upper_bound, tp_lower_bound = self.calc_fp_tp_bounds_better(y_true_, y_est_logits_)
@@ -299,7 +301,8 @@ class SkorchMLP(skorch.NeuralNet):
                                                                 lamb=self.constraint_lambda, bounds='loose') 
             
         loss_.backward()
-        torch.nn.utils.clip_grad_norm_(self.module_.parameters(), self.clip)
+#         torch.nn.utils.clip_grad_norm_(self.module_.parameters(), self.clip)
+
         self.notify(
             'on_grad_computed',
             named_parameters=TeeGenerator(self.module_.named_parameters()),
@@ -387,7 +390,8 @@ if __name__ == '__main__':
         lr=0.5,
         train_split=None,
         max_epochs=100, 
-        loss_name='cross_entropy_loss')
+        loss_name='surrogate_loss_tight')
+
     
 
 

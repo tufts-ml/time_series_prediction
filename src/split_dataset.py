@@ -51,6 +51,47 @@ def split_dataframe_by_keys(data_df=None, size=0, random_state=0, cols_to_group=
         test_df = data_df.iloc[b].copy()
     return train_df, test_df
 
+def normalize_df(df, feature_cols, scaling='minmax', train_df=None):
+    ''' Normalizes the dataframe if needed. Useful to normalize train and test sets separately after splitting dataset'''
+    if train_df is None:
+        train_df = df.copy()
+    
+    
+    scaling_dict_list = []
+    normalized_df = df.copy()
+    
+    if scaling=='zscore':
+        for col in feature_cols:
+            den_scaling = train_df[col].std()
+            num_scaling = train_df[col].mean()
+            
+            if den_scaling==0:
+                den_scaling = 1
+            
+            # scale the data
+            normalized_df[col] = (df[col]-num_scaling)/den_scaling
+            
+            # store the normalization estimates in a list and save them for later evaluation
+            scaling_dict_list.append({'feature':col, 'numerator_scaling':num_scaling, 
+                                      'denominator_scaling':den_scaling})
+            
+    elif scaling=='minmax':
+        for col in feature_cols:
+            den_scaling = train_df[col].max()-train_df[col].min()
+            num_scaling = train_df[col].min()
+            
+            if den_scaling==0:
+                den_scaling = 1  
+                
+            # scale the data
+            normalized_df[col] = (df[col]-num_scaling)/den_scaling
+            
+            # store the normalization estimates in a list and save them for later evaluation
+            scaling_dict_list.append({'feature':col, 'numerator_scaling':num_scaling, 
+                                      'denominator_scaling':den_scaling})
+        
+    scaling_df = pd.DataFrame(scaling_dict_list) 
+    return normalized_df, scaling_df
 
 if __name__ == '__main__':
     # Parse command line arguments
@@ -121,4 +162,3 @@ if __name__ == '__main__':
     if args.output_data_dict_filename is not None:
         with open(args.output_data_dict_filename, 'w') as f:
             json.dump(data_dict, f, indent=4)
-

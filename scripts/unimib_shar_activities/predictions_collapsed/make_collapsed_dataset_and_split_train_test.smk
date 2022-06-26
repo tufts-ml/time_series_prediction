@@ -34,7 +34,7 @@ rule collapse_features:
         x_spec_json=os.path.join(DATASET_STD_PATH, 'Spec_FeaturesPerTimestep.json')
 
     output:
-        collapsedx_csv=os.path.join(DATASET_STD_PATH, 'features_per_sequence.csv'),
+        collapsedx_csv=os.path.join(DATASET_STD_PATH, 'collapsed_features_per_sequence.csv'),
         collapsedx_json=os.path.join(DATASET_STD_PATH, 'Spec_CollapsedFeaturesPerSequence.json')
 
     conda:
@@ -56,7 +56,7 @@ rule collapse_features:
 rule split_into_train_and_test:
     input:
         script=os.path.join(PROJECT_REPO_DIR, 'src', 'split_dataset.py'),
-        collapsedx_csv=os.path.join(DATASET_STD_PATH, 'features_per_sequence.csv'),
+        collapsedx_csv=os.path.join(DATASET_STD_PATH, 'collapsed_features_per_sequence.csv'),
         collapsedx_json=os.path.join(DATASET_STD_PATH, 'Spec_CollapsedFeaturesPerSequence.json'),
         collapsedy_csv=os.path.join(DATASET_STD_PATH, 'outcomes_per_sequence.csv'),
         collapsedy_json=os.path.join(DATASET_STD_PATH, 'Spec_OutcomesPerSequence.json')

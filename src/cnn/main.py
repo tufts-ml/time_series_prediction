@@ -16,6 +16,8 @@ sys.path.append(os.path.join(PROJECT_REPO_DIR, 'src', 'rnn'))
 
 
 from dataset_loader import TidySequentialDataCSVLoader
+from RNNBinaryClassifier import RNNBinaryClassifier
+
 from feature_transformation import (parse_id_cols, parse_feature_cols)
 from utils import load_data_dict_json
 from joblib import dump
@@ -121,7 +123,16 @@ def main():
     
     X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=args.validation_size, random_state=213)
     
-    print('number of time points : %s\nnumber of features : %s\n'%(T,F)) 
+    print('number of time points : %s\nnumber of features : %s\n'%(T,F))
+    
+#     set_random_seed(1111)
+#     model = keras.Sequential()  
+#     model.add(keras.layers.Conv1D(filters=1, kernel_size=3, activation='relu', strides=2))
+#     model.add(keras.layers.MaxPooling1D(pool_size=4))
+#     model.add(keras.layers.Flatten()) 
+#     model.add(keras.layers.Dense(128, activation='relu')) 
+#     model.add(keras.layers.Dense(2, activation='softmax'))    
+
     
     set_random_seed(args.seed)
     model = keras.Sequential()
@@ -145,6 +156,14 @@ def main():
              callbacks=[early_stopping], 
              class_weight=class_weights, batch_size=args.batch_size) 
     
+    
+#     val_perf = model.evaluate(X_val, y_val)
+#     val_auc = val_perf[-1]
+#     print('AUC on val set : %.4f'%val_auc)
+#     test_perf = model.evaluate(X_test, y_test) 
+#     test_auc = test_perf[-1]
+#     print('AUC on test set : %.4f'%test_auc)
+
 
     y_score_val = model.predict_proba(X_val)
     val_auc = roc_auc_score(y_val, y_score_val)
@@ -163,6 +182,10 @@ def main():
     
     # save the model
     model_file = os.path.join(args.output_dir, args.output_filename_prefix+'.model')
+    model.save(model_file)
+    
+    from IPython import embed; embed()
+
     model.save(model_file)    
             
 def get_sequence_lengths(X_NTF, pad_val):
@@ -177,3 +200,6 @@ def get_sequence_lengths(X_NTF, pad_val):
 
 if __name__ == '__main__':
     main()
+    
+
+

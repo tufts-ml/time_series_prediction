@@ -1,0 +1,13 @@
+cluster: "slurm-submit.py"
+cluster-config: "/cluster/tufts/hugheslab/prath01/projects/time_series_prediction/profiles/hugheslab_cluster/cluster.json"
+cluster-status: "slurm-status.py"
+
+jobs: 100
+max-jobs-per-second: 50
+max-status-checks-per-second: 1
+local-cores: 1
+keep-going: True
+#restart-times: 3 # This is good for robustness, but bad when I have actual bugs in the code, so removed for now
+
+rerun-incomplete: True
+printshellcmds: True

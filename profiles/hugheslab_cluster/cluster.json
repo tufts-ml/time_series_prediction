@@ -1,0 +1,11 @@
+{
+    "__default__" :
+    {
+        "time" : "14:00:00",
+        "cores" : "4",
+        "partition" : "ccgpu",
+        "priority" : "normal",
+        "memory" : "30G",
+        
+    }
+}

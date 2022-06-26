@@ -10,12 +10,30 @@ class RNNPerTStepBinaryClassifier(skorch.NeuralNet):
     def __init__(
             self,
             criterion=torch.nn.CrossEntropyLoss,
+            l2_penalty_weights=0.0,
+            min_precision=0.7,
+            constraint_lambda=10000,
             clip=100.0,
+            scoring='cross_entropy_loss',
+
             lr=1.00,
             *args,
             **kwargs,
             ):
         self.clip = clip
+        self.scoring=scoring
+        self.min_precision = min_precision
+        self.constraint_lambda=constraint_lambda
+        self.l2_penalty_weights=l2_penalty_weights
+        self.gamma_fp = 7.00 
+        self.delta_fp = 0.021 
+        self.m_fp = 8.264 
+        self.b_fp = 2.092 
+        self.gamma_tp =  7.00 
+        self.delta_tp = 0.035 
+        self.m_tp = 5.19 
+        self.b_tp = -3.54 
+
         kwargs.update(module=RNNPerTStepBinaryClassifierModule)
         super(RNNPerTStepBinaryClassifier, self).__init__(
             criterion=criterion, lr=lr, *args, **kwargs)
@@ -97,17 +115,22 @@ class RNNPerTStepBinaryClassifier(skorch.NeuralNet):
         keep_inds = torch.logical_not(torch.all(torch.isnan(X), dim=-1))
         seq_lens_N = torch.sum(keep_inds, axis=1)
         
-#         cross_ent_loss_per_example_N = torch.sum(-y_est_logits_[:,:,0]*y_true - y_est_logits_[:,:,1]*(1-y_true), dim=1)
-        cross_ent_loss_per_example_N = torch.sum(-y_est_logits_[:,:,1]*y_true*keep_inds - y_est_logits_[:,:,0]*(1-y_true)*keep_inds,
-                                                 dim=1)/seq_lens_N
+        cross_ent_loss_per_example_N = torch.sum(-y_est_logits_[:,:,1]*y_true[:, :max(seq_lens_N)]*keep_inds[:, :max(seq_lens_N)] - y_est_logits_[:,:,0]*(1-y_true[:, :max(seq_lens_N)])*keep_inds[:, :max(seq_lens_N)], dim=1)/seq_lens_N  
         
         cross_ent_loss = torch.sum(cross_ent_loss_per_example_N)
-    
+        
         denom = y_true.shape[0]
+        
+        weights_ = torch.cat([self.module_.rnn.weight_ih_l0.flatten(), 
+                              self.module_.rnn.weight_hh_l0.flatten(), 
+                              self.module_.output.weight.flatten()])
+#         bias_ = torch.cat([self.module_.hidden_layer.bias, self.module_.output_layer.bias])
+        
         
         ## TODO Add the l2 norm on weights and bias
         loss_ = (cross_ent_loss
-#             + self.l2_penalty_weights * torch.sum(torch.mul(weights_, weights_))
+            + self.l2_penalty_weights * torch.sum(torch.mul(weights_, weights_))
+
 #             + self.l2_penalty_bias * torch.sum(torch.mul(bias_, bias_))
             ) / (denom * np.log(2.0))
         
@@ -115,6 +138,97 @@ class RNNPerTStepBinaryClassifier(skorch.NeuralNet):
             return loss_, y_est_logits_
         else:
             return loss_
+    
+    
+    def calc_fp_tp_bounds_better(self, y_true_, y_est_logits_, keep_inds):
+                
+        fp_upper_bound_N = (1+self.gamma_fp*self.delta_fp)*torch.sigmoid(self.m_fp*y_est_logits_[:, :, 1][keep_inds]+self.b_fp)
+        fp_upper_bound = torch.sum(fp_upper_bound_N[y_true_[keep_inds]==0])
+        
+        tp_lower_bound_N = (1+self.gamma_tp*self.delta_tp)*torch.sigmoid(self.m_tp*y_est_logits_[:, :, 1][keep_inds]+self.b_tp)
+        tp_lower_bound = torch.sum(tp_lower_bound_N[y_true_[keep_inds]==1])      
+        
+        return fp_upper_bound, tp_lower_bound
+    
+    def calc_fp_tp_bounds_loose(self, y_true_, y_est_logits_, keep_inds):
+        scores = 1.0-(torch.sign(y_true_[keep_inds]-.001)*y_est_logits_[:, :, 1][keep_inds])
+        hinge_loss = torch.clamp(scores, min=0.0) # torch way for ag_np.max(0.0, scores)
+        
+        fp_upper_bound = torch.sum(hinge_loss[y_true_[keep_inds]==0])
+        tp_lower_bound = torch.sum(1-(hinge_loss[y_true_[keep_inds]==1]))
+        
+        return fp_upper_bound, tp_lower_bound  
+    
+    
+    def calc_fp_tp_bounds_ideal(self, y_true_, y_est_logits_):
+        
+        fp_upper_bound_N = (y_true_[keep_inds]==0)&(y_est_logits_[:, :, 1][keep_inds]>=0)
+        fp_upper_bound = torch.sum(fp_upper_bound_N)
+        
+        tp_lower_bound_N = (y_true_[keep_inds]==1)&(y_est_logits_[:, :, 1][keep_inds]>=0)
+#         tp_lower_bound = torch.sum(tp_lower_bound_N) 
+        tp_lower_bound = torch.sum(self.delta_tp + tp_lower_bound_N)  
+        
+        
+        return fp_upper_bound, tp_lower_bound
+    
+    
+    def calc_surrogate_loss(
+            self, y_true, y_est_logits_=None, X=None, return_y_logproba=False, alpha=0.85, lamb=1, bounds='tight'):
+        
+        if y_est_logits_ is None:
+            y_est_logits_ = self.module_.forward(X, apply_log_softmax=False)
+        
+        #consider only estimated logits until the sequence length per example
+        keep_inds = torch.logical_not(torch.all(torch.isnan(X), dim=-1))
+        seq_lens_N = torch.sum(keep_inds, axis=1)
+        
+        
+        if isinstance(y_true, torch.Tensor):
+            # Make sure we cast from possible Float to Double
+            y_true_ = y_true.type(torch.DoubleTensor)
+        else:
+            y_true_ = torch.DoubleTensor(y_true)
+        
+        # handle variable length sequences
+        y_true_ = y_true[:, :max(seq_lens_N)]
+        keep_inds = keep_inds[:, :max(seq_lens_N)]
+        
+#         weights_ = torch.cat([self.module_.hidden_layer.weight.flatten(), self.module_.output_layer.weight.flatten()])
+#         bias_ = torch.cat([self.module_.hidden_layer.bias, self.module_.output_layer.bias])
+        
+        if bounds=='tight':
+            fp_upper_bound, tp_lower_bound = self.calc_fp_tp_bounds_better(y_true_, y_est_logits_, keep_inds)
+        elif bounds=='loose':
+            fp_upper_bound, tp_lower_bound = self.calc_fp_tp_bounds_loose(y_true_, y_est_logits_, keep_inds)
+        
+        frac_alpha = alpha/(1-alpha)
+#         surr_loss_tight = -tp_lower_bound*(1+lamb) + lamb*frac_alpha*fp_upper_bound
+        g_theta = -tp_lower_bound + frac_alpha*fp_upper_bound
+        
+        if g_theta>=0:
+            penalty = g_theta
+        else:
+            penalty = 0
+        surr_loss_tight = -tp_lower_bound + lamb*penalty        
+        denom = y_true_.shape[0]
+        
+        weights_ = torch.cat([self.module_.rnn.weight_ih_l0.flatten(), 
+                              self.module_.rnn.weight_hh_l0.flatten(), 
+                              self.module_.output.weight.flatten()])        
+        
+        loss_ = (
+            surr_loss_tight
+            + self.l2_penalty_weights * torch.sum(torch.mul(weights_, weights_))
+#             + self.l2_penalty_bias * torch.sum(torch.mul(bias_, bias_))
+            ) / (denom)
+        
+        if return_y_logproba:
+            yproba_ = torch.nn.functional.log_softmax(y_est_logits_, dim=-1)
+            return loss_, yproba_
+        else:
+            return loss_    
+    
     
 
     def train_step_single(self, X, y, **fit_params):
@@ -127,7 +241,14 @@ class RNNPerTStepBinaryClassifier(skorch.NeuralNet):
         self.module_.train()
         self.optimizer_.zero_grad()
         
-        loss_, y_logproba_ = self.calc_bce_loss(y, X=X, return_y_logproba=True)
+        if self.scoring=='cross_entropy_loss':
+            loss_, y_logproba_ = self.calc_bce_loss(y, X=X, return_y_logproba=True)
+        elif self.scoring=='surrogate_loss_tight':
+            loss_, y_logproba_ = self.calc_surrogate_loss(y, X=X, return_y_logproba=True, 
+                                                          alpha=self.min_precision, 
+                                                          lamb=self.constraint_lambda,
+                                                          bounds='tight')
+
 
         loss_.backward()
         torch.nn.utils.clip_grad_norm_(self.module_.parameters(), self.clip)
@@ -158,7 +279,14 @@ class RNNPerTStepBinaryClassifier(skorch.NeuralNet):
         self.module_.eval()
 
         with torch.no_grad():
-            loss_, y_logproba_ = self.calc_bce_loss(y, X=X, return_y_logproba=True)
+            if self.scoring=='cross_entropy_loss':
+                loss_, y_logproba_ = self.calc_bce_loss(y, X=X, return_y_logproba=True)
+            elif self.scoring=='surrogate_loss_tight':
+                loss_, y_logproba_ = self.calc_surrogate_loss(y, X=X, return_y_logproba=True, 
+                                                              alpha=self.min_precision, 
+                                                              lamb=self.constraint_lambda,
+                                                              bounds='tight')
+
 
                 
             y_pred_ = self.predict(X)
@@ -168,3 +296,4 @@ class RNNPerTStepBinaryClassifier(skorch.NeuralNet):
                 'y_pred' : y_pred_,
                 'y_logproba' : y_logproba_
                 }
+

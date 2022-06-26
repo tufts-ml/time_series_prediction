@@ -9,7 +9,8 @@ import skorch
 from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import (roc_curve, accuracy_score, log_loss, 
                             balanced_accuracy_score, confusion_matrix, 
-                            roc_auc_score, make_scorer, precision_score, recall_score)
+                            roc_auc_score, make_scorer, precision_score, recall_score, average_precision_score)
+
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from SkorchMLP import SkorchMLP
@@ -28,6 +29,8 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from split_dataset import Splitter
 from skorch.dataset import Dataset
 from skorch.helper import predefined_split
+from sklearn.neural_network import MLPClassifier
+
 
 # define callbacks
 def calc_surrogate_loss_skorch_callback(net, X, y):
@@ -128,6 +131,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int)
     parser.add_argument('--seed', type=int, default=1111)
     parser.add_argument('--n_splits', type=int, default=2)
+
     parser.add_argument('--n_layers', type=int, default=2)
     parser.add_argument('--lamb', type=int, default=1000)
     parser.add_argument('--merge_x_y', default=True,
@@ -135,7 +139,7 @@ if __name__ == '__main__':
     parser.add_argument('--warm_start', type=str, default='false')
     parser.add_argument('--initialization_gain', type=float, default=1.0)
     parser.add_argument('--incremental_min_precision', type=str, default='false')
-    
+    parser.add_argument('--tighten_bounds', type=str, default='false')
     args = parser.parse_args()
     
     if args.incremental_min_precision=="true":
@@ -226,6 +230,7 @@ if __name__ == '__main__':
     
     # normalize data
     scaler = StandardScaler()
+
     scaler.fit(x_train)
     x_train_transformed = scaler.transform(x_train) 
     x_valid_transformed = scaler.transform(x_valid)
@@ -237,7 +242,7 @@ if __name__ == '__main__':
     
     # set random seed
     torch.manual_seed(args.seed)
-    
+
     # set max_epochs 
     max_epochs=100
     
@@ -254,6 +259,7 @@ if __name__ == '__main__':
     epoch_scoring_recall_valid = EpochScoring('recall', lower_is_better=False, on_train=False,
                                                   name='recall_valid')
     
+
     epoch_scoring_auprc_train = EpochScoring('average_precision', lower_is_better=False, on_train=True,
                                                                     name='auprc_train')
     
@@ -267,6 +273,7 @@ if __name__ == '__main__':
     loss_early_stopping_cp = EarlyStopping(monitor='valid_loss',
                                           patience=5, threshold=1e-10, threshold_mode='rel', 
                                           lower_is_better=True)
+
 
     auprc_early_stopping_cp = EarlyStopping(monitor='auprc_valid', patience=15, threshold=1e-10, threshold_mode='rel',
                                             lower_is_better=False)
@@ -304,9 +311,17 @@ if __name__ == '__main__':
     calc_fp_valid = EpochScoring(calc_fp, lower_is_better=False, on_train=False, name='fp_valid')
     
     
-    cp = Checkpoint(monitor='precision_valid',
+    cp = Checkpoint(monitor='valid_loss_best',
                     f_history=os.path.join(args.output_dir,
-                                           args.output_filename_prefix+'.json'))
+                                           args.output_filename_prefix+'_valid_loss_best.json'),
+                    f_params=os.path.join(args.output_dir,
+                                           args.output_filename_prefix+'_valid_loss_best.pt')
+                   )
+    
+#     cp = Checkpoint(monitor='precision_valid_best',
+#                     dirname=args.output_dir,
+#                     fn_prefix=args.output_filename_prefix)
+
     
     train_end_cp = TrainEndCheckpoint(dirname=args.output_dir,
                                           fn_prefix=args.output_filename_prefix)
@@ -316,7 +331,8 @@ if __name__ == '__main__':
     
 #     n_cv_folds = int(np.floor(1/args.validation_size))
     ## start training
-    fixed_precision = 0.2
+    fixed_precision = 0.7
+
     thr_list = [0.5]
     if args.scoring == 'cross_entropy_loss':
         mlp = SkorchMLP(n_features=len(feature_cols),
@@ -332,21 +348,19 @@ if __name__ == '__main__':
                                                       epoch_scoring_precision_valid,
                                                       epoch_scoring_recall_train,
                                                       epoch_scoring_recall_valid,
-#                                                       epoch_scoring_surr_loss_train,
-#                                                       epoch_scoring_surr_loss_valid,
+                                                      epoch_scoring_surr_loss_train,
+                                                      epoch_scoring_surr_loss_valid,
                                                       epoch_scoring_bce_loss_train,
                                                       epoch_scoring_bce_loss_valid,
-                                                      epoch_scoring_auprc_train,
-                                                      epoch_scoring_auprc_valid,
-#                                                       tpl_bound_train,
-#                                                       tpl_bound_valid,
-#                                                       fpu_bound_train,
-#                                                       fpu_bound_valid,
+                                                      tpl_bound_train,
+                                                      tpl_bound_valid,
+                                                      fpu_bound_train,
+                                                      fpu_bound_valid,
                                                       calc_tp_train,
                                                       calc_tp_valid,
                                                       calc_fp_train,
                                                       calc_fp_valid,
-                                                      auprc_early_stopping_cp,
+                                                      loss_early_stopping_cp,
                                                       cp, train_end_cp],
                                            optimizer=torch.optim.Adam)
         print('Training Skorch MLP minimizing cross entropy loss...')
@@ -354,6 +368,7 @@ if __name__ == '__main__':
         
         # search multiple decision thresolds and pick the threshold that performs best on validation set
         print('Searching thresholds that maximize recall at fixed precision %.4f'%fixed_precision)
+
         x_train_valid_transformed = np.vstack([x_train_transformed, x_valid_transformed])
         y_train_valid = np.concatenate([y_train, y_valid])     
         
@@ -367,7 +382,7 @@ if __name__ == '__main__':
             curr_thr_y_preds = y_train_valid_proba_vals[:,1]>=thr_grid[gg] 
             precision_scores_G[gg] = precision_score(y_train_valid, curr_thr_y_preds)
             recall_scores_G[gg] = recall_score(y_train_valid, curr_thr_y_preds) 
-                
+
         keep_inds = precision_scores_G>=fixed_precision
         if keep_inds.sum()>0:
             precision_scores_G = precision_scores_G[keep_inds]
@@ -387,18 +402,20 @@ if __name__ == '__main__':
             best_thr = thr_grid[np.argmax(precision_scores_G)]
             print('Could not find thresholds achieving fixed precision of %.2f. Evaluating with threshold that achieves precision %.3f'%(fixed_precision, np.max(precision_scores_G)))
         
-        thr_list.append(best_thr)   
+        thr_list.append(best_thr)  
+
         
     elif (args.scoring == 'surrogate_loss_tight')|(args.scoring == 'surrogate_loss_loose'):
         if args.warm_start == 'true':
             print('Warm starting by minimizing cross entropy loss first...')
             # warm start classifier and train with miminizing cross entropy loss first
             mlp_init = SkorchMLP(n_features=len(feature_cols),
-                                                l2_penalty_weights=args.weight_decay,
+                                                l2_penalty_weights=0.01,
     #                                             l2_penalty_bias=args.weight_decay,
-                                                lr=args.lr,
+                                                lr=0.001,
                                                 batch_size=args.batch_size, 
-                                                max_epochs=max_epochs,
+                                                max_epochs=20,
+
                                                 train_split=predefined_split(valid_ds),
                                                 loss_name='cross_entropy_loss',
                                                 n_hiddens=args.n_hiddens,
@@ -420,13 +437,18 @@ if __name__ == '__main__':
                                                            calc_fp_train,
                                                            calc_fp_valid,
                                                            loss_early_stopping_cp,
-                                                           cp, train_end_cp],
+                                                           cp, 
+                                                           train_end_cp
+                                                          ],
                                                optimizer=torch.optim.Adam)
+            
+            
 
             mlp_init_clf = mlp_init.fit(x_train_transformed, y_train)
 
             # transfer the weights and to a new instance of SkorchLogisticRegression and train minimizing surrogate loss
             print('Transferring weights and training to minimize surrogate loss...')
+
             mlp = SkorchMLP(n_features=len(feature_cols),
                                                 l2_penalty_weights=args.weight_decay,
     #                                             l2_penalty_bias=args.weight_decay,
@@ -457,14 +479,25 @@ if __name__ == '__main__':
                                                            calc_fp_valid,
     #                                                        lr_scheduler,
     #                                                        early_stopping_cp,
-                                                           cp, train_end_cp],
+                                                           cp, 
+                                                           train_end_cp
+                                                          ],
+
                                                optimizer=torch.optim.Adam)
 
             mlp.initialize()
 
             # load the past history
             mlp.load_params(checkpoint=cp)
-                        
+            
+            mlp.module_.hidden_layer.fc_0.weight.data = mlp_init_clf.module_.hidden_layer.fc_0.weight.data
+            mlp.module_.hidden_layer.fc_0.bias.data = mlp_init_clf.module_.hidden_layer.fc_0.bias.data
+            mlp.module_.output_layer.weight.data = mlp_init_clf.module_.output_layer.weight.data
+            mlp.module_.output_layer.bias.data = mlp_init_clf.module_.output_layer.bias.data
+            
+            
+            '''
+
             buffer_hiddens_w = 0.5*torch.randn(mlp_init_clf.module_.hidden_layer.weight.data.size()).double() 
             buffer_outputs_w = 0.5*torch.randn(mlp_init_clf.module_.output_layer.weight.data.size()).double()
             
@@ -477,10 +510,45 @@ if __name__ == '__main__':
             
             mlp.module_.hidden_layer.bias.data = mlp_init_clf.module_.hidden_layer.bias.data + buffer_hiddens_b
             mlp.module_.output_layer.bias.data = mlp_init_clf.module_.output_layer.bias.data + buffer_outputs_b
-
+            '''
 
             mlp_clf = mlp.partial_fit(x_train_transformed, y_train)
-        
+            
+            # search multiple decision thresolds and pick the threshold that performs best on validation set
+            print('Searching thresholds that maximize recall at fixed precision %.4f'%fixed_precision)
+            y_valid_proba_vals = mlp_clf.predict_proba(x_valid_transformed)
+            unique_probas = np.unique(y_valid_proba_vals)
+            thr_grid = np.linspace(np.percentile(unique_probas,1), np.percentile(unique_probas, 99), 200)
+
+            precision_scores_G, recall_scores_G = [np.zeros(thr_grid.size), np.zeros(thr_grid.size)]
+            for gg, thr in enumerate(thr_grid): 
+                curr_thr_y_preds = y_valid_proba_vals[:,1]>=thr_grid[gg] 
+                precision_scores_G[gg] = precision_score(y_valid, curr_thr_y_preds)
+                recall_scores_G[gg] = recall_score(y_valid, curr_thr_y_preds) 
+
+
+            keep_inds = precision_scores_G>=fixed_precision-0.15
+            if keep_inds.sum()>0:
+                precision_scores_G = precision_scores_G[keep_inds]
+                recall_scores_G = recall_scores_G[keep_inds]
+                thr_grid = thr_grid[keep_inds]
+                best_ind = np.argmax(recall_scores_G)
+                best_thr = thr_grid[best_ind]
+                thr_perf_df = pd.DataFrame(np.vstack([
+                            thr_grid[np.newaxis,:],
+                            precision_scores_G[np.newaxis,:],
+                            recall_scores_G[np.newaxis,:]]).T,
+                        columns=['thr', 'precision_score', 'recall_score'])
+                print(thr_perf_df)
+                print('Chosen threshold : '+str(best_thr))
+
+            else:
+                best_thr = thr_grid[np.argmax(precision_scores_G)]
+                print('Could not find thresholds achieving fixed precision of %.2f. Evaluating with threshold that achieves precision %.3f'%(fixed_precision, np.max(precision_scores_G)))
+
+            thr_list.append(best_thr)            
+            
+
         else:
             print('Training with surrogate loss with random initialization...')
             # Train with random initialization
@@ -495,6 +563,7 @@ if __name__ == '__main__':
                                                 constraint_lambda=args.lamb,
                                                 incremental_min_precision=args.incremental_min_precision,
                                                 initialization_gain=args.initialization_gain,
+                                                n_hiddens=args.n_hiddens,
                                                 n_layers=args.n_layers,
                                                 callbacks=[epoch_scoring_precision_train,
                                                            epoch_scoring_precision_valid,
@@ -518,6 +587,7 @@ if __name__ == '__main__':
             
             mlp_clf = mlp.fit(x_train_transformed, y_train)
         
+
     # save the scaler
     pickle_file = os.path.join(args.output_dir, 'scaler.pkl')
     dump(scaler, open(pickle_file, 'wb'))
@@ -530,18 +600,21 @@ if __name__ == '__main__':
         y_train_pred = y_train_pred_probas>=thr
         precision_train = precision_score(y_train, y_train_pred)
         recall_train = recall_score(y_train, y_train_pred)
-
+        auprc_train = average_precision_score(y_train, y_train_pred_probas)
         y_valid_pred_probas = mlp_clf.predict_proba(x_valid_transformed)[:,1]
         y_valid_pred = y_valid_pred_probas>=thr
         precision_valid = precision_score(y_valid, y_valid_pred)
         recall_valid = recall_score(y_valid, y_valid_pred)   
+        auprc_valid = average_precision_score(y_valid, y_valid_pred_probas)
+
         
         y_test_pred_probas = mlp_clf.predict_proba(x_test_transformed)[:,1]
         y_test_pred = y_test_pred_probas>=thr
         precision_test = precision_score(y_test, y_test_pred)
         recall_test = recall_score(y_test, y_test_pred)
-        
-        threshold = thr
+        auprc_test = average_precision_score(y_test, y_test_pred_probas)
+
+
         TP_train = np.sum(np.logical_and(y_train == 1, y_train_pred == 1))
         FP_train = np.sum(np.logical_and(y_train == 0, y_train_pred == 1))
         TN_train = np.sum(np.logical_and(y_train == 0, y_train_pred == 0))
@@ -576,6 +649,7 @@ if __name__ == '__main__':
                 'TN_train':TN_train,
                 'FN_train':FN_train,
                 'N_train':len(x_train),
+                'auprc_train':auprc_train,
                 'precision_valid':precision_valid,
                 'recall_valid':recall_valid,
                 'TP_valid':TP_valid,
@@ -583,6 +657,7 @@ if __name__ == '__main__':
                 'TN_valid':TN_valid,
                 'FN_valid':FN_valid,
                 'N_valid':len(x_valid),
+                'auprc_valid':auprc_valid,
                 'precision_test':precision_test,
                 'recall_test':recall_test,
                 'TP_test':TP_test,
@@ -590,7 +665,9 @@ if __name__ == '__main__':
                 'TN_test':TN_test,
                 'FN_test':FN_test,
                 'N_test':len(x_test),
-                'threshold':threshold}
+                'auprc_test':auprc_test,
+                'threshold':thr_list[-1]}
+
     
     
     perf_df = pd.DataFrame([perf_dict])

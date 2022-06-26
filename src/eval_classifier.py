@@ -1,8 +1,6 @@
 '''
 Train and evaluate binary classifier
-
 Produce a human-readable HTML report with performance plots and metrics
-
 Usage
 -----
 ```
@@ -12,22 +10,17 @@ python eval_classifier.py {classifier_name} \
     {data_kwargs} \
     {protocol_kwargs}
 ```
-
 For detailed help message:
 ```
 python eval_classifier.py {classifier_name} --help
 ```
-
 Examples
 --------
-
 TODO
 ----
 * Save classifiers in reproducible format on disk (ONNX??)
 * Add reporting for calibration (and perhaps adjustment to improve calibration)
-
 '''
-
 import argparse
 import ast
 import json
@@ -42,7 +35,7 @@ from joblib import dump
 import sklearn.linear_model
 import sklearn.tree
 import sklearn.ensemble
-import sklearn.neural_network
+import sys
 
 from custom_classifiers import ThresholdClassifier
 from sklearn.metrics import (accuracy_score, balanced_accuracy_score, f1_score,
@@ -50,7 +43,7 @@ from sklearn.metrics import (accuracy_score, balanced_accuracy_score, f1_score,
                              roc_auc_score, roc_curve, precision_recall_curve, precision_score, recall_score)
 from sklearn.model_selection import GridSearchCV, ShuffleSplit
 from sklearn.pipeline import Pipeline
-from sklearn.compose import ColumnTransformer, make_column_selector
+from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import StandardScaler
 from split_dataset import Splitter
 
@@ -61,13 +54,16 @@ from utils_scoring import (
     calc_score_for_binary_predictions)
 from utils_calibration import plot_binary_clf_calibration_curve_and_histograms
 
+DEFAULT_PROJECT_REPO = os.path.sep.join(__file__.split(os.path.sep)[:-2])
+PROJECT_REPO_DIR = os.path.abspath(
+    os.environ.get('PROJECT_REPO_DIR', DEFAULT_PROJECT_REPO))
+
+
 def get_sorted_list_of_kwargs_specific_to_group_parser(group_parser):
     keys = [a.option_strings[0].replace('--', '') for a in group_parser._group_actions]
     return [k for k in sorted(keys)]
 
-DEFAULT_PROJECT_REPO = os.path.sep.join(__file__.split(os.path.sep)[:-2])
-PROJECT_REPO_DIR = os.path.abspath(
-    os.environ.get('PROJECT_REPO_DIR', DEFAULT_PROJECT_REPO))
+
 
 default_json_dir = os.path.join(PROJECT_REPO_DIR, 'src', 'default_hyperparameters')
 if not os.path.exists(default_json_dir):
@@ -102,7 +98,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(title="clf_name", dest="clf_name")
     subparsers_by_name = dict()
-
+    
+    
     # Create classifier-specific options for the parser
     # Read in 'defaults' from json files, allow overriding with kwarg args
     for json_file in DEFAULT_SETTINGS_JSON_FILES:
@@ -123,7 +120,8 @@ if __name__ == '__main__':
         # Read in defaults from JSON file
         with open(json_file, 'r') as f:
             defaults = json.load(f)
-
+        
+        
         # Setup parser options using the contents of JSON file
         for key, val in defaults.items():
             if key.count('constructor'):
@@ -199,6 +197,7 @@ if __name__ == '__main__':
             return x
 
     # Import data
+    print('Reading train-test data...')
     feature_cols = []
     outcome_cols = []
     info_per_feature_col = dict()
@@ -393,7 +392,7 @@ if __name__ == '__main__':
     hyper_searcher = GridSearchCV(
         prediction_pipeline, pipeline_param_grid_dict,
         scoring=scoring_dict, cv=splitter, refit=False,
-        return_train_score=True, verbose=5)
+        return_train_score=True, verbose=5, n_jobs=-1)
     hyper_searcher.fit(x_train, y_train, groups=key_train)
 
     # Pretty tables for results of hyper_searcher search

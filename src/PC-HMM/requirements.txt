@@ -1,0 +1,11 @@
+tensorflow-gpu==2.3
+tensorflow-datasets==2.1
+tensorflow-probability==0.11
+scipy
+scikit-learn
+scikit-image
+numpy
+matplotlib
+seaborn
+pandas
+numexpr

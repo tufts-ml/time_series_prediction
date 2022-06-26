@@ -24,7 +24,8 @@ class RNNPerTStepBinaryClassifierModule(nn.Module):
     '''
     def __init__(self,
             rnn_type='LSTM', n_inputs=1, n_hiddens=1, n_layers=1,
-            dropout_proba=0.0, bidirectional=False, seq_lens_N=None, ):
+            dropout_proba=0.0, bidirectional=False, seq_lens_N=None, initialization_gain=1.0):
+
         super(RNNPerTStepBinaryClassifierModule, self).__init__()
         self.drop = nn.Dropout(dropout_proba)
         if rnn_type in ['LSTM', 'GRU']:
@@ -45,6 +46,13 @@ class RNNPerTStepBinaryClassifierModule(nn.Module):
             raise ValueError("Invalid option for --rnn_type: %s" % rnn_type)
         self.output = nn.Linear(n_hiddens, 2)
         self.seq_lens_N=seq_lens_N
+        
+        
+        # initialize with Glorot
+        nn.init.xavier_uniform_(self.rnn.weight_ih_l0 , gain=initialization_gain)
+        nn.init.xavier_uniform_(self.rnn.weight_hh_l0 , gain=initialization_gain)
+        nn.init.xavier_uniform_(self.output.weight, gain=initialization_gain)
+        
 
         # Setup to use double-precision floats (like np.float64)
         self.float()
@@ -61,7 +69,8 @@ class RNNPerTStepBinaryClassifierModule(nn.Module):
 
         return float(correct_predictions) / total_predictions
 
-    def forward(self, inputs_NTF, seq_lens_N=None, pad_val=np.nan, return_hiddens=False):
+    def forward(self, inputs_NTF, seq_lens_N=None, pad_val=np.nan, return_hiddens=False, apply_log_softmax=True):
+
         ''' Forward pass of input data through NN module
 
         Cleanly handles variable-length sequences (though internals a bit messy).
@@ -101,10 +110,11 @@ class RNNPerTStepBinaryClassifierModule(nn.Module):
         ## Unpack to N x T x H padded representation
         outputs_NTH, _ = nn.utils.rnn.pad_packed_sequence(packed_outputs_PH, batch_first=True)
         ## Apply weights + softmax to final timestep of each sequence
-        ## TODO : change to consider all timepoints
-#         end_hiddens_NH = outputs_NTH[range(N), sorted_seq_lens_N - 1]
-#         yproba_NT2 = nn.functional.softmax(self.output(outputs_NTH), dim=-1)
-        yproba_NT2 = nn.functional.log_softmax(self.output(outputs_NTH), dim=-1)
+        if apply_log_softmax:
+            yproba_NT2 = nn.functional.log_softmax(self.output(outputs_NTH), dim=-1)
+        else:
+            yproba_NT2 = self.output(outputs_NTH)
+
         ## Unsort and return
         if return_hiddens:
             return yproba_NT2.index_select(0, rev_ids_N), outputs_NTH.index_select(0, rev_ids_N)
@@ -141,5 +151,4 @@ if __name__ == '__main__':
         print(hiddens_NTH[n, :seq_lens_N[n]])
         print("yproba:")
         print(yproba_NT2[n, :seq_lens_N[n]])
-
 
