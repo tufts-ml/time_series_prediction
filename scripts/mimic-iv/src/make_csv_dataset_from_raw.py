@@ -59,7 +59,9 @@ if __name__ == '__main__':
     data_df['hours_from_admission'] = data_df['event_time_from_admit'].apply(get_hours_from_adm)
     
     # keep only some vitals and lab measurements
-    keep_columns = ['Heart Rate', 'Respiratory Rate', 'O2 saturation pulseoxymetry',
+    keep_columns = ['Heart Rate', 
+                    'Respiratory Rate', 
+                    'O2 saturation pulseoxymetry',
        'Non Invasive Blood Pressure systolic',
        'Non Invasive Blood Pressure diastolic',
        'Non Invasive Blood Pressure mean', 
@@ -198,12 +200,12 @@ if __name__ == '__main__':
     
     save_dir = '/cluster/tufts/hugheslab/datasets/MIMIC-IV/'
     features_csv = os.path.join(save_dir, 'features_per_tstep.csv.gz')
-    outcomes_csv = os.path.join(save_dir, 'outcomes_per_seq.csv.gz')
+    outcomes_csv = os.path.join(save_dir, 'outcomes_per_seq.csv')
     
     print('Saving features per timestep to :\n%s'%features_csv)
     print('Saving outcomes per sequence to :\n%s'%outcomes_csv)
     features_df.to_csv(features_csv, index=False, compression='gzip')
-    outcomes_df.to_csv(outcomes_csv, index=False, compression='gzip')
+    outcomes_df.to_csv(outcomes_csv, index=False)
     
     
     from IPython import embed; embed()
@@ -219,14 +221,14 @@ if __name__ == '__main__':
     outcome_specs_df.loc[:, 'ColumnName']=outcomes_df.columns
     '''
     
-    # save the files to csv
-    features_csv = os.path.join(args.output_dir, 'features_per_tstep.csv')
-    features_df.to_csv(features_csv, index=False)
-    print("Wrote features per timestep to CSV file: %s"%features_csv)
+#     # save the files to csv
+#     features_csv = os.path.join(args.output_dir, 'features_per_tstep.csv')
+#     features_df.to_csv(features_csv, index=False)
+#     print("Wrote features per timestep to CSV file: %s"%features_csv)
     
-    outcomes_csv = os.path.join(args.output_dir, 'outcomes_per_seq.csv')
-    outcomes_df.to_csv(outcomes_csv, index=False)
-    print("Wrote outcomes per sequence to CSV file: %s"%outcomes_csv)
+#     outcomes_csv = os.path.join(args.output_dir, 'outcomes_per_seq.csv')
+#     outcomes_df.to_csv(outcomes_csv, index=False)
+#     print("Wrote outcomes per sequence to CSV file: %s"%outcomes_csv)
     
     
     '''
