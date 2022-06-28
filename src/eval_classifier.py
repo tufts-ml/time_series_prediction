@@ -721,12 +721,14 @@ if __name__ == '__main__':
                 '{split_name}_pr_curve.png'.format(
                     split_name=split_name)))
             plt.close()
+        
 
 
         # Append current split's metrics to list for all splits
         row_dict_list.append(row_dict)
 
-
+    
+    print('AUC and PR curves saved to :\n%s '%fig_dir)
     # Write performance metrics to CSV
     # --------------------------------
     # Package up all per-split metrics into one dataframe and save to CSV
