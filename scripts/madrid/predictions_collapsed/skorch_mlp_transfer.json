@@ -1,0 +1,16 @@
+{
+    "lr": [0.001],
+    "batch_size": [512],
+    "weight_decay": [1e-3],
+    "n_hiddens" : [16],
+    "n_layers" : [1],
+    "scoring" : ["surrogate_loss_tight"],
+    "incremental_min_precision" : ["false"],
+    "initialization_gain" : [1.0],
+    "warm_start" : ["false"],
+    "lamb" : [0.5], 
+    "tighten_bounds" : ["false"],
+    "seed" : [9],
+    "n_target_episodes" : [10000, 50000, 100000, 200000, 300000, -1]
+}
+

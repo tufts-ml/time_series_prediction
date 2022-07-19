@@ -21,7 +21,6 @@ def featurize_ts(
         summary_ops=['count', 'mean', 'std', 'slope'],
         ):
     ''' Featurize provided multivariate irregular time series into flat vector
-
     Args
     ----
     time_arr_by_var : dict of 1D NumPy arrays
@@ -93,7 +92,8 @@ def featurize_ts(
 
             # Obtain measurements and times for current window         
             try:
-                cur_feat_arr = val_arr_by_var[var_name]
+                cur_feat_arr = val_arr_by_var[var_name].astype('float')
+
                 cur_numerictime_arr = time_arr_by_var[var_name]
 
                 # Keep only the entries whose times occur within current window
@@ -112,7 +112,7 @@ def featurize_ts(
                         cur_feat_arr >= min_val_allowed,
                         cur_feat_arr <= max_val_allowed)
                     cur_feat_arr = cur_feat_arr[keep_mask]
-                    cur_numerictime_arr = cur_feat_arr[keep_mask]
+                    cur_numerictime_arr = cur_numerictime_arr[keep_mask]
 
             except KeyError:
                 # Current variable never measured in provided data
@@ -134,7 +134,6 @@ def featurize_ts(
 
 def make_summary_ops():
     ''' Create defaults for summarization functions
-
     Returns
     -------
     summary_ops : dict
@@ -190,7 +189,6 @@ def collapse_count(data_arr, timestamp_arr, isfinite_arr, tstart, tstop):
 
 def collapse_slope(data_arr, timestamp_arr, isfinite_arr, tstart, tstop):
     ''' Compute slope within current window of time
-
     Treat time as *relative* between 0 and 1 within the window
 
     Examples
@@ -243,7 +241,6 @@ def collapse_value_last_measured(data_arr, timestamp_arr, isfinite_arr, tstart, 
 
 def collapse_elapsed_time_since_last_measured(data_arr, timestamp_arr, isfinite_arr, tstart, tstop):
     ''' Computes the time elapsed since the last value was observed
-
     Example
     -------
     >>> data = np.asarray([0, 1 , np.nan, 4, 5, np.nan, np.nan])
@@ -263,7 +260,6 @@ def collapse_elapsed_time_since_last_measured(data_arr, timestamp_arr, isfinite_
 
 def make_var_to_minmax_from_spec(var_spec_dict, var_cols):
     ''' Create dict that provides min/max allowed values for each variable
-
     Returns
     -------
     var_to_minmax_dict : dict
@@ -287,7 +283,8 @@ def make_var_to_minmax_from_spec(var_spec_dict, var_cols):
             if 'constraints' not in info_dict:
                 continue
             
-            contraints = info_dict['contraints']
+            contraints = info_dict['constraints']
+
             min_val_allowed = parse_val(contraints.get('minimum', -np.inf))
             max_val_allowed = parse_val(contraints.get('maximum', +np.inf))
             if min_val_allowed > -np.inf or max_val_allowed < np.inf:

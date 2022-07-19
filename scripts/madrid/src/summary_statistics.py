@@ -138,11 +138,13 @@ if __name__ == '__main__':
         vitals_summary_df.loc[vital, 'min'] = curr_vital_series.min()
         vitals_summary_df.loc[vital, 'max'] = curr_vital_series.max()
         vitals_summary_df.loc[vital, '5%'] = np.percentile(curr_vital_series[curr_vital_series.notnull()], 5)
+        vitals_summary_df.loc[vital, '25%'] = np.percentile(curr_vital_series[curr_vital_series.notnull()], 25)
+        vitals_summary_df.loc[vital, '75%'] = np.percentile(curr_vital_series[curr_vital_series.notnull()], 75)
         vitals_summary_df.loc[vital, '95%'] = np.percentile(curr_vital_series[curr_vital_series.notnull()], 95)
         vitals_summary_df.loc[vital, 'median'] = curr_vital_series.median()
     
     vitals_summary_df.loc[:,'missing_rate'] = vitals_missing_rate_entire_stay_series
-    vitals_summary_df = vitals_summary_df[['min', '5%', 'median', '95%', 'max', 'missing_rate']]
+    vitals_summary_df = vitals_summary_df[['min', '5%', '25%', 'median', '75%', '95%', 'max', 'missing_rate']]
     print(vitals_summary_df)
 
     
@@ -153,17 +155,14 @@ if __name__ == '__main__':
         curr_lab_series = df_labs[lab]
         labs_summary_df.loc[lab, 'min'] = curr_lab_series.min()
         labs_summary_df.loc[lab, 'max'] = curr_lab_series.max()
-        if curr_lab_series.notnull().sum()>0:
-            labs_summary_df.loc[lab, '5%'] = np.percentile(curr_lab_series[curr_lab_series.notnull()], 5)
-            labs_summary_df.loc[lab, '95%'] = np.percentile(curr_lab_series[curr_lab_series.notnull()], 95)
-            labs_summary_df.loc[lab, 'median'] = curr_lab_series.median()
-        else:
-            labs_summary_df.loc[lab, '5%'] = np.nan
-            labs_summary_df.loc[lab, '95%'] = np.nan
-            labs_summary_df.loc[lab, 'median'] = np.nan
+        labs_summary_df.loc[lab, '5%'] = np.nanpercentile(curr_lab_series, 5)
+        labs_summary_df.loc[lab, '95%'] = np.nanpercentile(curr_lab_series, 95)
+        labs_summary_df.loc[lab, '25%'] = np.nanpercentile(curr_lab_series, 25)
+        labs_summary_df.loc[lab, '75%'] = np.nanpercentile(curr_lab_series, 75)
+        labs_summary_df.loc[lab, 'median'] = curr_lab_series.median()
 
     labs_summary_df.loc[:,'missing_rate'] = labs_missing_rate_entire_stay_series
-    labs_summary_df = labs_summary_df[['min', '5%', 'median', '95%', 'max', 'missing_rate']]
+    labs_summary_df = labs_summary_df[['min', '5%', '25%', 'median', '75%', '95%', 'max', 'missing_rate']]
     print(labs_summary_df)
     
     print('#######################################')
@@ -201,7 +200,51 @@ if __name__ == '__main__':
         vitals_tdiff_df.loc[vital, 'tdiff_max'] = max(tdiff_list[vital_ind])
     print(vitals_tdiff_df)
     
-#     from IPython import embed; embed()
+    
+    print('#######################################')
+    print('Printing time between measurements of labs')
+    timestamp_arr = np.asarray(df_labs[time_col].values.copy(), dtype=np.float64)
+    labs_arr = df_labs[labs].values
+
+    keys_df = df_labs[id_cols].copy()
+    for col in id_cols:
+        if not pd.api.types.is_numeric_dtype(keys_df[col].dtype):
+            keys_df[col] = keys_df[col].astype('category')
+            keys_df[col] = keys_df[col].cat.codes
+    fp = np.hstack([0, 1 + np.flatnonzero(np.diff(keys_df.values, axis=0).any(axis=1)), keys_df.shape[0]])
+    n_stays = len(fp)-1
+
+    tdiff_list = [[] for i in range(len(labs))]
+    for stay in range(n_stays):
+        fp_start = fp[stay]
+        fp_end = fp[stay+1]
+        curr_labs_arr = labs_arr[fp_start:fp_end, :].copy()
+        curr_timestamp_arr = timestamp_arr[fp_start:fp_end]
+        for lab_ind, lab in enumerate(labs):
+            curr_lab_arr = curr_labs_arr[:, lab_ind]
+            non_nan_inds = ~np.isnan(curr_lab_arr)
+            non_nan_t = curr_timestamp_arr[non_nan_inds]
+            curr_lab_tdiff = np.diff(non_nan_t)
+            tdiff_list[lab_ind].extend(curr_lab_tdiff)
+
+    labs_tdiff_df = pd.DataFrame()
+    for lab_ind, lab in enumerate(labs):
+        if len(tdiff_list[lab_ind]):
+            labs_tdiff_df.loc[lab, 'tdiff_min'] = min(tdiff_list[lab_ind])
+            labs_tdiff_df.loc[lab, 'tdiff_5%'] = np.percentile(tdiff_list[lab_ind], 5)
+            labs_tdiff_df.loc[lab, 'tdiff_median'] = np.median(tdiff_list[lab_ind])
+            labs_tdiff_df.loc[lab, 'tdiff_95%'] = np.percentile(tdiff_list[lab_ind], 95)
+            labs_tdiff_df.loc[lab, 'tdiff_max'] = max(tdiff_list[lab_ind])
+    
+    print(labs_tdiff_df)
+    
+    # save the summaries
+    vitals_summary_df.to_csv('vitals_summary_retrospective.csv')
+    labs_summary_df.to_csv('labs_summary_retrospective.csv')
+    vitals_tdiff_df.to_csv('vitals_tdiff_retrospective.csv')
+    labs_tdiff_df.to_csv('labs_tdiff_retrospective.csv')
+    
+    from IPython import embed; embed()
 
     print('#######################################')
     print('Getting train, val, test split statistics')

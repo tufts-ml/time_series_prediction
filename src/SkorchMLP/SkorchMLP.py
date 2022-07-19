@@ -78,14 +78,9 @@ class SkorchMLP(skorch.NeuralNet):
         y_proba_N2 : 2D array, (n_examples, 2)
         '''
         self.module_.eval()
-        
-        if isinstance(x_NF, skorch.dataset.Dataset):
-            y_logproba_ = self.module_.forward(torch.DoubleTensor(x_NF.X))
-        else:
-            y_logproba_ = self.module_.forward(torch.DoubleTensor(x_NF))
-        
+        y_logproba_ = self.module_.forward(torch.DoubleTensor(x_NF))
         y_logproba_N1 = y_logproba_.detach().numpy()
-        y_proba_N2 = np.empty((len(y_logproba_N1), 2))
+        y_proba_N2 = np.empty((x_NF.shape[0], 2))
         y_proba_N2[:,1] = np.exp(y_logproba_N1[:,0])
         y_proba_N2[:,0] = 1 - y_proba_N2[:,1]
         return y_proba_N2
@@ -110,6 +105,7 @@ class SkorchMLP(skorch.NeuralNet):
             y_decision_scores_N1 = self.module_.forward(torch.DoubleTensor(x_NF.X), apply_logsigmoid=False)
         else:
             y_decision_scores_N1 = self.module_.forward(torch.DoubleTensor(x_NF), apply_logsigmoid=False)
+
         
         # classify y=1 if w'x+b>=0
         y_hat_N1 = y_decision_scores_N1.detach().numpy() >= 0
@@ -127,6 +123,7 @@ class SkorchMLP(skorch.NeuralNet):
         else:
             y_true_ = torch.DoubleTensor(y_true)
         
+        
         weights_arr = []
         bias_arr = []
         for layer_num in range(self.n_layers):
@@ -141,7 +138,6 @@ class SkorchMLP(skorch.NeuralNet):
         bias_ = torch.cat([bias_, self.module_.output_layer.bias])
         
         
-
         ry_N = torch.sign(y_true_-0.01)*y_est_logits_
         cross_ent_loss = -1.0*torch.sum(torch.nn.functional.logsigmoid(ry_N))
         
@@ -209,7 +205,8 @@ class SkorchMLP(skorch.NeuralNet):
             y_true_ = y_true.type(torch.DoubleTensor)
         else:
             y_true_ = torch.DoubleTensor(y_true)
-
+        
+        
         weights_arr = []
         bias_arr = []
         for layer_num in range(self.n_layers):
@@ -391,7 +388,6 @@ if __name__ == '__main__':
         train_split=None,
         max_epochs=100, 
         loss_name='surrogate_loss_tight')
-
     
 
 

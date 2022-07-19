@@ -4,4 +4,5 @@
     "n_estimators" : [100],
     "frac_features_for_clf": [0.33, 0.66],
     "frac_training_samples_per_tree" : [0.33, 0.66],
+    "features_to_include" : ['vitals_only']
 }

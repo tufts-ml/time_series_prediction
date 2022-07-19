@@ -17,7 +17,7 @@ from config_loader import (
     RESULTS_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH)
 
 
-RESULTS_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH = os.path.join(RESULTS_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH, 'lightGBM')
+RESULTS_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH = os.path.join(RESULTS_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH, 'lightGBM', 'tranfer_from_er_vs_scheduled')
 CLF_TRAIN_TEST_SPLIT_PATH=os.path.join(DATASET_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH, 'classifier_train_test_split')
 
 rule train_and_evaluate_classifier_many_hyperparams:
@@ -27,12 +27,12 @@ rule train_and_evaluate_classifier_many_hyperparams:
 rule train_and_evaluate_classifier:
     input:
         script=os.path.join(PROJECT_REPO_DIR, 'src', 'lightGBM', 'main.py'),
-        x_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_train.csv.gz'),
-        x_valid_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_valid.csv.gz'),
-        x_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_test.csv.gz'),
-        y_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_train.csv.gz'),
-        y_valid_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_valid.csv.gz'),
-        y_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_test.csv.gz'),
+        x_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_transfer_to_er_train.csv.gz'),
+        x_valid_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_transfer_to_er_valid.csv.gz'),
+        x_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_transfer_to_er_test.csv.gz'),
+        y_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_transfer_to_er_train.csv.gz'),
+        y_valid_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_transfer_to_er_valid.csv.gz'),
+        y_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_transfer_to_er_test.csv.gz'),
         x_dict_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_dict.json'),
         y_dict_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_dict.json')
 

@@ -30,6 +30,22 @@ from split_dataset import Splitter
 from skorch.dataset import Dataset
 from skorch.helper import predefined_split
 from sklearn.linear_model import LogisticRegression
+from skl2onnx.common.data_types import FloatTensorType
+from skl2onnx import convert_sklearn
+
+def read_csv_with_float32_dtypes(filename, nrows=None):
+    # Sample 100 rows of data to determine dtypes.
+    df_test = pd.read_csv(filename, nrows=100)
+
+    float_cols = [c for c in df_test if df_test[c].dtype == "float64"]
+    float32_cols = {c: np.float32 for c in float_cols}
+    
+    if nrows is not None:
+        df = pd.read_csv(filename, dtype=float32_cols, nrows=nrows)
+    else:
+        df = pd.read_csv(filename, dtype=float32_cols)
+    
+    return df
 
 
 # define callbacks
@@ -56,6 +72,7 @@ def calc_bce_loss_skorch_callback(net, X, y):
         X_NF = torch.DoubleTensor(X.X)
     y_est_logits_ = net.module_.linear_transform_layer.forward(X_NF)[:,0]
     bce_loss = net.calc_bce_loss(y_true=y, y_est_logits_=y_est_logits_, X=X_NF)
+    
     return float(bce_loss.detach().numpy())
 
 def calc_tp_lower_bound_skorch_callback(net, X, y):
@@ -132,7 +149,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int, default=1111)
     parser.add_argument('--n_splits', type=int, default=2)
     parser.add_argument('--lamb', type=float, default=1000)
-    parser.add_argument('--warm_start', type=str, default='true')
+    parser.add_argument('--warm_start', type=str, default='false')
 
     parser.add_argument('--merge_x_y', default=True,
                                 type=lambda x: (str(x).lower() == 'true'), required=False)
@@ -175,7 +192,7 @@ if __name__ == '__main__':
         for csv_file in csv_files:
 
             # TODO use json data dict to load specific columns as desired types
-            more_df =  pd.read_csv(csv_file)
+            more_df =  read_csv_with_float32_dtypes(csv_file)
             if cur_df is None:
                 cur_df = more_df
             else:
@@ -189,11 +206,12 @@ if __name__ == '__main__':
  
     outcome_col_name = args.outcome_col_name
     
-
-#     feature_cols = [col for col in feature_cols if ('blood_pressure' in col)|('heart_rate' in col)|('body_temperature' in col)]
-
     # Prepare data for classification
-    x_train = df_by_split['train'][feature_cols].values.astype(np.float32)
+    try:
+        x_train = df_by_split['train'][feature_cols].values.astype(np.float32)
+    except KeyError:
+        feature_cols = [col.replace('_to_', '-') for col in feature_cols]
+        x_train = df_by_split['train'][feature_cols].values.astype(np.float32)
     y_train = np.ravel(df_by_split['train'][outcome_col_name])
     
     x_test = df_by_split['test'][feature_cols].values.astype(np.float32)
@@ -218,15 +236,17 @@ if __name__ == '__main__':
 
         x_train = x_tr
         y_train = y_tr
-        del(x_tr, y_tr)
+        del(x_tr, y_tr, df_by_split)
     
     else:
         x_valid_csv, y_valid_csv = args.valid_csv_files.split(',')
-        x_valid_df = pd.read_csv(x_valid_csv)
-        y_valid_df = pd.read_csv(y_valid_csv)
+        x_valid_df = read_csv_with_float32_dtypes(x_valid_csv)
+        y_valid_df = read_csv_with_float32_dtypes(y_valid_csv)
         
         x_valid = x_valid_df[feature_cols].values.astype(np.float32)
         y_valid = np.ravel(y_valid_df[outcome_col_name])
+        
+        del(x_valid_df, y_valid_df, df_by_split)
         
     split_dict = {'N_train' : len(x_train),
                  'N_valid' : len(x_valid),
@@ -251,6 +271,7 @@ if __name__ == '__main__':
     x_valid_transformed = scaler.transform(x_valid)
     x_test_transformed = scaler.transform(x_test) 
     
+    del(x_train, x_valid, x_test)
     
     # store the fixed validation set as a skorch dataset
     valid_ds = Dataset(x_valid_transformed, y_valid) 
@@ -259,7 +280,7 @@ if __name__ == '__main__':
     torch.manual_seed(args.seed)
     
     # set max_epochs 
-    max_epochs=200
+    max_epochs=100
 
     
     # define callbacks 
@@ -326,9 +347,25 @@ if __name__ == '__main__':
     
     calc_fp_valid = EpochScoring(calc_fp, lower_is_better=False, on_train=False, name='fp_valid')
 
-    cp = Checkpoint(monitor='precision_valid',
+#     cp = Checkpoint(monitor='precision_valid',
+#                     f_history=os.path.join(args.output_dir,
+#                                            args.output_filename_prefix+'.json'))
+
+
+
+    cp = Checkpoint(monitor='surr_loss_valid_best',
                     f_history=os.path.join(args.output_dir,
-                                           args.output_filename_prefix+'.json'))
+                                           args.output_filename_prefix+'_surr_loss_valid_best.json'),
+                    f_params=os.path.join(args.output_dir,
+                                          args.output_filename_prefix+'_surr_loss_valid_best.pt')
+                   )
+    
+    loss_best_cp = Checkpoint(monitor='valid_loss_best',
+                f_history=os.path.join(args.output_dir,
+                                       args.output_filename_prefix+'_loss_valid_best.json'),
+                f_params=os.path.join(args.output_dir,
+                                      args.output_filename_prefix+'_loss_valid_best.pt')
+               )
     
     train_end_cp = TrainEndCheckpoint(dirname=args.output_dir,
                                           fn_prefix=args.output_filename_prefix)
@@ -338,6 +375,7 @@ if __name__ == '__main__':
     
     
     
+
     fixed_precision = 0.7
 
     thr_list = [0.5]
@@ -369,41 +407,32 @@ if __name__ == '__main__':
                                                        calc_tp_valid,
                                                        calc_fp_train,
                                                        calc_fp_valid,
-                                                       loss_early_stopping_cp,
-                                                       cp, train_end_cp],
+                                                       auprc_early_stopping_cp,
+                                                       loss_best_cp, 
+                                                       train_end_cp],
                                            optimizer=torch.optim.Adam)
         print('Training Skorch Logistic Regression minimizing cross entropy loss...')
 
         logistic_clf = logistic.fit(x_train_transformed, y_train)
         
+        print('Loading the parameters from checkpoint with best loss on validation set')
+        logistic.load_params(checkpoint=loss_best_cp)
+        
         # search multiple decision thresolds and pick the threshold that performs best on validation set
         print('Searching thresholds that maximize recall at fixed precision %.4f'%fixed_precision)
-        y_train_proba_vals = logistic_clf.predict_proba(x_train_transformed)
-        unique_probas = np.unique(y_train_proba_vals)
-        thr_grid = np.linspace(np.percentile(unique_probas,0), np.percentile(unique_probas, 100), 5000)
         
-        # compute precision recall across folds
-#         precision_score_grid_SG = np.zeros((splitter.n_splits, thr_grid.size))
-#         recall_score_grid_SG = np.zeros((splitter.n_splits, thr_grid.size))
-        
-#         for ss, (tr_inds, va_inds) in enumerate(
-#         splitter.split(x_train, y_train, groups=key_train)):
-#             x_tr = x_train_transformed[tr_inds].copy()
-#             y_tr = y_train[tr_inds].copy()
-#             x_va = x_train_transformed[va_inds]
-#             y_va = y_train[va_inds]
-        
+        y_valid_proba_vals = logistic_clf.predict_proba(x_valid_transformed)
+        unique_probas = np.unique(y_valid_proba_vals)
+        thr_grid = np.linspace(np.percentile(unique_probas,1), np.percentile(unique_probas, 99), 5000)
+
         
         precision_scores_G, recall_scores_G = [np.zeros(thr_grid.size), np.zeros(thr_grid.size)]
         y_train_pred_probas = logistic_clf.predict_proba(x_train_transformed)[:,1]
         for gg, thr in enumerate(thr_grid): 
 #             logistic_clf.module_.linear_transform_layer.bias.data = torch.tensor(thr_grid[gg]).double()
-            curr_thr_y_preds = y_train_pred_probas>=thr_grid[gg] 
-            precision_scores_G[gg] = precision_score(y_train, curr_thr_y_preds)
-            recall_scores_G[gg] = recall_score(y_train, curr_thr_y_preds) 
-        
-#         mean_precision_score_G = np.mean(precision_score_grid_SG, axis=0)
-#         mean_recall_score_G = np.mean(recall_score_grid_SG, axis=0)
+            curr_thr_y_preds = y_valid_proba_vals[:,1]>=thr_grid[gg] 
+            precision_scores_G[gg] = precision_score(y_valid, curr_thr_y_preds)
+            recall_scores_G[gg] = recall_score(y_valid, curr_thr_y_preds)
 
         keep_inds = precision_scores_G>=fixed_precision
         if keep_inds.sum()>0:
@@ -555,9 +584,9 @@ if __name__ == '__main__':
             logistic_init = SkorchLogisticRegression(n_features=len(feature_cols),
                                                 l2_penalty_weights=args.weight_decay,
     #                                             l2_penalty_bias=args.weight_decay,
-                                                lr=0.001,
+                                                lr=0.01,
                                                 batch_size=args.batch_size, 
-                                                max_epochs=max_epochs,
+                                                max_epochs=20,
                                                 train_split=predefined_split(valid_ds),
                                                 loss_name='cross_entropy_loss',
                                                 callbacks=[epoch_scoring_precision_train,
@@ -578,9 +607,12 @@ if __name__ == '__main__':
                                                            calc_tp_valid,
                                                            calc_fp_train,
                                                            calc_fp_valid,
-                                                           loss_early_stopping_cp,
-                                                           cp, train_end_cp],
-                                               optimizer=torch.optim.Adam)
+#                                                            loss_early_stopping_cp,
+                                                           loss_best_cp, 
+                                                           train_end_cp],
+                                               optimizer=torch.optim.Adam,
+#                                                optimizer__lr=0.01
+                                                    )
             
             
             logistic_init_clf = logistic_init.fit(x_train_transformed, y_train)
@@ -618,22 +650,22 @@ if __name__ == '__main__':
     #                                                        lr_scheduler,
 #                                                            early_stopping_cp,
                                                            cp, train_end_cp],
-                                               optimizer=torch.optim.Adam)
+                                               optimizer=torch.optim.Adam,
+#                                                optimizer__lr=args.lr
+                                               )
 
             logistic.initialize()
+                        
             # load the past history
-            logistic.load_params(checkpoint=cp)
-            
-            torch.manual_seed(args.seed)
-            # add perturbation to weights ~ NormPDF(0,0.1)
-            buffer_w = 0.001*torch.randn(D).double()
-            buffer_b = 0.001*torch.randn(1).double()
-
-            
-            # load the weights
-            logistic.module_.linear_transform_layer.weight.data = logistic_init_clf.module_.linear_transform_layer.weight.data + buffer_w
-            logistic.module_.linear_transform_layer.bias.data = logistic_init_clf.module_.linear_transform_layer.bias.data + buffer_b
+            logistic.load_params(checkpoint=loss_best_cp)
+            logistic.module_.linear_transform_layer.weight.data = logistic_init_clf.module_.linear_transform_layer.weight.data
+            logistic.module_.linear_transform_layer.bias.data = logistic_init_clf.module_.linear_transform_layer.bias.data
             logistic_clf = logistic.partial_fit(x_train_transformed, y_train)
+            
+            #
+            print('Loading the parameters from checkpoint with best surrogate loss on validation set')
+            logistic_clf.load_params(checkpoint=cp)
+            
         
         else:
             print('Training with surrogate loss with random initialization...')
@@ -671,26 +703,8 @@ if __name__ == '__main__':
                                                optimizer=torch.optim.Adam)
             
             logistic_clf = logistic.fit(x_train_transformed, y_train)
-
-        
-#         # get precision recall on validation set
-#         precision_scores_S = np.zeros(splitter.n_splits)
-#         recall_scores_S = np.zeros(splitter.n_splits)
-#         for ss, (tr_inds, va_inds) in enumerate(
-#         splitter.split(x_train, y_train, groups=key_train)):
-#             x_tr = x_train_transformed[tr_inds].copy()
-#             y_tr = y_train[tr_inds].copy()
-#             x_va = x_train_transformed[va_inds]
-#             y_va = y_train[va_inds]
-            
-#             curr_y_preds = logistic_clf.predict_proba(x_va)[:,1]>=0.5
-#             precision_scores_S[ss] = precision_score(y_va, curr_y_preds)
-#             recall_scores_S[ss] = recall_score(y_va, curr_y_preds)
-        
-#         precision_valid = np.mean(precision_scores_S)
-#         recall_valid = np.mean(recall_scores_S)
-            
-        
+            print('Loading the parameters from checkpoint with best surrogate loss on validation set')
+            logistic_clf.load_params(checkpoint=cp)
 
         
     # save the scaler
@@ -756,8 +770,7 @@ if __name__ == '__main__':
     f_out.close()
     
     
-    perf_dict = {'N_train':len(x_train),
-                'precision_train':precision_train,
+    perf_dict = {'precision_train':precision_train,
                 'recall_train':recall_train,
                 'TP_train':TP_train,
                 'FP_train':FP_train,
@@ -779,6 +792,7 @@ if __name__ == '__main__':
                 'FP_test':FP_test,
                 'TN_test':TN_test,
                 'FN_test':FN_test,
+                'threshold':threshold,
                 'N_test':len(x_test),
                 'auprc_test':auprc_test}
 
@@ -786,3 +800,28 @@ if __name__ == '__main__':
     perf_csv = os.path.join(args.output_dir, args.output_filename_prefix+'_perf.csv')
     print('Saving performance on train and test set to %s'%(perf_csv))
     perf_df.to_csv(perf_csv, index=False)
+    
+    
+    # save to onnx
+    
+    # initialize a dummy sklearn logistic regression clf 
+    sklearn_lr_clf = LogisticRegression() 
+    
+    # do some dummy fitting to initialize the classifier to access the coefficients
+    sklearn_lr_clf.fit(x_train_transformed[:500], y_train[:500])
+    
+    # save the skorch model weights to a sklearn Logistic regression object
+    sklearn_lr_clf.coef_ = logistic_clf.module_.linear_transform_layer.weight.detach().numpy()
+    sklearn_lr_clf.intercept_ = logistic_clf.module_.linear_transform_layer.bias.detach().numpy()
+    
+    
+    prediction_pipeline = Pipeline(steps=[('standardize', scaler), ('classifier', sklearn_lr_clf)])
+    
+    # save as onnx
+    initial_type = [('float_input', FloatTensorType([None, len(feature_cols)]))]
+    model_onnx = convert_sklearn(prediction_pipeline, initial_types=initial_type)
+    
+    onx_file = os.path.join(args.output_dir, args.output_filename_prefix+'.onnx')
+    with open(onx_file, "wb") as f:
+        f.write(model_onnx.SerializeToString())
+    

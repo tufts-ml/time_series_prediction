@@ -156,6 +156,9 @@ def main():
     X_test, y_test = test_vitals.get_batch_data(batch_id=0)
     N,T,F = X_train.shape
     
+#     X_train = (X_train - np.min(X_train))/(np.max(X_train)-np.min(X_train))
+#     X_valid = (X_valid - np.min(X_train))/(np.max(X_train)-np.min(X_train))
+#     X_test = (X_test - np.min(X_train))/(np.max(X_train)-np.min(X_train))
 
     
     valid_ds = Dataset(X_valid, y_valid) 
@@ -187,63 +190,86 @@ def main():
         
     print('RNN parameters : '+ output_filename_prefix)
     
-    loss_early_stopping_cp =  EarlyStopping(monitor='valid_loss', patience=15, threshold=0.002, threshold_mode='rel',
-                                            lower_is_better=True)
-
-    # get threshold with max recall at fixed precision
-    fixed_precision=0.7
+    auprc_early_stopping_cp =  EarlyStopping(monitor='auprc_valid', patience=15, threshold=0.002, threshold_mode='rel',
+                                            lower_is_better=False)
     
-    if args.scoring=='cross_entropy_loss':
-        rnn = RNNPerTStepBinaryClassifier(
-                  max_epochs=100,
-                  batch_size=args.batch_size,
-                  device=device,
-                  scoring=args.scoring,
-                  lr=args.lr,
-                  callbacks=[
-                      EpochScoring(calc_auprc, lower_is_better=False, on_train=True, name='auprc_train'),
-                      EpochScoring(calc_auprc, lower_is_better=False, on_train=False, name='auprc_valid'),
-                      EpochScoring(calc_auroc, lower_is_better=False, on_train=True, name='auroc_train'),
-                      EpochScoring(calc_auroc, lower_is_better=False, on_train=False, name='auroc_valid'),
-                      EpochScoring(calc_precision, lower_is_better=False, on_train=True, name='precision_train'),
-                      EpochScoring(calc_precision, lower_is_better=False, on_train=False, name='precision_valid'),
-                      EpochScoring(calc_recall, lower_is_better=False, on_train=True, name='recall_train'),
-                      EpochScoring(calc_recall, lower_is_better=False, on_train=False, name='recall_valid'),
-    #                   EarlyStopping(monitor='auprc_valid', patience=5, threshold=0.002, threshold_mode='rel',
-    #                                                  lower_is_better=False),
-    #               LRScheduler(policy=ReduceLROnPlateau, mode='max', monitor='aucroc_score_valid', patience=10),
-    #                   compute_grad_norm,
-    #               GradientNormClipping(gradient_clip_value=0.5, gradient_clip_norm_type=2),
-                  loss_early_stopping_cp,
-                  Checkpoint(monitor='auprc_valid', f_history=os.path.join(args.output_dir, output_filename_prefix+'.json')),
-                  TrainEndCheckpoint(dirname=args.output_dir, fn_prefix=output_filename_prefix),
-                  ],
-                  train_split=predefined_split(valid_ds),
-                  module__rnn_type='GRU',
-                  module__n_layers=args.hidden_layers,
-                  module__n_hiddens=args.hidden_units,
-                  module__n_inputs=X_train.shape[-1],
-                  module__dropout_proba=args.dropout,
-                  optimizer=torch.optim.Adam,
-                  l2_penalty_weights=args.weight_decay
-                             ) 
+    
+    auprc_best_cp = Checkpoint(monitor='auprc_valid_best',
+                f_history=os.path.join(args.output_dir,
+                                       args.output_filename_prefix+'_auprc_valid_best.json'),
+                f_params=os.path.join(args.output_dir,
+                                      args.output_filename_prefix+'_auprc_valid_best.pt')
+               )
+    
+    
+    
+    rnn = RNNPerTStepBinaryClassifier(
+              max_epochs=100,
+              batch_size=args.batch_size,
+              device=device,
+              lr=args.lr,
+              callbacks=[
+                  EpochScoring(calc_auprc, lower_is_better=False, on_train=True, name='auprc_train'),
+                  EpochScoring(calc_auprc, lower_is_better=False, on_train=False, name='auprc_valid'),
+                  EpochScoring(calc_auroc, lower_is_better=False, on_train=True, name='auroc_train'),
+                  EpochScoring(calc_auroc, lower_is_better=False, on_train=False, name='auroc_valid'),
+#               EpochScoring(calc_precision, lower_is_better=False, on_train=True, name='precision_train'),
+#               EpochScoring(calc_precision, lower_is_better=False, on_train=False, name='precision_valid'),
+#               EpochScoring(calc_recall, lower_is_better=False, on_train=True, name='recall_train'),
+#               EpochScoring(calc_recall, lower_is_better=False, on_train=False, name='recall_valid'),
+#               EpochScoring('roc_auc', lower_is_better=False, on_train=True, name='aucroc_score_train'),
+#               EpochScoring('roc_auc', lower_is_better=False, on_train=False, name='aucroc_score_valid'),
+#                   EarlyStopping(monitor='auprc_valid', patience=5, threshold=0.002, threshold_mode='rel',
+#                                                  lower_is_better=False),
+#               LRScheduler(policy=ReduceLROnPlateau, mode='max', monitor='aucroc_score_valid', patience=10),
+#                   compute_grad_norm,
+#               GradientNormClipping(gradient_clip_value=0.5, gradient_clip_norm_type=2),
+              auprc_early_stopping_cp,
+              auprc_best_cp,
+              TrainEndCheckpoint(dirname=args.output_dir, fn_prefix=output_filename_prefix),
+              ],
+#               criterion=torch.nn.CrossEntropyLoss,
+#               criterion__weight=class_weights,
+              train_split=predefined_split(valid_ds),
+              module__rnn_type='GRU',
+              module__n_layers=args.hidden_layers,
+              module__n_hiddens=args.hidden_units,
+              module__n_inputs=X_train.shape[-1],
+              module__dropout_proba=args.dropout,
+              optimizer=torch.optim.Adam,
+              optimizer__weight_decay=args.weight_decay
+                         ) 
+    
+#     N=len(X_train)
+#     X_train = X_train[:N]
+#     y_train = y_train[:N]
+    
 
-        clf = rnn.fit(X_train, y_train)
-
-        # get predict probas for y=1 on validation set
-        keep_inds_va = torch.logical_not(torch.all(torch.isnan(torch.FloatTensor(X_valid)), dim=-1))
-        y_valid_pred_probas = clf.predict_proba(X_valid)[keep_inds_va][:,1].detach().numpy()
-
-        unique_probas = np.unique(y_valid_pred_probas)
-        thr_grid_G = np.linspace(np.percentile(unique_probas,1), max(unique_probas), 100)
-
-        precision_scores_G, recall_scores_G = [np.zeros(thr_grid_G.size), np.zeros(thr_grid_G.size)]
-    #     y_valid_pred_probas = clf.predict_proba(torch.FloatTensor(X_valid))
-        for gg, thr in enumerate(thr_grid_G): 
-    #             logistic_clf.module_.linear_transform_layer.bias.data = torch.tensor(thr_grid[gg]).double()
-            curr_thr_y_preds = y_valid_pred_probas>=thr_grid_G[gg] 
-            precision_scores_G[gg] = precision_score(y_valid[keep_inds_va], curr_thr_y_preds)
-            recall_scores_G[gg] = recall_score(y_valid[keep_inds_va], curr_thr_y_preds) 
+    clf = rnn.fit(X_train, y_train)
+    
+    print('Loading from checkpoint with best validation auprc...')
+    clf.load_params(checkpoint=auprc_best_cp)
+    
+    # get threshold with max recall at fixed precision
+    fixed_precision=0.25
+    
+    # get predict probas for y=1 on validation set
+    keep_inds_va = torch.logical_not(torch.all(torch.isnan(torch.FloatTensor(X_valid)), dim=-1))
+    y_valid_pred_probas = clf.predict_proba(X_valid)[keep_inds_va][:,1].detach().numpy()
+    
+    unique_probas = np.unique(y_valid_pred_probas)
+    thr_grid_G = np.linspace(np.percentile(unique_probas,1), max(unique_probas), 100)
+        
+    precision_scores_G, recall_scores_G = [np.zeros(thr_grid_G.size), np.zeros(thr_grid_G.size)]
+#     y_valid_pred_probas = clf.predict_proba(torch.FloatTensor(X_valid))
+    for gg, thr in enumerate(thr_grid_G): 
+#             logistic_clf.module_.linear_transform_layer.bias.data = torch.tensor(thr_grid[gg]).double()
+        curr_thr_y_preds = y_valid_pred_probas>=thr_grid_G[gg] 
+        precision_scores_G[gg] = precision_score(y_valid[keep_inds_va], curr_thr_y_preds)
+        recall_scores_G[gg] = recall_score(y_valid[keep_inds_va], curr_thr_y_preds) 
+    
+    
+    keep_inds = precision_scores_G>=fixed_precision
 
 
         keep_inds = precision_scores_G>=fixed_precision

@@ -1,0 +1,17 @@
+{
+    "lr": [0.001],
+    "batch_size": [512],
+    "weight_decay": [1e-5, 1e-4, 1e-3],
+    "n_hiddens" : [16],
+    "n_layers" : [1],
+    "scoring" : ["surrogate_loss_tight"],
+    "incremental_min_precision" : ["false"],
+    "initialization_gain" : [1.0, 0.5],
+    "warm_start" : ["true"],
+    "lamb" : [0.25, 0.5], 
+    "tighten_bounds" : ["false"],
+    "seed" : [46788, 23124, 7437,  9],
+    "min_precision" : [0.5, 0.6],
+    "features_to_include" : ["labs_vitals"]
+}
+

@@ -5,7 +5,7 @@ import pandas as pd
 import json
 from sklearn.metrics import (roc_curve, accuracy_score, log_loss, 
                             balanced_accuracy_score, confusion_matrix, 
-                            roc_auc_score, make_scorer, precision_score, recall_score)
+                            roc_auc_score, make_scorer, precision_score, recall_score, average_precision_score)
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
@@ -18,29 +18,14 @@ from feature_transformation import parse_feature_cols, parse_output_cols, parse_
 from utils import load_data_dict_json
 from pickle import dump
 from split_dataset import Splitter
-import lightgbm as lgb
+from sklearn.linear_model import LogisticRegression
+from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType
 # from sklearn.model_selection import GridSearchCV
-from onnxmltools.convert.lightgbm.operator_converters.LightGbm import convert_lightgbm
-import onnxmltools.convert.common.data_types
-from skl2onnx import convert_sklearn, update_registered_converter
-from skl2onnx.common.shape_calculator import calculate_linear_classifier_output_shapes
-import onnxruntime as rt
-
-def read_csv_with_float32_dtypes(filename):
-    # Sample 100 rows of data to determine dtypes.
-    df_test = pd.read_csv(filename, nrows=100)
-
-    float_cols = [c for c in df_test if df_test[c].dtype == "float64"]
-    float32_cols = {c: np.float32 for c in float_cols}
-
-    df = pd.read_csv(filename, dtype=float32_cols)
-    
-    return df
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='sklearn lightgbm')
+    parser = argparse.ArgumentParser(description='sklearn Logistic Regression')
 
     parser.add_argument('--train_csv_files', type=str, required=True,
                         help='csv files for training')
@@ -57,16 +42,9 @@ if __name__ == '__main__':
     parser.add_argument('--data_dict_files', type=str, required=True,
                         help='dict files for features and outcomes') 
     parser.add_argument('--validation_size', type=float, default=0.2, help='Validation size') 
+    parser.add_argument('--weight_decay', type=float, default=0.1, help='Weight Decay') 
     parser.add_argument('--key_cols_to_group_when_splitting', type=str,
                         help='columns for splitter') 
-    parser.add_argument('--min_samples_per_leaf', type=int,
-                        help='The minimum number of samples required to be at a leaf node') 
-    parser.add_argument('--max_leaves', type=int,
-                        help='The max leaves per tree') 
-    parser.add_argument('--frac_features_for_clf', type=float,
-                        help='fraction of features considered')
-    parser.add_argument('--frac_training_samples_per_tree', type=float,
-                        help='fraction of training samples for bagging')
     parser.add_argument('--n_splits', type=int, default=2)
     parser.add_argument('--n_estimators', type=int, default=25)
     parser.add_argument('--merge_x_y', default=True,
@@ -94,7 +72,7 @@ if __name__ == '__main__':
         for csv_file in csv_files:
 
             # TODO use json data dict to load specific columns as desired types
-            more_df =  read_csv_with_float32_dtypes(csv_file)
+            more_df =  pd.read_csv(csv_file)
             if cur_df is None:
                 cur_df = more_df
             else:
@@ -137,7 +115,7 @@ if __name__ == '__main__':
 
         x_train = x_tr
         y_train = y_tr
-        del(x_tr, y_tr, df_by_split)
+        del(x_tr, y_tr)
     
     else:
         x_valid_csv, y_valid_csv = args.valid_csv_files.split(',')
@@ -146,8 +124,6 @@ if __name__ == '__main__':
         
         x_valid = x_valid_df[feature_cols].values.astype(np.float32)
         y_valid = np.ravel(y_valid_df[outcome_col_name])
-        
-        del(x_valid_df, y_valid_df, df_by_split)
         
     split_dict = {'N_train' : len(x_train),
                  'N_valid' : len(x_valid),
@@ -173,35 +149,30 @@ if __name__ == '__main__':
     scaler = StandardScaler()
     step_list.append(('standardize', scaler))
     
-    fixed_precision = 0.35
+    fixed_precision = 0.2
     thr_list = [0.5]
-    
     
     ## start training
     
-    print('Training lightGBM...')
-    clf = lgb.LGBMClassifier(learning_rate=0.05, class_weight='balanced', subsample_for_bin=200000, 
-                                  min_data_in_leaf=args.min_samples_per_leaf, num_leaves=args.max_leaves,
-                                  feature_fraction=args.frac_features_for_clf, bagging_fraction=args.frac_training_samples_per_tree,
-                                  bagging_freq=1, first_metric_only=True, num_iterations=500)
+    print('Training sklearn logistic regression...')
+    clf = LogisticRegression(penalty='l2', C=args.weight_decay, fit_intercept=True, class_weight='balanced', 
+                             random_state=41, verbose=1, solver='saga', max_iter=500, tol=2e-3)
     
     step_list.append(('classifier',clf))
     
 
     prediction_pipeline = Pipeline(step_list)
-    prediction_pipeline.fit(X=x_train, y=y_train, classifier__eval_set=[(x_valid, y_valid)], 
-                            classifier__eval_metric=['average_precision', 'auc'], classifier__early_stopping_rounds=50,
-                            classifier__verbose=1)    
+    prediction_pipeline.fit(x_train, y_train)
+        
+#     lr_clf = clf.fit(X=x_train_transformed, y=y_train)
     
-#     lgb_clf = clf.fit(X=x_train_transformed, y=y_train, eval_set=[(x_valid_transformed, y_valid)], 
-#                      eval_metric=['average_precision', 'auc'], early_stopping_rounds=50, verbose=1)
 
     # search multiple decision thresolds and pick the threshold that performs best on validation set
-    print('Searching thresholds that maximize recall at fixed precision %.4f'%fixed_precision)    
-    
+    print('Searching thresholds that maximize recall at fixed precision %.4f'%fixed_precision)
+
     y_valid_proba_vals = prediction_pipeline.predict_proba(x_valid)
     unique_probas = np.unique(y_valid_proba_vals)
-    thr_grid = np.linspace(np.percentile(unique_probas,1), np.percentile(unique_probas, 99), 2000)
+    thr_grid = np.linspace(np.percentile(unique_probas,1), np.percentile(unique_probas, 99), 100)
 
     precision_scores_G, recall_scores_G = [np.zeros(thr_grid.size), np.zeros(thr_grid.size)]
 #     y_train_valid_pred_probas = prediction_pipeline.predict_proba(x_train_valid_transformed)
@@ -211,15 +182,11 @@ if __name__ == '__main__':
         recall_scores_G[gg] = recall_score(y_valid, curr_thr_y_preds) 
     
     keep_inds = precision_scores_G>=fixed_precision
-    
-    
-    keep_inds = precision_scores_G>=fixed_precision
     if keep_inds.sum()==0:
         fixed_precision = fixed_precision-0.05
         keep_inds = precision_scores_G>=fixed_precision
         print('Trying with precision %.2f'%fixed_precision)
-        
-        
+    
     if keep_inds.sum()>0:
         precision_scores_G = precision_scores_G[keep_inds]
         recall_scores_G = recall_scores_G[keep_inds]
@@ -280,9 +247,9 @@ if __name__ == '__main__':
         TN_test = np.sum(np.logical_and(y_test == 0, y_test_pred == 0))
         FN_test = np.sum(np.logical_and(y_test == 1, y_test_pred == 0))    
 
-        print_st_tr = "RF Training performance at threshold %.5f : | Precision %.3f | Recall %.3f | TP %5d | FP %5d | TN %5d | FN %5d"%( thr, precision_train, recall_train, TP_train, FP_train, TN_train, FN_train)
-        print_st_va = "RF Validation performance at threshold %.5f : | Precision %.3f | Recall %.3f | TP %5d | FP %5d | TN %5d | FN %5d"%(thr, precision_valid, recall_valid, TP_valid, FP_valid, TN_valid, FN_valid)
-        print_st_te = "RF Test performance  at threshold %.5f :  | Precision %.3f | Recall %.3f | TP %5d | FP %5d | TN %5d | FN %5d"%(thr, precision_test, recall_test,TP_test, FP_test, TN_test, FN_test) 
+        print_st_tr = "LR Training performance at threshold %.5f : | Precision %.3f | Recall %.3f | TP %5d | FP %5d | TN %5d | FN %5d"%( thr, precision_train, recall_train, TP_train, FP_train, TN_train, FN_train)
+        print_st_va = "LR Validation performance at threshold %.5f : | Precision %.3f | Recall %.3f | TP %5d | FP %5d | TN %5d | FN %5d"%(thr, precision_valid, recall_valid, TP_valid, FP_valid, TN_valid, FN_valid)
+        print_st_te = "LR Test performance  at threshold %.5f :  | Precision %.3f | Recall %.3f | TP %5d | FP %5d | TN %5d | FN %5d"%(thr, precision_test, recall_test,TP_test, FP_test, TN_test, FN_test) 
 
         print(print_st_tr)
         print(print_st_va)
@@ -322,35 +289,16 @@ if __name__ == '__main__':
     # save model to disk
     model_file = os.path.join(args.output_dir, args.output_filename_prefix+'_trained_model.joblib')
     dump(prediction_pipeline, open(model_file, 'wb'))
-    print('saved random forest model to : %s'%model_file)
+    print('saved Logistic regression pickle model to : %s'%model_file)
     
+    # save as onnx
+    initial_type = [('float_input', FloatTensorType([None, len(feature_cols)]))]
+    onx = convert_sklearn(prediction_pipeline, initial_types=initial_type)
     onx_file = os.path.join(args.output_dir, args.output_filename_prefix+'.onnx')
     
-    update_registered_converter(lgb.LGBMClassifier, 'LightGbmLGBMClassifier',
-                                calculate_linear_classifier_output_shapes, convert_lightgbm,
-                                options={'nocl': [True, False], 'zipmap': [True, False, 'columns']})
-    
-    
-    model_onnx = convert_sklearn(prediction_pipeline, 'pipeline_lightgbm',
-                                 [('input', FloatTensorType([None, len(feature_cols)]))],
-                                 target_opset=12)
-    
     with open(onx_file, "wb") as f:
-        f.write(model_onnx.SerializeToString())
+        f.write(onx.SerializeToString())
     
-    sess = rt.InferenceSession(onx_file)
-    input_name = sess.get_inputs()[0].name
-    proba_label_name = sess.get_outputs()[1].name
-#     pred_probas_onx = sess.run([proba_label_name], {input_name: x_test.astype(np.float32)})[0]
-    
-    print('========================================================================')
-    print('Sample predictions with trained sklearn pipeline')
-    print('========================================================================')
-    print(prediction_pipeline.predict_proba(x_test[:10]))
-    
-    print('========================================================================')
-    print('Sample predictions with onnx')
-    print('========================================================================')
-    print(sess.run([proba_label_name], {input_name: x_test[:10].astype(np.float32)})[0])
+    print('saved Logistic regression onnx model to : %s'%onx_file)
     
     

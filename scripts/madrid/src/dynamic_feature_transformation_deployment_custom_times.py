@@ -22,7 +22,7 @@ import ast
 import time
 import copy
 import os
-
+import datetime
 from progressbar import ProgressBar
 
 DEFAULT_PROJECT_REPO = os.path.sep.join(__file__.split(os.path.sep)[:-2])
@@ -80,12 +80,13 @@ def main():
 
     # transform data
     t1 = time.time()
-    dynamic_collapsed_df, dynamic_outcomes_df = featurize_stack_of_many_time_series(
+    dynamic_collapsed_df, dynamic_outcomes_df = featurize_stack_of_many_time_series_at_custom_times(
         ts_df=ts_df, ts_data_dict=ts_data_dict,                                           
         outcomes_df=outcomes_df, 
         outcomes_data_dict=outcomes_data_dict,
         summary_ops=args.features_to_summarize, 
         percentile_slices_to_featurize=args.percentile_ranges_to_summarize,
+        custom_prediction_times_list= ['12:00:00' , '20:00:00']
         )
     t2 = time.time()
     print('done collapsing data..')
@@ -110,7 +111,45 @@ def main():
         args.dynamic_collapsed_features_data_dict))
 
 
-def featurize_stack_of_many_time_series(
+def get_first_prediction_end_window(ts_df, fp_start, fp_end, curr_adm_ts, start_time_of_each_sequence=-24, 
+                                    prediction_times_list = ['10:00:00' , '18:00:00']):
+    '''
+    Get the time till the first window prediction end in hours
+    '''
+    
+    t=curr_adm_ts-datetime.timedelta(hours=24)
+    num_prediction_times = len(prediction_times_list)
+    time_diff_seconds_arr = np.zeros(num_prediction_times)
+    prediction_times_pd_list=[]
+    
+    for ii, pred_time in enumerate(prediction_times_list):
+        curr_pred_hr, curr_pred_min, curr_pred_sec = pred_time.split(':')
+        curr_pred_datetime_pd = t.replace(hour=int(curr_pred_hr), minute=int(curr_pred_min), second=int(curr_pred_sec))
+        prediction_times_pd_list.append(curr_pred_datetime_pd)
+        time_diff_seconds_arr[ii] = (curr_pred_datetime_pd-t).seconds
+        
+    next_day_prediction_datetime_pd = prediction_times_pd_list[0]+datetime.timedelta(hours=24)
+    if t>=prediction_times_pd_list[-1]:
+        next_pred_datetime = next_day_prediction_datetime_pd
+    else:
+        next_pred_datetime_ind = np.argmin(time_diff_seconds_arr)
+        next_pred_datetime = prediction_times_pd_list[next_pred_datetime_ind]   
+    
+    first_time_window_end = start_time_of_each_sequence + np.ceil((next_pred_datetime-t).seconds/3600).astype(int)
+    
+    if next_pred_datetime.hour==prediction_times_pd_list[0].hour:
+        t1=(prediction_times_pd_list[1]-prediction_times_pd_list[0]).seconds//3600
+        t2=(next_day_prediction_datetime_pd-prediction_times_pd_list[1]).seconds//3600
+    elif next_pred_datetime.hour==prediction_times_pd_list[1].hour:
+        t1=(next_day_prediction_datetime_pd-prediction_times_pd_list[1]).seconds//3600
+        t2=(prediction_times_pd_list[1]-prediction_times_pd_list[0]).seconds//3600
+        
+    subsequent_window_ends = [t1, t2]
+    
+    return first_time_window_end, subsequent_window_ends
+    
+
+def featurize_stack_of_many_time_series_at_custom_times(
         ts_df=None,
         ts_data_dict=None,
         outcomes_df=None,
@@ -121,8 +160,7 @@ def featurize_stack_of_many_time_series(
         outcome_seq_duration_col='stay_length',
         start_time_of_each_sequence=-24.0,
         max_time_of_each_sequence=504,
-        start_time_of_endpoints=-12.0,
-        time_between_endpoints=12,
+        custom_prediction_times_list= ['10:00:00' , '18:00:00'],
         prediction_horizon=24,
         verbose=True,
         ):
@@ -143,7 +181,6 @@ def featurize_stack_of_many_time_series(
     percentile_slices_to_featurize : list of tuples
         Indicates percentile range of all subwindows we will featurize
         Example: [(0, 100), (0, 50)])
-
     Returns
     -------
     all_feat_df : DataFrame
@@ -154,7 +191,6 @@ def featurize_stack_of_many_time_series(
         One row per featurized window of any patient-stay slice
         Key columns: ids + ['start', 'stop']
         Value columns: just one, the outcome column
-
     Examples
     --------
     >>> args = make_fake_input_data(n_seqs=25, n_features=10, max_duration=50.0)
@@ -188,7 +224,6 @@ def featurize_stack_of_many_time_series(
         raise ValueError("Expected at least one variable with role='time'")
     elif len(time_cols) > 1:
         print("More than one time variable found. Choosing %s" % time_cols[-1])
-
     time_col = time_cols[-1]
 
     # Obtain fenceposts delineating each individual sequence within big stack
@@ -201,7 +236,8 @@ def featurize_stack_of_many_time_series(
             keys_df[col] = keys_df[col].cat.codes
     middle_fence_posts = 1 + np.flatnonzero(
         np.diff(keys_df.values, axis=0).any(axis=1))
-    fp = np.hstack([0, middle_fence_posts, keys_df.shape[0]])    
+    fp = np.hstack([0, middle_fence_posts, keys_df.shape[0]])
+    
     feat_arr_per_seq = list()
     windows_per_seq = list()
     outcomes_per_seq = list()
@@ -209,7 +245,6 @@ def featurize_stack_of_many_time_series(
     missingness_density_per_seq = list()
     ids_per_seq = list()
     
-
     # Total number of features we'll compute in each feature vector
     F = len(percentile_slices_to_featurize) * len(feature_cols) * len(summary_ops)
 
@@ -241,10 +276,23 @@ def featurize_stack_of_many_time_series(
         # Create windows at desired spacing
         stop_time_of_cur_sequence = min(
             cur_seq_duration, max_time_of_each_sequence)
-        window_ends = np.arange(
-            start_time_of_endpoints,
-            stop_time_of_cur_sequence + 0.01 * time_between_endpoints,
-            time_between_endpoints)
+        
+        
+        curr_adm_ts = pd.to_datetime(ts_df.iloc[fp_start]['timestamp'])-datetime.timedelta(hours=ts_df.iloc[fp_start] ['hours_since_admission'])
+        
+        start_time_of_endpoints, subsequent_window_ends = get_first_prediction_end_window(ts_df, fp_start, 
+                                                                                          fp_end, curr_adm_ts,
+                                                                                          start_time_of_each_sequence,
+                                                                                          prediction_times_list=custom_prediction_times_list )
+        
+        
+        
+        reps = np.ceil((stop_time_of_cur_sequence-start_time_of_endpoints)/24).astype(int)
+        window_ends = start_time_of_endpoints+np.cumsum(np.array(subsequent_window_ends*reps))
+        window_ends = np.insert(window_ends, 0, start_time_of_endpoints)
+        
+        
+        
         
         # Create a dictionary of times and values for each feature
         time_arr_by_var = dict()
@@ -260,17 +308,6 @@ def featurize_stack_of_many_time_series(
         cur_seq_missing_density = (
             1.0 - len(val_arr_by_var.keys()) / float(len(feature_cols)))
 
-        # Deprecated code from preetish.... MCH couldn't get this to work.
-        '''
-        v = cur_fp_df.set_index(time_col).agg(lambda x: x.dropna().to_dict()) 
-        res = v[v.str.len() > 0].to_dict()
-        for feature_col in feature_cols:
-            if feature_col in res.keys():
-                time_arr_by_var[feature_col] = np.array(
-                    list(res[feature_col].keys()), dtype=np.float64)
-                val_arr_by_var[feature_col] = np.array(
-                    list(res[feature_col].values()), dtype=np.float64)
-        '''
 
         W = len(window_ends)
         window_features_WF = np.zeros([W, F], dtype=np.float32)
@@ -281,6 +318,7 @@ def featurize_stack_of_many_time_series(
         for ww, window_end in enumerate(window_ends):
             window_starts_stops_W2[ww, 0] = start_time_of_each_sequence
             window_starts_stops_W2[ww, 1] = window_end
+        
             window_features_WF[ww, :], feat_names = featurize_ts(
                 time_arr_by_var, val_arr_by_var, 
                 var_cols=feature_cols,
@@ -314,7 +352,7 @@ def featurize_stack_of_many_time_series(
     ids_df = pd.DataFrame(np.vstack(ids_per_seq), columns=id_cols) 
     windows_df = pd.DataFrame(np.vstack(windows_per_seq), columns=['start', 'stop'])
     all_features_df = pd.concat([ids_df, windows_df, features_df], axis=1)
-
+    
     if outcomes_df is not None:
         durations_df = pd.DataFrame(np.vstack(durations_per_seq), columns=[outcome_seq_duration_col])
         outcomes_df = pd.DataFrame(np.vstack(outcomes_per_seq), columns=[outcome_col])
@@ -325,7 +363,7 @@ def featurize_stack_of_many_time_series(
 
     seq_lengths = np.vstack([a[0] for a in durations_per_seq])
     elapsed_time_sec = time.time() - start_time_sec
-
+    
     if verbose:
         print('-----------------------------------------')
         print('Processed %d sequences of duration %.1f-%.1f in %.1f sec' % (
@@ -340,9 +378,7 @@ def featurize_stack_of_many_time_series(
             np.percentile(missingness_density_per_seq, 95),
             ))
         print('-----------------------------------------')   
-    
     return all_features_df, all_outcomes_df
-
 
 
 def make_fake_input_data(
@@ -498,7 +534,6 @@ def update_data_dict_collapse(data_dict, collapse_range_features, range_pairs):
         new_data_dict['fields'] = new_fields
         
     return new_data_dict
-
 
 if __name__ == '__main__':
     main()
