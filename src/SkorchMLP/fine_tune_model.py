@@ -33,6 +33,7 @@ from sklearn.neural_network import MLPClassifier
 from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType
 import onnxruntime as rt
+import torch.nn as nn
 
 def read_csv_with_float32_dtypes(filename, nrows=None):
     # Sample 100 rows of data to determine dtypes.
@@ -120,6 +121,49 @@ def calc_fp(net, X, y):
     return float(fp.detach().numpy())
 
 
+def get_paramater_gradient_l2_norm(net,**kwargs):
+    parameters = [i for  _,i in net.module_.named_parameters()]
+    total_norm = 0
+    for p in parameters:
+        if p.requires_grad==True:
+            param_norm = p.grad.data.norm(2)
+            total_norm += param_norm.item() ** 2
+    total_norm = total_norm ** (1. / 2)
+    return total_norm
+
+def get_paramater_gradient_inf_norm(net, **kwargs):
+    parameters = [i for  _,i in net.module_.named_parameters()]
+    total_norm = max(p.grad.data.abs().max() for p in parameters if p.grad==True)
+    return total_norm
+
+class ComputeGradientNorm(Callback):
+    def __init__(self, norm_type=1, f_history=None):
+        self.norm_type = norm_type
+        self.batch_num = 1
+        self.epoch_num = 1
+        self.f_history = f_history
+
+    def on_epoch_begin(self, net,  dataset_train=None, dataset_valid=None, **kwargs):
+        self.batch_num = 1
+
+    def on_epoch_end(self, net, dataset_train=None, dataset_valid=None, **kwargs):
+        self.epoch_num += 1
+
+    def on_grad_computed(self, net, named_parameters, **kwargs):
+        if self.norm_type == 1:
+            gradient_norm = get_paramater_gradient_inf_norm(net)
+            print('epoch: %d, batch: %d, gradient_norm: %.3f'%(self.epoch_num, self.batch_num, gradient_norm))
+            if self.f_history is not None:
+                self.write_to_file(gradient_norm)
+            self.batch_num += 1
+        else:
+            gradient_norm = get_paramater_gradient_l2_norm(net)
+            print('epoch: %d, batch: %d, gradient_norm: %.3f'%(self.epoch_num, self.batch_num, gradient_norm))
+            if self.f_history is not None:
+                self.write_to_file(gradient_norm)
+            self.batch_num += 1
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='skorch MLP')
 
@@ -154,8 +198,8 @@ if __name__ == '__main__':
                                 type=lambda x: (str(x).lower() == 'true'), required=False)
     parser.add_argument('--warm_start', type=str, default='false')
     parser.add_argument('--initialization_gain', type=float, default=1.0)
-    parser.add_argument('--min_precision', type=float, default=0.5)
     parser.add_argument('--incremental_min_precision', type=str, default='false')
+    parser.add_argument('--n_target_episodes', type=int, default=10000)
     
     args = parser.parse_args()
     
@@ -177,14 +221,16 @@ if __name__ == '__main__':
     key_cols = parse_id_cols(x_data_dict)
     
     df_by_split = dict()
-    for split_name, csv_files in [
-            ('train', args.train_csv_files.split(',')),
-            ('test', args.test_csv_files.split(','))]:
+    for split_name, csv_files, nrows in [
+            ('train', args.train_csv_files.split(','), args.n_target_episodes),
+            ('test', args.test_csv_files.split(','), None)]:
         cur_df = None
         for csv_file in csv_files:
 
             # TODO use json data dict to load specific columns as desired types
-            more_df =  read_csv_with_float32_dtypes(csv_file)
+            if nrows==-1:
+                nrows = None
+            more_df =  read_csv_with_float32_dtypes(csv_file, nrows=nrows)
             if cur_df is None:
                 cur_df = more_df
             else:
@@ -272,7 +318,11 @@ if __name__ == '__main__':
     # set max_epochs 
     max_epochs=50
     
-    # define callbacks 
+    # define callbacks
+    
+    # callback to compute gradient norm
+    compute_grad_norm = ComputeGradientNorm(norm_type=2)
+    
     epoch_scoring_precision_train = EpochScoring('precision', lower_is_better=False, on_train=True,
                                                                     name='precision_train')
     
@@ -295,8 +345,8 @@ if __name__ == '__main__':
                                           patience=25, threshold=1e-10, threshold_mode='rel', 
                                           lower_is_better=False)
     
-    loss_early_stopping_cp = EarlyStopping(monitor='valid_loss',
-                                          patience=20, threshold=1e-10, threshold_mode='rel', 
+    loss_early_stopping_cp = EarlyStopping(monitor='surr_loss_valid',
+                                          patience=25, threshold=1e-10, threshold_mode='rel', 
                                           lower_is_better=True)
 
     auprc_early_stopping_cp = EarlyStopping(monitor='auprc_valid', patience=15, threshold=1e-10, threshold_mode='rel',
@@ -363,16 +413,18 @@ if __name__ == '__main__':
     
     
 #     n_cv_folds = int(np.floor(1/args.validation_size))
-    ## start training
-    fixed_precision = args.min_precision
+    ## swtart training
+    fixed_precision = 0.5
     thr_list = [0.5]
+    model_file = '/home/prash/results/madrid/v20211018/HIL/split-by=patient_id/collapsed_features_dynamic_input_output/skorch_mlp/CustomTimes_10_6/skorch_mlp_lr=0.001-weight_decay=0.001-batch_size=512-scoring=surrogate_loss_tight-seed=9-lamb=0.5-initialization_gain=1.0-n_hiddens=16-n_layers=1-warm_start=trueparams.pt'
+    
     if args.scoring == 'cross_entropy_loss':
         mlp = SkorchMLP(n_features=len(feature_cols),
                                                 l2_penalty_weights=args.weight_decay,
     #                                             l2_penalty_bias=args.weight_decay,
-                                                lr=args.lr,
+                                                lr=0.001,
                                                 batch_size=args.batch_size, 
-                                                max_epochs=max_epochs,
+                                                max_epochs=20,
                                                 train_split=predefined_split(valid_ds),
                                                 loss_name='cross_entropy_loss',
                                                 n_hiddens=args.n_hiddens,
@@ -393,18 +445,29 @@ if __name__ == '__main__':
                                                            calc_tp_valid,
                                                            calc_fp_train,
                                                            calc_fp_valid,
-                                                           loss_early_stopping_cp,
+#                                                            loss_early_stopping_cp,
                                                            loss_best_cp, 
                                                            train_end_cp
                                                           ],
                                                optimizer=torch.optim.Adam,
-                                               optimizer__lr=args.lr)
-        print('Training Skorch MLP minimizing cross entropy loss...')
-        mlp_clf = mlp.fit(x_train_transformed, y_train)
+                                               optimizer__lr=0.001)
+        print('Fine tuning model with cross entropy loss...')
         
-        print('Loading from checkpoint with best validation loss...')
-        mlp_clf.load_params(checkpoint=loss_best_cp)
         
+        mlp_transfer = copy.deepcopy(mlp)
+        
+        mlp.initialize()
+        mlp_transfer.initialize()
+        
+        mlp.load_params(model_file)
+        
+        # copy only the input layer to the transfer model
+        for layer_num in range(args.n_layers):
+                        mlp_transfer.module_.hidden_layer._modules['fc_%d'%layer_num].weight.data = mlp.module_.hidden_layer._modules['fc_%d'%layer_num].weight.data
+                        mlp_transfer.module_.hidden_layer._modules['fc_%d'%layer_num].bias.data = mlp.module_.hidden_layer._modules['fc_%d'%layer_num].bias.data
+        
+        
+        mlp_clf = mlp_transfer.partial_fit(x_train_transformed, y_train)
         
         # search multiple decision thresolds and pick the threshold that performs best on validation set
         print('Searching thresholds that maximize recall at fixed precision %.4f'%fixed_precision)
@@ -440,208 +503,88 @@ if __name__ == '__main__':
         
         thr_list.append(best_thr)   
         
-    elif (args.scoring == 'surrogate_loss_tight')|(args.scoring == 'surrogate_loss_loose'):
-        if args.warm_start == 'true':
-            print('Warm starting by minimizing cross entropy loss first...')
-            # warm start classifier and train with miminizing cross entropy loss first
-            mlp_init = SkorchMLP(n_features=len(feature_cols),
-                                                l2_penalty_weights=args.weight_decay,
-    #                                             l2_penalty_bias=args.weight_decay,
-                                                lr=0.001,
-                                                batch_size=args.batch_size, 
-                                                max_epochs=20,
-                                                train_split=predefined_split(valid_ds),
-                                                loss_name='cross_entropy_loss',
-                                                n_hiddens=args.n_hiddens,
-                                                n_layers=args.n_layers,
-                                                callbacks=[epoch_scoring_precision_train,
-                                                           epoch_scoring_precision_valid,
-                                                           epoch_scoring_recall_train,
-                                                           epoch_scoring_recall_valid,
-                                                           epoch_scoring_surr_loss_train,
-                                                           epoch_scoring_surr_loss_valid,
-                                                           epoch_scoring_bce_loss_train,
-                                                           epoch_scoring_bce_loss_valid,
-                                                           tpl_bound_train,
-                                                           tpl_bound_valid,
-                                                           fpu_bound_train,
-                                                           fpu_bound_valid,
-                                                           calc_tp_train,
-                                                           calc_tp_valid,
-                                                           calc_fp_train,
-                                                           calc_fp_valid,
-#                                                            loss_early_stopping_cp,
-                                                           loss_best_cp, 
-                                                           train_end_cp
-                                                          ],
-                                               optimizer=torch.optim.Adam,
-                                               optimizer__lr=0.001
-                                )
-            
-            mlp_init_clf = mlp_init.fit(x_train_transformed, y_train)
-            
-            # transfer the weights and to a new instance of SkorchLogisticRegression and train minimizing surrogate loss
-            print('Transferring weights and training to minimize surrogate loss...')
-            mlp = SkorchMLP(n_features=len(feature_cols),
-                                                l2_penalty_weights=args.weight_decay,
-    #                                             l2_penalty_bias=args.weight_decay,
-                                                lr=args.lr,
-                                                batch_size=args.batch_size, 
-                                                max_epochs=max_epochs,
-                                                train_split=predefined_split(valid_ds),
-                                                min_precision=fixed_precision+0.1,
-                                                constraint_lambda=args.lamb,
-                                                loss_name=args.scoring,
-                                                n_hiddens=args.n_hiddens,
-                                                n_layers=args.n_layers,
-                                                callbacks=[epoch_scoring_precision_train,
-                                                           epoch_scoring_precision_valid,
-                                                           epoch_scoring_recall_train,
-                                                           epoch_scoring_recall_valid,
-                                                           epoch_scoring_surr_loss_train,
-                                                           epoch_scoring_surr_loss_valid,
-                                                           epoch_scoring_bce_loss_train,
-                                                           epoch_scoring_bce_loss_valid,
-                                                           tpl_bound_train,
-                                                           tpl_bound_valid,
-                                                           fpu_bound_train,
-                                                           fpu_bound_valid,
-                                                           calc_tp_train,
-                                                           calc_tp_valid,
-                                                           calc_fp_train,
-                                                           calc_fp_valid,
-    #                                                        lr_scheduler,
-                                                           loss_early_stopping_cp,
-                                                           cp, 
-                                                           train_end_cp
-                                                          ],
-                                               optimizer=torch.optim.Adam,
-#                                                optimizer__lr=args.lr
-                           )
-
-            mlp.initialize()
-            
-            # load the past history
-            mlp.load_params(checkpoint=loss_best_cp)
-            
-            
-            for layer_num in range(args.n_layers):
-                mlp.module_.hidden_layer._modules['fc_%d'%layer_num].weight.data = mlp_init_clf.module_.hidden_layer._modules['fc_%d'%layer_num].weight.data
-                mlp.module_.hidden_layer._modules['fc_%d'%layer_num].bias.data = mlp_init_clf.module_.hidden_layer._modules['fc_%d'%layer_num].bias.data
-                            
-            
-#             mlp.module_.hidden_layer.fc_0.weight.data = mlp_init_clf.module_.hidden_layer.fc_0.weight.data
-#             mlp.module_.hidden_layer.fc_0.bias.data = mlp_init_clf.module_.hidden_layer.fc_0.bias.data
-            mlp.module_.output_layer.weight.data = mlp_init_clf.module_.output_layer.weight.data
-            mlp.module_.output_layer.bias.data = mlp_init_clf.module_.output_layer.bias.data
-            mlp_clf = mlp.partial_fit(x_train_transformed, y_train)
-            
-            #
-            print('Loading the parameters from checkpoint with best surrogate loss on validation set')
-            mlp_clf.load_params(checkpoint=cp)
-            
-            # search multiple decision thresolds and pick the threshold that performs best on validation set
-            print('Searching thresholds that maximize recall at fixed precision %.4f'%fixed_precision)
-            y_valid_proba_vals = mlp_clf.predict_proba(x_valid_transformed)
-            unique_probas = np.unique(y_valid_proba_vals)
-            thr_grid = np.linspace(np.percentile(unique_probas,1), np.percentile(unique_probas, 99), 5000)
-
-            precision_scores_G, recall_scores_G = [np.zeros(thr_grid.size), np.zeros(thr_grid.size)]
-            for gg, thr in enumerate(thr_grid): 
-                curr_thr_y_preds = y_valid_proba_vals[:,1]>=thr_grid[gg] 
-                precision_scores_G[gg] = precision_score(y_valid, curr_thr_y_preds)
-                recall_scores_G[gg] = recall_score(y_valid, curr_thr_y_preds) 
-
-
-            keep_inds = precision_scores_G>=fixed_precision
-            if keep_inds.sum()>0:
-                precision_scores_G = precision_scores_G[keep_inds]
-                recall_scores_G = recall_scores_G[keep_inds]
-                thr_grid = thr_grid[keep_inds]
-                best_ind = np.argmax(recall_scores_G)
-                best_thr = thr_grid[best_ind]
-                thr_perf_df = pd.DataFrame(np.vstack([
-                            thr_grid[np.newaxis,:],
-                            precision_scores_G[np.newaxis,:],
-                            recall_scores_G[np.newaxis,:]]).T,
-                        columns=['thr', 'precision_score', 'recall_score'])
-                print(thr_perf_df)
-                print('Chosen threshold : '+str(best_thr))
-
-            else:
-                best_thr = 0.5
-
-            thr_list.append(best_thr)  
-
-        else:
-            print('Training with surrogate loss with random initialization...')
-            # Train with random initialization
-            mlp = SkorchMLP(n_features=len(feature_cols),
-                                                l2_penalty_weights=args.weight_decay,
-                                                lr=args.lr,
-                                                batch_size=args.batch_size, 
-                                                max_epochs=max_epochs,
-                                                train_split=predefined_split(valid_ds),
-                                                loss_name=args.scoring,
-                                                min_precision=fixed_precision,
-                                                constraint_lambda=args.lamb,
-                                                incremental_min_precision=args.incremental_min_precision,
-                                                initialization_gain=args.initialization_gain,
-                                                n_layers=args.n_layers,
-                                                callbacks=[epoch_scoring_precision_train,
-                                                           epoch_scoring_precision_valid,
-                                                           epoch_scoring_recall_train,
-                                                           epoch_scoring_recall_valid,
-                                                           epoch_scoring_surr_loss_train,
-                                                           epoch_scoring_surr_loss_valid,
-                                                           epoch_scoring_bce_loss_train,
-                                                           epoch_scoring_bce_loss_valid,
-                                                           tpl_bound_train,
-                                                           tpl_bound_valid,
-                                                           fpu_bound_train,
-                                                           fpu_bound_valid,
-                                                           calc_tp_train,
-                                                           calc_tp_valid,
-                                                           calc_fp_train,
-                                                           calc_fp_valid,
+        
+    elif args.scoring == 'surrogate_loss_tight':
+        print('Fine-tuning model with surrogate loss...')
+        # Train with random initialization
+        mlp = SkorchMLP(n_features=len(feature_cols),
+                                            l2_penalty_weights=args.weight_decay,
+                                            lr=args.lr,
+                                            batch_size=args.batch_size, 
+                                            max_epochs=max_epochs,
+                                            train_split=predefined_split(valid_ds),
+                                            loss_name=args.scoring,
+                                            min_precision=fixed_precision,
+                                            constraint_lambda=args.lamb,
+                                            incremental_min_precision=args.incremental_min_precision,
+                                            initialization_gain=args.initialization_gain,
+                                            n_hiddens=args.n_hiddens,
+                                            n_layers=args.n_layers,
+                                            callbacks=[epoch_scoring_precision_train,
+                                                       epoch_scoring_precision_valid,
+                                                       epoch_scoring_recall_train,
+                                                       epoch_scoring_recall_valid,
+                                                       epoch_scoring_surr_loss_train,
+                                                       epoch_scoring_surr_loss_valid,
+                                                       epoch_scoring_bce_loss_train,
+                                                       epoch_scoring_bce_loss_valid,
+                                                       tpl_bound_train,
+                                                       tpl_bound_valid,
+                                                       fpu_bound_train,
+                                                       fpu_bound_valid,
+                                                       calc_tp_train,
+                                                       calc_tp_valid,
+                                                       calc_fp_train,
+                                                       calc_fp_valid,
+#                                                        compute_grad_norm,
 #                                                            early_stopping_cp,
-                                                           cp, train_end_cp],
-                                               optimizer=torch.optim.Adam)
+                                                       cp, train_end_cp],
+                                           optimizer=torch.optim.Adam)
+        
+        # copy all weights except the output layer weights to the transfer model
+        mlp.initialize()
+        mlp.load_params(model_file)
+#         nn.init.xavier_uniform_(mlp.module_.output_layer.weight, gain=args.initialization_gain)
+        
+        mlp_clf = mlp.partial_fit(x_train_transformed, y_train)
             
-            mlp_clf = mlp.fit(x_train_transformed, y_train)
-            
-            
-            print('Loading the parameters from checkpoint with best surrogate loss on validation set')
-            mlp_clf.load_params(checkpoint=cp)
-            
-            # search multiple decision thresolds and pick the threshold that performs best on validation set
-            print('Searching thresholds that maximize recall at fixed precision %.4f'%fixed_precision)
-            y_valid_proba_vals = mlp_clf.predict_proba(x_valid_transformed)
-            unique_probas = np.unique(y_valid_proba_vals)
-            thr_grid = np.linspace(np.percentile(unique_probas,1), np.percentile(unique_probas, 99), 5000)
+        
+        print('Loading the parameters from checkpoint with best surrogate loss on validation set')
+        mlp_clf.load_params(checkpoint=cp)
 
-            precision_scores_G, recall_scores_G = [np.zeros(thr_grid.size), np.zeros(thr_grid.size)]
-            for gg, thr in enumerate(thr_grid): 
-                curr_thr_y_preds = y_valid_proba_vals[:,1]>=thr_grid[gg] 
-                precision_scores_G[gg] = precision_score(y_valid, curr_thr_y_preds)
-                recall_scores_G[gg] = recall_score(y_valid, curr_thr_y_preds) 
+        # search multiple decision thresolds and pick the threshold that performs best on validation set
+        print('Searching thresholds that maximize recall at fixed precision %.4f'%fixed_precision)
+        y_valid_proba_vals = mlp_clf.predict_proba(x_valid_transformed)
+        unique_probas = np.unique(y_valid_proba_vals)
+        thr_grid = np.linspace(np.percentile(unique_probas,1), np.percentile(unique_probas, 99), 5000)
+
+        precision_scores_G, recall_scores_G = [np.zeros(thr_grid.size), np.zeros(thr_grid.size)]
+        for gg, thr in enumerate(thr_grid): 
+            curr_thr_y_preds = y_valid_proba_vals[:,1]>=thr_grid[gg] 
+            precision_scores_G[gg] = precision_score(y_valid, curr_thr_y_preds)
+            recall_scores_G[gg] = recall_score(y_valid, curr_thr_y_preds) 
 
 
-            keep_inds = precision_scores_G>=fixed_precision
-            if keep_inds.sum()>0:
-                precision_scores_G = precision_scores_G[keep_inds]
-                recall_scores_G = recall_scores_G[keep_inds]
-                thr_grid = thr_grid[keep_inds]
-                best_ind = np.argmax(recall_scores_G)
-                best_thr = thr_grid[best_ind]
-                thr_perf_df = pd.DataFrame(np.vstack([
-                            thr_grid[np.newaxis,:],
-                            precision_scores_G[np.newaxis,:],
-                            recall_scores_G[np.newaxis,:]]).T,
-                        columns=['thr', 'precision_score', 'recall_score'])
-                print(thr_perf_df)
-                print('Chosen threshold : '+str(best_thr))
-            
+        keep_inds = precision_scores_G>=fixed_precision
+        if keep_inds.sum()>0:
+            precision_scores_G = precision_scores_G[keep_inds]
+            recall_scores_G = recall_scores_G[keep_inds]
+            thr_grid = thr_grid[keep_inds]
+            best_ind = np.argmax(recall_scores_G)
+            best_thr = thr_grid[best_ind]
+            thr_perf_df = pd.DataFrame(np.vstack([
+                        thr_grid[np.newaxis,:],
+                        precision_scores_G[np.newaxis,:],
+                        recall_scores_G[np.newaxis,:]]).T,
+                    columns=['thr', 'precision_score', 'recall_score'])
+            print(thr_perf_df)
+            print('Chosen threshold : '+str(best_thr))
+        else:
+            best_thr = thr_grid[np.argmax(precision_scores_G)]
+            print('Could not find thresholds achieving fixed precision of %.2f. Evaluating with threshold that achieves precision %.3f'%(fixed_precision, np.max(precision_scores_G)))   
+        
+        thr_list.append(best_thr) 
+        
         
     # save the scaler
     pickle_file = os.path.join(args.output_dir, 'scaler.pkl')

@@ -35,14 +35,17 @@ import seaborn as sns
 import onnxruntime as rt
 import joblib
 
-def read_csv_with_float32_dtypes(filename):
+def read_csv_with_float32_dtypes(filename, nrows=None):
     # Sample 100 rows of data to determine dtypes.
     df_test = pd.read_csv(filename, nrows=100)
 
     float_cols = [c for c in df_test if df_test[c].dtype == "float64"]
     float32_cols = {c: np.float32 for c in float_cols}
-
-    df = pd.read_csv(filename, dtype=float32_cols)
+    
+    if nrows is not None:
+        df = pd.read_csv(filename, dtype=float32_cols, nrows=nrows)
+    else:
+        df = pd.read_csv(filename, dtype=float32_cols)
     
     return df
 
@@ -57,12 +60,12 @@ if __name__ == '__main__':
                         help='csv files for testing')
     parser.add_argument('--clf_models_dir', type=str, required=True,
                         help='directory where clf models are saved')
-    parser.add_argument('--mews_train_csv_file', type=str, required=True,
-                        help='mews training subject scores')
-    parser.add_argument('--mews_valid_csv_file', type=str, required=True,
-                        help='mews validation subject scores')
-    parser.add_argument('--mews_test_csv_file', type=str, required=True,
-                        help='mews test subject scores')
+#     parser.add_argument('--mews_train_csv_file', type=str, required=True,
+#                         help='mews training subject scores')
+#     parser.add_argument('--mews_valid_csv_file', type=str, required=True,
+#                         help='mews validation subject scores')
+#     parser.add_argument('--mews_test_csv_file', type=str, required=True,
+#                         help='mews test subject scores')
     parser.add_argument('--output_dir', type=str, required=True,
                         help='directory where model performances are saved')
     parser.add_argument('--outcome_col_name', type=str, required=True,
@@ -102,9 +105,9 @@ if __name__ == '__main__':
     y_test = np.ravel(y_test_df[outcome_col_name])
     del(x_test_df)
     
-    mews_train_df = pd.read_csv(args.mews_train_csv_file)
-    mews_valid_df = pd.read_csv(args.mews_valid_csv_file)
-    mews_test_df = pd.read_csv(args.mews_test_csv_file)
+#     mews_train_df = pd.read_csv(args.mews_train_csv_file)
+#     mews_valid_df = pd.read_csv(args.mews_valid_csv_file)
+#     mews_test_df = pd.read_csv(args.mews_test_csv_file)
     
     # Prepare data for classification    
     if args.valid_csv_files is None:
@@ -160,49 +163,85 @@ if __name__ == '__main__':
     
     
 #     del(x_train_df, x_valid_df, x_test_df)
-    # labs, vitals_medications best lightgbm *min_samples_per_leaf=1024-max_leaves=8-n_estimators=100-frac_features_for_clf=0.33-frac_training_samples_per_tree=0.33
-    
-    # labs, vitals best *min_samples_per_leaf=4096-max_leaves=32-n_estimators=100-frac_features_for_clf=0.66-frac_training_samples_per_tree=0.66
     
     # labs, vitals, med orders best *min_samples_per_leaf=1024-max_leaves=128-n_estimators=100-frac_features_for_clf=0.33-frac_training_samples_per_tree=0.66
     
+    # labs, vitals, med orders best 12pm 8pm *min_samples_per_leaf=4096-max_leaves=128-n_estimators=100-frac_features_for_clf=0.66-frac_training_samples_per_tree=0.66
+    
+    results_file_suffix = ''#'_HIL_trained_on_HUF'
     n_features = len(feature_cols)
     models_dict = {
-        'logistic regression' : {'dirname':'skorch_logistic_regression', 
+        'logistic regression' : {'dirname':'skorch_logistic_regression/CustomTimes_10_6', 
                                             'model_constructor': None,
-                                            'prefix' : '*scoring=cross_entropy_loss',
+                                            'prefix' : '*scoring=cross_entropy_loss*features_to_include=vitals_only',
                                            'model_color' : 'r', 
                                            'model_marker' : 's'},
-                 'lightGBM' : {'dirname': 'lightGBM',
+                 'lightGBM' : {'dirname': 'lightGBM/CustomTimes_10_6',
                                    'model_constructor' : None,
-                                   'prefix' : '*min_samples_per_leaf=1024-max_leaves=128-n_estimators=100-frac_features_for_clf=0.33-frac_training_samples_per_tree=0.66',
+                                   'prefix' : '*vitals_only',
                                     'model_color' : 'g',
                                     'model_marker' : 'o'},
-                  'MLP 1 layer' : {'dirname' : 'skorch_mlp',
-                                   'model_constructor' : None,
-                                  'prefix' : '*skorch_mlp_lr=1e-08-weight_decay=1e-07-batch_size=512-scoring=surrogate_loss_tight-seed=7437-lamb=0.25-initialization_gain=0.25-n_hiddens=8-n_layers=1-warm_start=true',
-                                  'model_color' : 'b',
-                                  'model_marker' : '^'},
-#                   'MLP 2 layer' : {'dirname' : 'skorch_mlp',
+#                   'MLP 1 layer' : {'dirname' : 'skorch_mlp/CustomTimes_10_6',
 #                                    'model_constructor' : SkorchMLP(n_features=n_features,
-#                                                          n_hiddens=32,
+#                                                          n_hiddens=16,
+#                                                          n_layers=1),
+#                                   'prefix' : '*surrogate_loss_tight*n_hiddens=16*n_layers=1*warm_start=true',
+#                                   'model_color' : 'b',
+#                                   'model_marker' : '^'},
+#                   'MLP 1 layer (BCE + thr search)' : {'dirname' : 'skorch_mlp/CustomTimes_10_6',
+#                                    'model_constructor' : SkorchMLP(n_features=n_features,
+#                                                          n_hiddens=16,
+#                                                          n_layers=1),
+#                                   'prefix' : '*cross_entropy_loss*n_hiddens=16*min_precision=0.5*n_layers=1*warm_start=true*vitals_only',
+#                                   'model_color' : 'b',
+#                                   'model_marker' : '^'},
+#                   'MLP 1 layer (Hinge Bound)' : {'dirname' : 'skorch_mlp/CustomTimes_10_6',
+#                                    'model_constructor' : SkorchMLP(n_features=n_features,
+#                                                          n_hiddens=16,
+#                                                          n_layers=1),
+#                                   'prefix' : '*surrogate_loss_loose*n_hiddens=16*min_precision=0.5*n_layers=1*warm_start=true*vitals_only',
+#                                   'model_color' : 'b',
+#                                   'model_marker' : '^'},
+#                   'MLP 1 layer (Sigmoid Bound)' : {'dirname' : 'skorch_mlp/CustomTimes_10_6',
+#                                    'model_constructor' : SkorchMLP(n_features=n_features,
+#                                                          n_hiddens=16,
+#                                                          n_layers=1),
+#                                   'prefix' : '*surrogate_loss_tight*n_hiddens=16*min_precision=0.5*n_layers=1*warm_start=true*vitals_only',
+#                                   'model_color' : 'b',
+#                                   'model_marker' : '^'},
+#                   'MLP 2 layer' : {'dirname' : 'skorch_mlp/CustomTimes_10_6',
+#                                    'model_constructor' : SkorchMLP(n_features=n_features,
+#                                                          n_hiddens=8,
 #                                                          n_layers=2),
-#                                   'prefix' : '*n_layers=2',
+#                                   'prefix' : '*surrogate_loss_tight*n_layers=2*warm_start=true',
 #                                    'model_color' : 'k',
 #                                   'model_marker' : 'x'},
-                   
+#                   'MLP 2 layer (BCE + thr search)' : {'dirname' : 'skorch_mlp/CustomTimes_10_6',
+#                                    'model_constructor' : SkorchMLP(n_features=n_features,
+#                                                          n_hiddens=16,
+#                                                          n_layers=2),
+#                                   'prefix' : '*cross_entropy_loss*n_hiddens=16*min_precision=0.5*n_layers=2*warm_start=true',
+#                                   'model_color' : 'k',
+#                                   'model_marker' : '^'},
+#                   'MLP 2 layer (Hinge Bound)' : {'dirname' : 'skorch_mlp/CustomTimes_10_6',
+#                                    'model_constructor' : SkorchMLP(n_features=n_features,
+#                                                          n_hiddens=16,
+#                                                          n_layers=2),
+#                                   'prefix' : '*surrogate_loss_loose*n_hiddens=16*min_precision=0.5*n_layers=2*warm_start=true',
+#                                   'model_color' : 'k',
+#                                   'model_marker' : '^'},
+#                   'MLP 2 layer (Sigmoid Bound)' : {'dirname' : 'skorch_mlp/CustomTimes_10_6',
+#                                    'model_constructor' : SkorchMLP(n_features=n_features,
+#                                                          n_hiddens=16,
+#                                                          n_layers=2),
+#                                   'prefix' : '*surrogate_loss_tight*n_hiddens=16*min_precision=0.5*n_layers=2*warm_start=true',
+#                                   'model_color' : 'k',
+#                                   'model_marker' : '^'},
 #                   'MEWS' : {'dirname' : None,
 #                                    'model_constructor' : None,
 #                                   'prefix' : None,
 #                                    'model_color' : 'm',
 #                                   'model_marker' : '.'}
-#                  'random forest' : {'dirname': 'random_forest',
-#                                    'model_constructor' : None,
-#                                    'prefix' : '',
-#                                     'model_color' : 'g'},
-#                    'Support Vector Classifier' :{'dirname' : 'SVC',
-#                                                  'model_constructor' : None,
-#                                                  'prefix' : ''}
                   }
     
     perf_dict_list = []
@@ -215,6 +254,7 @@ if __name__ == '__main__':
     
     
     for model_name in models_dict.keys():
+        print('Evaluating with %s'%model_name)
         if model_name != 'MEWS':
             model_perf_csvs = glob.glob(os.path.join(args.clf_models_dir, models_dict[model_name]['dirname'], 
                                                      models_dict[model_name]['prefix']+'*_perf.csv'))
@@ -232,26 +272,32 @@ if __name__ == '__main__':
             for i, model_perf_csv in enumerate(model_perf_csvs):
                 model_perf_df = pd.read_csv(model_perf_csv)
                 thr = model_perf_df['threshold'][0]
-
-                if models_dict[model_name]['model_constructor'] is not None:
-                    clf = models_dict[model_name]['model_constructor']
-                    clf.initialize()
-                    model_param_file = model_perf_csv.replace('_perf.csv', 'params.pt')
-                    clf.load_params(model_param_file)
-                else:
-                    model_param_file = model_perf_csv.replace('_perf.csv', '.onnx')
-                    sess = rt.InferenceSession(model_param_file)
-                    input_name = sess.get_inputs()[0].name
-                    proba_label_name = sess.get_outputs()[1].name    
                 
-                y_train_probas_list_of_dicts = sess.run([proba_label_name], {input_name: x_train.astype(np.float32)})[0]
-                y_train_proba_vals = np.asarray([i[1] for i in y_train_probas_list_of_dicts])
+                model_param_file = model_perf_csv.replace('_perf.csv', '.onnx')
+                sess = rt.InferenceSession(model_param_file)
+                input_name = sess.get_inputs()[0].name
+                proba_label_name = sess.get_outputs()[1].name
 
-                y_valid_probas_list_of_dicts = sess.run([proba_label_name], {input_name: x_valid.astype(np.float32)})[0]
-                y_valid_proba_vals = np.asarray([i[1] for i in y_valid_probas_list_of_dicts])
 
-                y_test_probas_list_of_dicts = sess.run([proba_label_name], {input_name: x_test.astype(np.float32)})[0]
-                y_test_proba_vals = np.asarray([i[1] for i in y_test_probas_list_of_dicts])                
+                try:
+                    y_train_probas_list_of_dicts = sess.run([proba_label_name], {input_name: x_train})[0]
+                    y_train_proba_vals = np.asarray([i[1] for i in y_train_probas_list_of_dicts])
+
+                    y_valid_probas_list_of_dicts = sess.run([proba_label_name], {input_name: x_valid})[0]
+                    y_valid_proba_vals = np.asarray([i[1] for i in y_valid_probas_list_of_dicts])
+
+                    y_test_probas_list_of_dicts = sess.run([proba_label_name], {input_name: x_test})[0]
+                    y_test_proba_vals = np.asarray([i[1] for i in y_test_probas_list_of_dicts])
+
+                except:
+                    y_train_probas_list_of_dicts = sess.run([proba_label_name], {input_name: x_train})[0]
+                    y_train_proba_vals = np.asarray([i[0] for i in y_train_probas_list_of_dicts])
+
+                    y_valid_probas_list_of_dicts = sess.run([proba_label_name], {input_name: x_valid})[0]
+                    y_valid_proba_vals = np.asarray([i[0] for i in y_valid_probas_list_of_dicts])
+
+                    y_test_probas_list_of_dicts = sess.run([proba_label_name], {input_name: x_test})[0]
+                    y_test_proba_vals = np.asarray([i[0] for i in y_test_probas_list_of_dicts])               
                 
                 
                 precision_scores_train_G[i] = precision_score(y_train, y_train_proba_vals>=thr)
@@ -261,6 +307,8 @@ if __name__ == '__main__':
                 precision_scores_valid_G[i] = precision_score(y_valid, y_valid_proba_vals>=thr)
                 recall_scores_valid_G[i] = recall_score(y_valid, y_valid_proba_vals>=thr)
                 auprc_scores_valid_G[i] = average_precision_score(y_valid, y_valid_proba_vals)
+            
+            from IPython import embed; embed()
             best_model_auprc_ind = np.argmax(auprc_scores_valid_G)
 
             best_model_perf_csv = model_perf_csvs[best_model_auprc_ind]
@@ -277,14 +325,25 @@ if __name__ == '__main__':
                 sess = rt.InferenceSession(best_model_clf_file)
 
             # predict probas
-            y_train_probas_list_of_dicts = sess.run([proba_label_name], {input_name: x_train.astype(np.float32)})[0]
-            y_train_proba_vals = np.asarray([i[1] for i in y_train_probas_list_of_dicts])
+            try:
+                y_train_probas_list_of_dicts = sess.run([proba_label_name], {input_name: x_train})[0]
+                y_train_proba_vals = np.asarray([i[1] for i in y_train_probas_list_of_dicts])
 
-            y_valid_probas_list_of_dicts = sess.run([proba_label_name], {input_name: x_valid.astype(np.float32)})[0]
-            y_valid_proba_vals = np.asarray([i[1] for i in y_valid_probas_list_of_dicts])
+                y_valid_probas_list_of_dicts = sess.run([proba_label_name], {input_name: x_valid})[0]
+                y_valid_proba_vals = np.asarray([i[1] for i in y_valid_probas_list_of_dicts])
 
-            y_test_probas_list_of_dicts = sess.run([proba_label_name], {input_name: x_test.astype(np.float32)})[0]
-            y_test_proba_vals = np.asarray([i[1] for i in y_test_probas_list_of_dicts]) 
+                y_test_probas_list_of_dicts = sess.run([proba_label_name], {input_name: x_test})[0]
+                y_test_proba_vals = np.asarray([i[1] for i in y_test_probas_list_of_dicts])
+                
+            except:
+                y_train_probas_list_of_dicts = sess.run([proba_label_name], {input_name: x_train})[0]
+                y_train_proba_vals = np.asarray([i[0] for i in y_train_probas_list_of_dicts])
+
+                y_valid_probas_list_of_dicts = sess.run([proba_label_name], {input_name: x_valid})[0]
+                y_valid_proba_vals = np.asarray([i[0] for i in y_valid_probas_list_of_dicts])
+
+                y_test_probas_list_of_dicts = sess.run([proba_label_name], {input_name: x_test})[0]
+                y_test_proba_vals = np.asarray([i[0] for i in y_test_probas_list_of_dicts])
         
         else : #If scores are MEWS scores
             y_train_proba_vals = mews_train_df['mews_score']
@@ -338,8 +397,9 @@ if __name__ == '__main__':
         
         auc_axs_te.plot(fpr_test, tpr_test, models_dict[model_name]['model_color']+'-o', label = '%s, AUROC : %.2f'%(model_name, best_model_auroc_test), linewidth=linewidth)
     
-    perf_df.to_pickle(os.path.join(args.output_dir, 'performance_of_best_clfs.pkl'))
-    print('Saved the best model performance on full dataset to :\n%s'%(os.path.join(args.output_dir, 'performance_of_best_clfs.pkl')))
+    perf_pkl = os.path.join(args.output_dir, 'performance_of_best_clfs%s.pkl'%results_file_suffix)
+    perf_df.to_pickle(perf_pkl)
+    print('Saved the best model performance on full dataset to :\n%s'%perf_pkl)
     
     ticks = np.arange(0.0, 1.1, 0.1)
     ticklabels = ['%.1f'%x for x in ticks]
@@ -383,7 +443,6 @@ if __name__ == '__main__':
     
     print('Saved pr, roc curves on train, valid, test to : %s'%args.output_dir)
     
-    
     # get the first admission timestamp(t0) and the last deterioration/discharge timestamp(tend) in train, valid and test
     min_ts_tr = pd.to_datetime(y_train_df['admission_timestamp'].min())
     min_ts_va = pd.to_datetime(y_valid_df['admission_timestamp'].min()) 
@@ -412,8 +471,15 @@ if __name__ == '__main__':
         y_test_pred_probas = perf_df.loc[model_ind, 'best_model_test_pred_probas'].values[0]
         
         
+#         if model_name=='lightGBM':
         unique_probas = np.unique(y_valid_pred_probas)
-        thr_grid_G = np.linspace(np.percentile(unique_probas,1), max(unique_probas), 1000)
+        thr_grid_G = np.linspace(np.percentile(unique_probas,1), max(unique_probas), 10000)
+            
+#         else:
+#             unique_probas = np.unique(y_valid_pred_probas)
+#             thr_grid_linspace = np.linspace(np.percentile(unique_probas,1), max(unique_probas), 3000)
+#             thr_grid_G = np.unique(np.union1d(unique_probas, thr_grid_linspace))
+        
         
         for split, x_np, y_df, split_prediction_window_ends, y_pred_probas in [('train', x_train, y_train_df,
                                                                                 prediction_window_ends_ts_tr, y_train_pred_probas),
@@ -472,7 +538,7 @@ if __name__ == '__main__':
             alarms_perf_dict_list.append(curr_alarms_perf_dict)    
     
     alarms_perf_df = pd.DataFrame(alarms_perf_dict_list, columns = curr_alarms_perf_dict.keys())
-    alarms_csv = os.path.join(args.output_dir, 'alarm_stats_%s.csv'%prediction_freq)
+    alarms_csv = os.path.join(args.output_dir, 'alarm_stats_%s%s.csv'%(prediction_freq, results_file_suffix))
     alarms_perf_df.to_pickle(alarms_csv)
     print('Alarm stats saved to : %s'%alarms_csv)
     
@@ -545,7 +611,7 @@ if __name__ == '__main__':
     from IPython import embed; embed()
     
     # plot feature importance from LightGBM model
-    lgbm_model_name = perf_df.iloc[1, -1].replace('.onnx', '_trained_model.joblib')
+    lgbm_model_name = perf_df.iloc[0, -1].replace('.onnx', '_trained_model.joblib')
     lgbm_model = joblib.load(lgbm_model_name)
     feature_importances = lgbm_model.steps[1][1].feature_importances_
     feature_importance_df = pd.DataFrame(sorted(zip(feature_importances, feature_cols)), columns=['Importance','Feature'])

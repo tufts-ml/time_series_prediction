@@ -1,7 +1,7 @@
 '''
 Train collapsed feature classifier on Madrid transfer to ICU task
 
->> snakemake --cores 1 --snakefile evaluate_dynamic_prediction_performance_deployment.smk
+>> snakemake --cores 1 --snakefile evaluate_dynamic_prediction_performance_deployment_various_patient_diagnosis.smk
 '''
 
 # Default environment variables
@@ -17,16 +17,13 @@ from config_loader import (
 CLF_TRAIN_TEST_SPLIT_PATH=os.path.join(DATASET_COLLAPSED_FEAT_DYNAMIC_INPUT_OUTPUT_PATH, 'classifier_train_test_split')
 rule evaluate_dynamic_prediction_performance:
     input:
-        script=os.path.join(os.path.abspath('../'), "src", "evaluate_dynamic_prediction_performance_deployment.py"),
+        script=os.path.join(os.path.abspath('../'), "src", "evaluate_dynamic_prediction_performance_deployment_various_patient_diagnosis.py"),
         x_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_train.csv.gz'),
         x_valid_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_valid.csv.gz'),
         x_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_test.csv.gz'),
         y_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_train.csv.gz'),
         y_valid_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_valid.csv.gz'),
         y_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_test.csv.gz'),
-        mews_train_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'mews_train.csv.gz'),
-        mews_valid_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'mews_valid.csv.gz'),
-        mews_test_csv=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'mews_test.csv.gz'),
         x_dict_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'x_dict.json'),
         y_dict_json=os.path.join(CLF_TRAIN_TEST_SPLIT_PATH, 'y_dict.json'),
 
@@ -47,9 +44,6 @@ rule evaluate_dynamic_prediction_performance:
             --train_csv_files {input.x_train_csv},{input.y_train_csv} \
             --valid_csv_files {input.x_valid_csv},{input.y_valid_csv} \
             --test_csv_files {input.x_test_csv},{input.y_test_csv} \
-            --mews_train_csv_file {input.mews_train_csv} \
-            --mews_valid_csv_file {input.mews_valid_csv} \
-            --mews_test_csv_file {input.mews_test_csv} \
             --data_dict_files {input.x_dict_json},{input.y_dict_json} \
             --merge_x_y False \
         '''.replace("{{OUTCOME_COL_NAME}}", D_CONFIG["OUTCOME_COL_NAME"])

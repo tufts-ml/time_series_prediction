@@ -147,6 +147,8 @@ if __name__ == '__main__':
         x_valid = x_valid_df[feature_cols].values.astype(np.float32)
         y_valid = np.ravel(y_valid_df[outcome_col_name])
         
+        del(x_valid_df, y_valid_df, df_by_split)
+        
     split_dict = {'N_train' : len(x_train),
                  'N_valid' : len(x_valid),
                  'N_test' : len(x_test),
@@ -171,7 +173,7 @@ if __name__ == '__main__':
     scaler = StandardScaler()
     step_list.append(('standardize', scaler))
     
-    fixed_precision = 0.2
+    fixed_precision = 0.35
     thr_list = [0.5]
     
     
@@ -199,7 +201,7 @@ if __name__ == '__main__':
     
     y_valid_proba_vals = prediction_pipeline.predict_proba(x_valid)
     unique_probas = np.unique(y_valid_proba_vals)
-    thr_grid = np.linspace(np.percentile(unique_probas,1), np.percentile(unique_probas, 99), 100)
+    thr_grid = np.linspace(np.percentile(unique_probas,1), np.percentile(unique_probas, 99), 2000)
 
     precision_scores_G, recall_scores_G = [np.zeros(thr_grid.size), np.zeros(thr_grid.size)]
 #     y_train_valid_pred_probas = prediction_pipeline.predict_proba(x_train_valid_transformed)

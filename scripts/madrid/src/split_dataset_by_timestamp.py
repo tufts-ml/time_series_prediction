@@ -87,6 +87,7 @@ if __name__ == '__main__':
         id_cols = parse_id_cols(data_dict)       
         df_timesorted = df.sort_values(by=['admission_timestamp'] + id_cols + ['hours_since_admission']) 
     
+    del df
     # set the first 3 years of admissions for training
     train_admission_ts_start = df_timesorted['admission_timestamp'].min()
     

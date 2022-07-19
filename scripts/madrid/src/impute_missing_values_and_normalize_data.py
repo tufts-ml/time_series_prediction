@@ -101,6 +101,21 @@ def normalize_df(df, feature_cols, scaling='minmax', train_df=None):
             scaling_dict_list.append({'feature':col, 'numerator_scaling':num_scaling, 
                                       'denominator_scaling':den_scaling})
         
+        
+    elif scaling=='minmax_with_outliers':
+         for col in feature_cols:
+            den_scaling = np.nanpercentile(train_df[col], 99)-train_df[col].min()
+            num_scaling = train_df[col].min()
+            
+            if den_scaling==0:
+                den_scaling = 1  
+                
+            # scale the data
+            normalized_df[col] = (df[col]-num_scaling)/den_scaling
+            
+            # store the normalization estimates in a list and save them for later evaluation
+            scaling_dict_list.append({'feature':col, 'numerator_scaling':num_scaling, 
+                                      'denominator_scaling':den_scaling})
     scaling_df = pd.DataFrame(scaling_dict_list) 
     return normalized_df, scaling_df
 
@@ -109,14 +124,23 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--train_test_split_dir', type=str)
     parser.add_argument('--output_dir', type=str)
+    parser.add_argument('--x_train_csv', type=str)
+    parser.add_argument('--x_valid_csv', type=str)
+    parser.add_argument('--x_test_csv', type=str)
+    parser.add_argument('--x_data_dict', type=str)
     parser.add_argument('--normalization', type=str, default='minmax')
     args = parser.parse_args()
     
     # get the train test features
-    x_train_csv=os.path.join(args.train_test_split_dir, 'x_train.csv.gz')
-    x_valid_csv=os.path.join(args.train_test_split_dir, 'x_valid.csv.gz')
-    x_test_csv=os.path.join(args.train_test_split_dir, 'x_test.csv.gz')
-    x_dict_json=os.path.join(args.train_test_split_dir, 'x_dict.json')
+#     x_train_csv=os.path.join(args.train_test_split_dir, 'x_train.csv.gz')
+#     x_valid_csv=os.path.join(args.train_test_split_dir, 'x_valid.csv.gz')
+#     x_test_csv=os.path.join(args.train_test_split_dir, 'x_test.csv.gz')
+#     x_dict_json=os.path.join(args.train_test_split_dir, 'x_dict.json')
+
+    x_train_csv=args.x_train_csv
+    x_valid_csv=args.x_valid_csv
+    x_test_csv=args.x_test_csv
+    x_dict_json=args.x_data_dict
     
     # impute values by carry forward and then pop mean on train and test sets separately
     x_data_dict = load_data_dict_json(x_dict_json)
@@ -144,16 +168,16 @@ if __name__ == '__main__':
     
     
     # impute values
-    print('Imputing values in train, valid and test sets by forward filling, and then with training set mean estimates..')
+    print('Imputing values in train, valid and test sets by forward filling, and then with training set median..')
     x_train_df = x_train_df.groupby(id_cols).apply(lambda x: x.fillna(method='pad')).copy()
     x_valid_df = x_valid_df.groupby(id_cols).apply(lambda x: x.fillna(method='pad')).copy()
     x_test_df = x_test_df.groupby(id_cols).apply(lambda x: x.fillna(method='pad')).copy()
     for feature_col in feature_cols:
-        x_train_df[feature_col].fillna(x_train_df[feature_col].mean(), inplace=True)
+        x_train_df[feature_col].fillna(x_train_df[feature_col].median(), inplace=True)
         
         # impute population mean of training set to test set
-        x_valid_df[feature_col].fillna(x_train_df[feature_col].mean(), inplace=True)
-        x_test_df[feature_col].fillna(x_train_df[feature_col].mean(), inplace=True)
+        x_valid_df[feature_col].fillna(x_train_df[feature_col].median(), inplace=True)
+        x_test_df[feature_col].fillna(x_train_df[feature_col].median(), inplace=True)
     
     # Update data dict with missing value features
     new_data_dict = update_data_dict_with_mask_features(x_data_dict)

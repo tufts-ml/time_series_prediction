@@ -35,17 +35,6 @@ import seaborn as sns
 import onnxruntime as rt
 import joblib
 
-def read_csv_with_float32_dtypes(filename):
-    # Sample 100 rows of data to determine dtypes.
-    df_test = pd.read_csv(filename, nrows=100)
-
-    float_cols = [c for c in df_test if df_test[c].dtype == "float64"]
-    float32_cols = {c: np.float32 for c in float_cols}
-
-    df = pd.read_csv(filename, dtype=float32_cols)
-    
-    return df
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Evaluating dynamic performance of all models')
 
@@ -57,12 +46,6 @@ if __name__ == '__main__':
                         help='csv files for testing')
     parser.add_argument('--clf_models_dir', type=str, required=True,
                         help='directory where clf models are saved')
-    parser.add_argument('--mews_train_csv_file', type=str, required=True,
-                        help='mews training subject scores')
-    parser.add_argument('--mews_valid_csv_file', type=str, required=True,
-                        help='mews validation subject scores')
-    parser.add_argument('--mews_test_csv_file', type=str, required=True,
-                        help='mews test subject scores')
     parser.add_argument('--output_dir', type=str, required=True,
                         help='directory where model performances are saved')
     parser.add_argument('--outcome_col_name', type=str, required=True,
@@ -86,103 +69,98 @@ if __name__ == '__main__':
     key_cols = parse_id_cols(x_data_dict)
     
     outcome_col_name = args.outcome_col_name
-    x_train_csv, y_train_csv = args.train_csv_files.split(',')
-    x_train_df = read_csv_with_float32_dtypes(x_train_csv)
-    y_train_df = pd.read_csv(y_train_csv)
+#     x_train_csv, y_train_csv = args.train_csv_files.split(',')
+#     x_train_df = pd.read_csv(x_train_csv)
+#     y_train_df = pd.read_csv(y_train_csv)
 
-    x_train = x_train_df[feature_cols].values.astype(np.float32)
-    y_train = np.ravel(y_train_df[outcome_col_name])
-    del(x_train_df)
+#     x_train = x_train_df[feature_cols].values.astype(np.float32)
+#     y_train = np.ravel(y_train_df[outcome_col_name])
     
     x_test_csv, y_test_csv = args.test_csv_files.split(',')
-    x_test_df = read_csv_with_float32_dtypes(x_test_csv)
+    x_test_df = pd.read_csv(x_test_csv)
     y_test_df = pd.read_csv(y_test_csv)
-    
+
     x_test = x_test_df[feature_cols].values.astype(np.float32)
     y_test = np.ravel(y_test_df[outcome_col_name])
-    del(x_test_df)
     
-    mews_train_df = pd.read_csv(args.mews_train_csv_file)
-    mews_valid_df = pd.read_csv(args.mews_valid_csv_file)
-    mews_test_df = pd.read_csv(args.mews_test_csv_file)
-    
-    # Prepare data for classification    
-    if args.valid_csv_files is None:
-        # get the validation set
-        splitter = Splitter(
-            size=args.validation_size, random_state=41,
-            n_splits=args.n_splits, cols_to_group=args.key_cols_to_group_when_splitting)
-        # Assign training instances to splits by provided keys
-        key_train = splitter.make_groups_from_df(x_train_df[key_cols])
+#     x_valid_csv, y_valid_csv = args.valid_csv_files.split(',')
+#     x_valid_df = pd.read_csv(x_valid_csv)
+#     y_valid_df = pd.read_csv(y_valid_csv)
 
-
-        # get the train and validation splits
-        for ss, (tr_inds, va_inds) in enumerate(splitter.split(x_train, y_train, groups=key_train)):
-            x_tr = x_train[tr_inds].copy()
-            y_tr = y_train[tr_inds].copy()
-            x_valid = x_train[va_inds]
-            y_valid = y_train[va_inds]
-
-        x_train = x_tr
-        y_train = y_tr
-        del(x_tr, y_tr)
-    
-    else:
-        x_valid_csv, y_valid_csv = args.valid_csv_files.split(',')
-        x_valid_df = read_csv_with_float32_dtypes(x_valid_csv)
-        y_valid_df = pd.read_csv(y_valid_csv)
+#     x_valid = x_valid_df[feature_cols].values.astype(np.float32)
+#     y_valid = np.ravel(y_valid_df[outcome_col_name])
         
-        x_valid = x_valid_df[feature_cols].values.astype(np.float32)
-        y_valid = np.ravel(y_valid_df[outcome_col_name])
-        del(x_valid_df)
-        
-    split_dict = {'N_train' : len(x_train),
-                 'N_valid' : len(x_valid),
-                 'N_test' : len(x_test),
-                 'pos_frac_train' : y_train.sum()/len(y_train),
-                 'pos_frac_valid' : y_valid.sum()/len(y_valid),
-                 'pos_frac_test' : y_test.sum()/len(y_test),
-                 'N_patients_train' : len(y_train_df.patient_id.unique()),
-                 'N_patients_valid' : len(y_valid_df.patient_id.unique()),
-                 'N_patients_test' : len(y_test_df.patient_id.unique()),
-                 'N_admissions_train' : len(y_train_df.hospital_admission_id.unique()),
-                 'N_admissions_valid' : len(y_valid_df.hospital_admission_id.unique()),
-                 'N_admissions_test' : len(y_test_df.hospital_admission_id.unique()),                 
-                 }
+#     split_dict = {'N_train' : len(x_train),
+#                  'N_valid' : len(x_valid),
+#                  'N_test' : len(x_test),
+#                  'pos_frac_train' : y_train.sum()/len(y_train),
+#                  'pos_frac_valid' : y_valid.sum()/len(y_valid),
+#                  'pos_frac_test' : y_test.sum()/len(y_test),
+#                  'N_patients_train' : len(x_train_df.patient_id.unique()),
+#                  'N_patients_valid' : len(x_valid_df.patient_id.unique()),
+#                  'N_patients_test' : len(x_test_df.patient_id.unique()),
+#                  'N_admissions_train' : len(x_train_df.hospital_admission_id.unique()),
+#                  'N_admissions_valid' : len(x_valid_df.hospital_admission_id.unique()),
+#                  'N_admissions_test' : len(x_test_df.hospital_admission_id.unique()),                 
+#                  }
     
-    print(split_dict)
+#     print(split_dict)
     
     
     # add the window end timestamps in train, valid and test
-    y_train_df['window_end_timestamp'] = pd.to_datetime(y_train_df['admission_timestamp'])+pd.to_timedelta(y_train_df['stop'], 'h')
-    y_valid_df['window_end_timestamp'] = pd.to_datetime(y_valid_df['admission_timestamp'])+pd.to_timedelta(y_valid_df['stop'], 'h')
+#     y_train_df['window_end_timestamp'] = pd.to_datetime(y_train_df['admission_timestamp'])+pd.to_timedelta(y_train_df['stop'], 'h')
+#     y_valid_df['window_end_timestamp'] = pd.to_datetime(y_valid_df['admission_timestamp'])+pd.to_timedelta(y_valid_df['stop'], 'h')
     y_test_df['window_end_timestamp'] = pd.to_datetime(y_test_df['admission_timestamp'])+pd.to_timedelta(y_test_df['stop'], 'h')
     
+    del(x_test_df)
     
-#     del(x_train_df, x_valid_df, x_test_df)
-    # labs, vitals_medications best lightgbm *min_samples_per_leaf=1024-max_leaves=8-n_estimators=100-frac_features_for_clf=0.33-frac_training_samples_per_tree=0.33
+    # labs, vitals, med orders best *min_samples_per_leaf=1024-max_leaves=128-n_estimators=100-frac_features_for_clf=0.33-frac_training_samples_per_tree=0.66.onnx
     
-    # labs, vitals best *min_samples_per_leaf=4096-max_leaves=32-n_estimators=100-frac_features_for_clf=0.66-frac_training_samples_per_tree=0.66
     
-    # labs, vitals, med orders best *min_samples_per_leaf=1024-max_leaves=128-n_estimators=100-frac_features_for_clf=0.33-frac_training_samples_per_tree=0.66
+    # get the patient diagnosis, and their lookups
+    raw_data_tsv_dir = '/rgi/data/HUF/deidentified_data/'
+
+    df_patient_diagnosis = pd.read_csv(
+        os.path.join(raw_data_tsv_dir, 'DIAGNOSES.txt'),
+        delimiter='|')
+
+    df_patient_diagnosis.rename(columns={'ADMISSION_ID' : 'hospital_admission_id'}, inplace=True)
+    df_icd_lookup = pd.read_csv(os.path.join(raw_data_tsv_dir, 'ICD_LOOKUP.txt'), delimiter='|')
+    
+#     keep_inds_tr = df_patient_diagnosis.hospital_admission_id.isin(y_train_df.hospital_admission_id)
+    keep_inds_te = df_patient_diagnosis.hospital_admission_id.isin(y_test_df.hospital_admission_id)
+
+#     df_patient_diagnosis_train = df_patient_diagnosis[keep_inds_tr].reset_index(drop=True)
+    df_patient_diagnosis_test = df_patient_diagnosis[keep_inds_te].reset_index(drop=True)
+    
+    top_20_icd_counts_df = pd.merge(df_patient_diagnosis_test, df_icd_lookup, on=['ICD_VERSION', 'ICD_CD'],
+                                    how='inner').groupby('ICD_CD').nunique().sort_values(by='hospital_admission_id', ascending=False)[:20].drop(columns='ICD_CD')
+    top_20_icd_counts_df = top_20_icd_counts_df.reset_index()[['ICD_CD', 'hospital_admission_id', 'PATIENT_ID']].rename(columns={'hospital_admission_id':'n_admissions', 'PATIENT_ID':'n_patients'})
+    
+    top_20_icd_list = list(top_20_icd_counts_df['ICD_CD'])
+    top_20_lookups_df = pd.merge(top_20_icd_counts_df, df_icd_lookup[['ICD_CD', 'DESCRIPTION']], on='ICD_CD', how='left')
+    top_20_lookups_df = top_20_lookups_df.drop_duplicates(subset='ICD_CD', keep='last').reset_index(drop=True)
     
     n_features = len(feature_cols)
     models_dict = {
-        'logistic regression' : {'dirname':'skorch_logistic_regression', 
-                                            'model_constructor': None,
-                                            'prefix' : '*scoring=cross_entropy_loss',
-                                           'model_color' : 'r', 
-                                           'model_marker' : 's'},
+#         'logistic regression' : {'dirname':'skorch_logistic_regression', 
+#                                             'model_constructor': None,
+#                                             'prefix' : '*scoring=cross_entropy_loss',
+#                                            'model_color' : 'r', 
+#                                            'model_marker' : 's'},
                  'lightGBM' : {'dirname': 'lightGBM',
                                    'model_constructor' : None,
-                                   'prefix' : '*min_samples_per_leaf=1024-max_leaves=128-n_estimators=100-frac_features_for_clf=0.33-frac_training_samples_per_tree=0.66',
+                                   'prefix' : '*lightGBM_min_samples_per_leaf=1024-max_leaves=128-n_estimators=100-frac_features_for_clf=0.33-frac_training_samples_per_tree=0.66',
                                     'model_color' : 'g',
                                     'model_marker' : 'o'},
-                  'MLP 1 layer' : {'dirname' : 'skorch_mlp',
-                                   'model_constructor' : None,
-                                  'prefix' : '*skorch_mlp_lr=1e-08-weight_decay=1e-07-batch_size=512-scoring=surrogate_loss_tight-seed=7437-lamb=0.25-initialization_gain=0.25-n_hiddens=8-n_layers=1-warm_start=true',
-                                  'model_color' : 'b',
-                                  'model_marker' : '^'},
+#                   'MLP 1 layer' : {'dirname' : 'skorch_mlp',
+#                                    'model_constructor' : SkorchMLP(n_features=n_features,
+#                                                          n_hiddens=32,
+#                                                          n_layers=1),
+#                                   'prefix' : '*n_layers=1',
+#                                   'model_color' : 'b',
+#                                   'model_marker' : '^'},
+                   
 #                   'MLP 2 layer' : {'dirname' : 'skorch_mlp',
 #                                    'model_constructor' : SkorchMLP(n_features=n_features,
 #                                                          n_hiddens=32,
@@ -215,107 +193,73 @@ if __name__ == '__main__':
     
     
     for model_name in models_dict.keys():
-        if model_name != 'MEWS':
-            model_perf_csvs = glob.glob(os.path.join(args.clf_models_dir, models_dict[model_name]['dirname'], 
-                                                     models_dict[model_name]['prefix']+'*_perf.csv'))
-            G = len(model_perf_csvs)
-            precision_scores_train_valid_G = np.zeros(G)
-            recall_scores_train_valid_G = np.zeros(G)
-            precision_scores_train_G = np.zeros(G)
-            precision_scores_valid_G = np.zeros(G)
-            recall_scores_train_G = np.zeros(G)
-            recall_scores_valid_G = np.zeros(G)
-            auprc_scores_train_G = np.zeros(G)
-            auprc_scores_valid_G = np.zeros(G)
-
-            # choose the hyperparamater that achieves max auprc
-            for i, model_perf_csv in enumerate(model_perf_csvs):
-                model_perf_df = pd.read_csv(model_perf_csv)
-                thr = model_perf_df['threshold'][0]
-
-                if models_dict[model_name]['model_constructor'] is not None:
-                    clf = models_dict[model_name]['model_constructor']
-                    clf.initialize()
-                    model_param_file = model_perf_csv.replace('_perf.csv', 'params.pt')
-                    clf.load_params(model_param_file)
-                else:
-                    model_param_file = model_perf_csv.replace('_perf.csv', '.onnx')
-                    sess = rt.InferenceSession(model_param_file)
-                    input_name = sess.get_inputs()[0].name
-                    proba_label_name = sess.get_outputs()[1].name    
-                
-                y_train_probas_list_of_dicts = sess.run([proba_label_name], {input_name: x_train.astype(np.float32)})[0]
-                y_train_proba_vals = np.asarray([i[1] for i in y_train_probas_list_of_dicts])
-
-                y_valid_probas_list_of_dicts = sess.run([proba_label_name], {input_name: x_valid.astype(np.float32)})[0]
-                y_valid_proba_vals = np.asarray([i[1] for i in y_valid_probas_list_of_dicts])
-
-                y_test_probas_list_of_dicts = sess.run([proba_label_name], {input_name: x_test.astype(np.float32)})[0]
-                y_test_proba_vals = np.asarray([i[1] for i in y_test_probas_list_of_dicts])                
-                
-                
-                precision_scores_train_G[i] = precision_score(y_train, y_train_proba_vals>=thr)
-                recall_scores_train_G[i] = recall_score(y_train, y_train_proba_vals>=thr) 
-                auprc_scores_train_G[i] = average_precision_score(y_train, y_train_proba_vals)
-
-                precision_scores_valid_G[i] = precision_score(y_valid, y_valid_proba_vals>=thr)
-                recall_scores_valid_G[i] = recall_score(y_valid, y_valid_proba_vals>=thr)
-                auprc_scores_valid_G[i] = average_precision_score(y_valid, y_valid_proba_vals)
-            best_model_auprc_ind = np.argmax(auprc_scores_valid_G)
-
-            best_model_perf_csv = model_perf_csvs[best_model_auprc_ind]
-            best_model_perf_df = pd.read_csv(best_model_perf_csv)
-            best_model_threshold = best_model_perf_df['threshold'][0]
-
-            if models_dict[model_name]['model_constructor'] is not None:
-                best_model_clf_file = best_model_perf_csv.replace('_perf.csv', 'params.pt')
-                best_model_clf = models_dict[model_name]['model_constructor']
-                best_model_clf.initialize()
-                best_model_clf.load_params(best_model_clf_file)
-            else:
-                best_model_clf_file = best_model_perf_csv.replace('_perf.csv', '.onnx')
-                sess = rt.InferenceSession(best_model_clf_file)
-
-            # predict probas
-            y_train_probas_list_of_dicts = sess.run([proba_label_name], {input_name: x_train.astype(np.float32)})[0]
-            y_train_proba_vals = np.asarray([i[1] for i in y_train_probas_list_of_dicts])
-
-            y_valid_probas_list_of_dicts = sess.run([proba_label_name], {input_name: x_valid.astype(np.float32)})[0]
-            y_valid_proba_vals = np.asarray([i[1] for i in y_valid_probas_list_of_dicts])
-
-            y_test_probas_list_of_dicts = sess.run([proba_label_name], {input_name: x_test.astype(np.float32)})[0]
-            y_test_proba_vals = np.asarray([i[1] for i in y_test_probas_list_of_dicts]) 
-        
-        else : #If scores are MEWS scores
-            y_train_proba_vals = mews_train_df['mews_score']
-            y_valid_proba_vals = mews_valid_df['mews_score']
-            y_test_proba_vals = mews_test_df['mews_score']
-            best_model_clf_file = None
+        for ii, icd_cd in enumerate(top_20_icd_list):
+            curr_icd_test_df = df_patient_diagnosis_test[df_patient_diagnosis_test.ICD_CD==icd_cd]
+            keep_inds_test = y_test_df.hospital_admission_id.isin(curr_icd_test_df.hospital_admission_id)
+            curr_icd_y_test_df = y_test_df[keep_inds_test]
+            keep_idx_test = np.flatnonzero(keep_inds_test)
             
-        # get precision and recall on train, valid and test
-        best_model_auprc_train = average_precision_score(y_train, y_train_proba_vals)
-        best_model_auprc_valid = average_precision_score(y_valid, y_valid_proba_vals)
-        best_model_auprc_test = average_precision_score(y_test, y_test_proba_vals)
-     
-        best_model_auroc_train = roc_auc_score(y_train, y_train_proba_vals)
-        best_model_auroc_valid = roc_auc_score(y_valid, y_valid_proba_vals)
-        best_model_auroc_test = roc_auc_score(y_test, y_test_proba_vals)
-        
-        perf_dict = {'model' : model_name,
-                     'best_model_auprc_train' : best_model_auprc_train,
-                     'best_model_auprc_valid' : best_model_auprc_valid,
-                     'best_model_auprc_test' : best_model_auprc_test,
-                     'best_model_train_pred_probas' : y_train_proba_vals,
-                     'best_model_valid_pred_probas' : y_valid_proba_vals,
-                     'best_model_test_pred_probas' : y_test_proba_vals,
-                     'best_model_file' : best_model_clf_file
-                    }
-        
-        print(perf_dict)
-        perf_dict_list.append(perf_dict)
-        
+            
+            if model_name != 'MEWS':
+                model_perf_csvs = glob.glob(os.path.join(args.clf_models_dir, models_dict[model_name]['dirname'], 
+                                                         models_dict[model_name]['prefix']+'*_perf.csv'))
+
+                # choose the hyperparamater that achieves max auprc
+                for i, model_perf_csv in enumerate(model_perf_csvs):
+                    model_perf_df = pd.read_csv(model_perf_csv)
+                    thr = 0.88
+
+                    if models_dict[model_name]['model_constructor'] is not None:
+                        clf = models_dict[model_name]['model_constructor']
+                        clf.initialize()
+                        model_param_file = model_perf_csv.replace('_perf.csv', 'params.pt')
+                        clf.load_params(model_param_file)
+                    else:
+                        model_param_file = model_perf_csv.replace('_perf.csv', '.onnx')
+                        sess = rt.InferenceSession(model_param_file)
+                        input_name = sess.get_inputs()[0].name
+                        proba_label_name = sess.get_outputs()[1].name    
+
+#                     y_train_probas_list_of_dicts = sess.run([proba_label_name], {input_name: x_train.astype(np.float32)})[0]
+#                     y_train_proba_vals = np.asarray([i[1] for i in y_train_probas_list_of_dicts])
+
+#                     y_valid_probas_list_of_dicts = sess.run([proba_label_name], {input_name: x_valid.astype(np.float32)})[0]
+#                     y_valid_proba_vals = np.asarray([i[1] for i in y_valid_probas_list_of_dicts])
+
+                    y_test_probas_list_of_dicts = sess.run([proba_label_name], {input_name: x_test[keep_idx_test].astype(np.float32)})[0]
+                    y_test_proba_vals = np.asarray([i[1] for i in y_test_probas_list_of_dicts])                
+
+            else : #If scores are MEWS scores
+                y_train_proba_vals = mews_train_df['mews_score']
+                y_valid_proba_vals = mews_valid_df['mews_score']
+                y_test_proba_vals = mews_test_df['mews_score']
+                best_model_clf_file = None
+
+
+            auprc_test = average_precision_score(y_test[keep_idx_test], y_test_proba_vals)
+            precision_test = precision_score(y_test[keep_idx_test], y_test_proba_vals>=thr)
+            recall_test = recall_score(y_test[keep_idx_test], y_test_proba_vals>=thr)
+            curr_icd_description = top_20_lookups_df.loc[top_20_lookups_df.ICD_CD==icd_cd, 'DESCRIPTION'].values[0]
+#             best_model_auroc_train = roc_auc_score(y_train, y_train_proba_vals)
+#             best_model_auroc_valid = roc_auc_score(y_valid, y_valid_proba_vals)
+#             best_model_auroc_test = roc_auc_score(y_test[keep_idx_test], y_test_proba_vals)
+
+            perf_dict = {'model' : model_name,
+                         'auprc_test' : auprc_test,
+                         'icd_cd' : icd_cd,
+                         'description' : curr_icd_description,
+                         'precision_test' : precision_test,
+                         'recall_test' : recall_test,
+                         'fraction_positive_patient_stay_segments' : y_test[keep_idx_test].sum()/len(y_test[keep_idx_test])
+                        }
+
+            print(perf_dict)
+            perf_dict_list.append(perf_dict)
+
         perf_df = pd.DataFrame(perf_dict_list)
-        print(perf_df)        
+        print(perf_df)
+        
+        from IPython import embed; embed()
         # create the precision recall plot
         precs_train, recs_train, thresholds_train = precision_recall_curve(y_train, y_train_proba_vals)
         precs_valid, recs_valid, thresholds_valid = precision_recall_curve(y_valid, y_valid_proba_vals)
@@ -338,8 +282,8 @@ if __name__ == '__main__':
         
         auc_axs_te.plot(fpr_test, tpr_test, models_dict[model_name]['model_color']+'-o', label = '%s, AUROC : %.2f'%(model_name, best_model_auroc_test), linewidth=linewidth)
     
-    perf_df.to_pickle(os.path.join(args.output_dir, 'performance_of_best_clfs.pkl'))
-    print('Saved the best model performance on full dataset to :\n%s'%(os.path.join(args.output_dir, 'performance_of_best_clfs.pkl')))
+#     perf_df.to_pickle(os.path.join(args.output_dir, 'performance_of_best_clfs.pkl'))
+#     print('Saved the best model performance on full dataset to :\n%s'%(os.path.join(args.output_dir, 'performance_of_best_clfs.pkl')))
     
     ticks = np.arange(0.0, 1.1, 0.1)
     ticklabels = ['%.1f'%x for x in ticks]
@@ -377,11 +321,12 @@ if __name__ == '__main__':
         ax.set_xlim(lims)
         ax.set_ylim(lims)
     
-    auc_f_tr.savefig(os.path.join(args.output_dir, 'roc_curve_train.png'))
-    auc_f_va.savefig(os.path.join(args.output_dir,'roc_curve_valid.png'))
-    auc_f_te.savefig(os.path.join(args.output_dir,'roc_curve_test.png'))    
+#     auc_f_tr.savefig(os.path.join(args.output_dir, 'roc_curve_train.png'))
+#     auc_f_va.savefig(os.path.join(args.output_dir,'roc_curve_valid.png'))
+#     auc_f_te.savefig(os.path.join(args.output_dir,'roc_curve_test.png'))    
     
     print('Saved pr, roc curves on train, valid, test to : %s'%args.output_dir)
+    from IPython import embed; embed()
     
     
     # get the first admission timestamp(t0) and the last deterioration/discharge timestamp(tend) in train, valid and test
@@ -472,77 +417,10 @@ if __name__ == '__main__':
             alarms_perf_dict_list.append(curr_alarms_perf_dict)    
     
     alarms_perf_df = pd.DataFrame(alarms_perf_dict_list, columns = curr_alarms_perf_dict.keys())
-    alarms_csv = os.path.join(args.output_dir, 'alarm_stats_%s.csv'%prediction_freq)
+    alarms_csv = os.path.join(args.output_dir, 'alarm_stats.csv')
     alarms_perf_df.to_pickle(alarms_csv)
     print('Alarm stats saved to : %s'%alarms_csv)
     
-    from IPython import embed; embed()
-    # plot the distribution of predicted probabilities per week with the lightgbm model
-    model_ind = perf_df['model']=='lightGBM'
-    
-    # get the predicted probabilities on train, valid and test for this classifier
-    y_train_pred_probas = perf_df.loc[model_ind, 'best_model_train_pred_probas'].values[0]
-    y_valid_pred_probas = perf_df.loc[model_ind, 'best_model_valid_pred_probas'].values[0]
-    y_test_pred_probas = perf_df.loc[model_ind, 'best_model_test_pred_probas'].values[0]    
-    
-    bins = np.arange(0, 1.1, 0.1) 
-    N_pred_segments_tr = len(prediction_window_ends_ts_tr)-1
-    N_pred_segments_va = len(prediction_window_ends_ts_va)-1
-    N_pred_segments_te = len(prediction_window_ends_ts_te)-1
-    
-    pred_probas_hist_train, pred_probas_hist_valid, pred_probas_hist_test = [np.zeros((N_pred_segments_tr, len(bins)-1)),
-                                                                             np.zeros((N_pred_segments_va, len(bins)-1)),
-                                                                             np.zeros((N_pred_segments_te, len(bins)-1))]
-    
-    for split, x_np, y_df, split_prediction_window_ends, y_pred_probas, pred_probas_hist in [('train', x_train, y_train_df,
-                                                                                              prediction_window_ends_ts_tr,
-                                                                                              y_train_pred_probas,
-                                                                                              pred_probas_hist_train),
-                                                                                             ('valid', x_valid, y_valid_df,
-                                                                                              prediction_window_ends_ts_va,
-                                                                                              y_valid_pred_probas,
-                                                                                              pred_probas_hist_valid),
-                                                                                             ('test', x_test, y_test_df,
-                                                                                              prediction_window_ends_ts_te,
-                                                                                              y_test_pred_probas,
-                                                                                              pred_probas_hist_test)]:
-
-        N_pred_segments = len(split_prediction_window_ends)-1   
-        
-        for ii in range(N_pred_segments):
-            pred_segment_start = split_prediction_window_ends[ii]
-            pred_segment_end = split_prediction_window_ends[ii+1]
-            
-            keep_inds = (y_df['window_end_timestamp']>=pred_segment_start)&(y_df['window_end_timestamp']<=pred_segment_end)
-            if keep_inds.sum()>0:
-                curr_y_pred_probas = y_pred_probas[keep_inds]
-                pred_probas_hist[ii, :], bin_edges = np.histogram(curr_y_pred_probas, bins=bins, density=False)
-                
-                
-    f, axs = plt.subplots(1, 1)
-    sns.set_context("notebook", font_scale=1.25)
-    sns.set_style("whitegrid")
-    colors = ['r', 'g', 'b']
-    yticks = np.arange(0, 2300, 100)
-    for ii, (split, pred_probas_hist) in enumerate([('train', pred_probas_hist_train), 
-                                    ('valid', pred_probas_hist_valid), 
-                                    ('test', pred_probas_hist_test)]):
-#         axs.plot(bins[1:], np.median(pred_probas_hist, axis=0), label=split)
-        pos_err = np.percentile(pred_probas_hist, 95, axis=0)-np.median(pred_probas_hist, axis=0)
-        neg_err = np.median(pred_probas_hist, axis=0) - np.percentile(pred_probas_hist, 5, axis=0)
-        err = np.vstack([pos_err, neg_err])
-        axs[ii].plot(bins[1:], np.median(pred_probas_hist, axis=0), label=split, color='k')
-        axs[ii].fill_between(x=bins[1:], y1=np.median(pred_probas_hist, axis=0)-neg_err, 
-                             y2=np.median(pred_probas_hist, axis=0)+pos_err, color=colors[ii])
-        axs[ii].set_xlabel('Predicted probability')
-        axs[0].set_ylabel('Number of predictions')
-        axs[ii].set_title(split)
-        axs[ii].set_yticks(yticks)
-        axs[ii].set_xlim([0, 1])
-        axs[ii].set_ylim([0, 1000])
-    
-    f.savefig('predicted_probas_hist.png')
-    from IPython import embed; embed()
     
     # plot feature importance from LightGBM model
     lgbm_model_name = perf_df.iloc[1, -1].replace('.onnx', '_trained_model.joblib')
@@ -556,6 +434,9 @@ if __name__ == '__main__':
     axs.set_title('LightGBM Features Importances')
     plt.tight_layout()
     f.savefig('lgbm_importances.png')
+    
+    from IPython import embed; embed()
+    
     
     
     # get the preicisons per shift for all thresholds (S x T)

@@ -33,11 +33,13 @@ class TidySequentialDataCSVLoader(object):
             x_csv_df = x_csv_path.copy()
         elif x_csv_path is not None and os.path.exists(x_csv_path):
             x_csv_df = pd.read_csv(x_csv_path)
+            x_csv_df = x_csv_df.sort_values(by=idx_col_names+['start', 'stop']).reset_index(drop=True)
         
         if type(y_csv_path) == pd.DataFrame :
             y_csv_df = y_csv_path.copy()        
         elif y_csv_path is not None and os.path.exists(y_csv_path):
             y_csv_df = pd.read_csv(y_csv_path)
+            y_csv_df = y_csv_df.sort_values(by=idx_col_names+['start', 'stop']).reset_index(drop=True)
 
         ## Parse sequence ids and compute fenceposts
         idx_P = x_csv_df[idx_col_names].values.copy()
@@ -52,11 +54,12 @@ class TidySequentialDataCSVLoader(object):
 #                 prev_uval = idx_P[pp]
 #         seq_fp.append(idx_P.shape[0])
 #         self.seq_fp = seq_fp
-
+        
+        
         seq_fp = get_fenceposts(x_csv_df, idx_col_names)
         self.seq_fp = seq_fp
         x_csv_df.drop(columns=idx_col_names, inplace=True)
-
+        
         ## Parse sequence lengths
         N = len(seq_fp) - 1
         self.N = N

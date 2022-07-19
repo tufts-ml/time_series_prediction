@@ -32,14 +32,17 @@ from sklearn.linear_model import LogisticRegression
 from skl2onnx.common.data_types import FloatTensorType
 from skl2onnx import convert_sklearn
 
-def read_csv_with_float32_dtypes(filename):
+def read_csv_with_float32_dtypes(filename, nrows=None):
     # Sample 100 rows of data to determine dtypes.
     df_test = pd.read_csv(filename, nrows=100)
 
     float_cols = [c for c in df_test if df_test[c].dtype == "float64"]
     float32_cols = {c: np.float32 for c in float_cols}
-
-    df = pd.read_csv(filename, dtype=float32_cols)
+    
+    if nrows is not None:
+        df = pd.read_csv(filename, dtype=float32_cols, nrows=nrows)
+    else:
+        df = pd.read_csv(filename, dtype=float32_cols)
     
     return df
 
@@ -67,6 +70,7 @@ def calc_bce_loss_skorch_callback(net, X, y):
         X_NF = torch.DoubleTensor(X.X)
     y_est_logits_ = net.module_.linear_transform_layer.forward(X_NF)[:,0]
     bce_loss = net.calc_bce_loss(y_true=y, y_est_logits_=y_est_logits_, X=X_NF)
+    
     return float(bce_loss.detach().numpy())
 
 def calc_tp_lower_bound_skorch_callback(net, X, y):
@@ -172,7 +176,7 @@ if __name__ == '__main__':
         for csv_file in csv_files:
 
             # TODO use json data dict to load specific columns as desired types
-            more_df = read_csv_with_float32_dtypes(csv_file)
+            more_df =  read_csv_with_float32_dtypes(csv_file)
             if cur_df is None:
                 cur_df = more_df
             else:
@@ -186,15 +190,12 @@ if __name__ == '__main__':
  
     outcome_col_name = args.outcome_col_name
     
-#     feature_cols = [col for col in feature_cols if ('blood_pressure' in col)|('heart_rate' in col)|('body_temperature' in col)]
-    
-    # Prepare data for classification    
+    # Prepare data for classification
     try:
         x_train = df_by_split['train'][feature_cols].values.astype(np.float32)
     except KeyError:
         feature_cols = [col.replace('_to_', '-') for col in feature_cols]
         x_train = df_by_split['train'][feature_cols].values.astype(np.float32)
-        
     y_train = np.ravel(df_by_split['train'][outcome_col_name])
     
     x_test = df_by_split['test'][feature_cols].values.astype(np.float32)
@@ -222,11 +223,13 @@ if __name__ == '__main__':
     
     else:
         x_valid_csv, y_valid_csv = args.valid_csv_files.split(',')
-        x_valid_df = pd.read_csv(x_valid_csv)
-        y_valid_df = pd.read_csv(y_valid_csv)
+        x_valid_df = read_csv_with_float32_dtypes(x_valid_csv)
+        y_valid_df = read_csv_with_float32_dtypes(y_valid_csv)
         
         x_valid = x_valid_df[feature_cols].values.astype(np.float32)
         y_valid = np.ravel(y_valid_df[outcome_col_name])
+        
+        del(x_valid_df, y_valid_df, df_by_split)
         
     split_dict = {'N_train' : len(x_train),
                  'N_valid' : len(x_valid),
@@ -323,9 +326,25 @@ if __name__ == '__main__':
     
     calc_fp_valid = EpochScoring(calc_fp, lower_is_better=False, on_train=False, name='fp_valid')
 
-    cp = Checkpoint(monitor='precision_valid',
+#     cp = Checkpoint(monitor='precision_valid',
+#                     f_history=os.path.join(args.output_dir,
+#                                            args.output_filename_prefix+'.json'))
+
+
+
+    cp = Checkpoint(monitor='surr_loss_valid_best',
                     f_history=os.path.join(args.output_dir,
-                                           args.output_filename_prefix+'.json'))
+                                           args.output_filename_prefix+'_surr_loss_valid_best.json'),
+                    f_params=os.path.join(args.output_dir,
+                                          args.output_filename_prefix+'_surr_loss_valid_best.pt')
+                   )
+    
+    loss_best_cp = Checkpoint(monitor='valid_loss_best',
+                f_history=os.path.join(args.output_dir,
+                                       args.output_filename_prefix+'_loss_valid_best.json'),
+                f_params=os.path.join(args.output_dir,
+                                      args.output_filename_prefix+'_loss_valid_best.pt')
+               )
     
     train_end_cp = TrainEndCheckpoint(dirname=args.output_dir,
                                           fn_prefix=args.output_filename_prefix)
@@ -335,7 +354,7 @@ if __name__ == '__main__':
     
     
     
-    fixed_precision = 0.3
+    fixed_precision = 0.25
     thr_list = [0.5]
     ## start training
     if args.scoring == 'cross_entropy_loss':
@@ -366,11 +385,15 @@ if __name__ == '__main__':
                                                        calc_fp_train,
                                                        calc_fp_valid,
                                                        auprc_early_stopping_cp,
-                                                       cp, train_end_cp],
+                                                       loss_best_cp, 
+                                                       train_end_cp],
                                            optimizer=torch.optim.Adam)
         print('Training Skorch Logistic Regression minimizing cross entropy loss...')
         
         logistic_clf = logistic.fit(x_train_transformed, y_train)
+        
+        print('Loading the parameters from checkpoint with best loss on validation set')
+        logistic.load_params(checkpoint=loss_best_cp)
         
         # search multiple decision thresolds and pick the threshold that performs best on validation set
         print('Searching thresholds that maximize recall at fixed precision %.4f'%fixed_precision)
@@ -417,9 +440,9 @@ if __name__ == '__main__':
             logistic_init = SkorchLogisticRegression(n_features=len(feature_cols),
                                                 l2_penalty_weights=args.weight_decay,
     #                                             l2_penalty_bias=args.weight_decay,
-                                                lr=0.05,
+                                                lr=0.01,
                                                 batch_size=args.batch_size, 
-                                                max_epochs=max_epochs,
+                                                max_epochs=20,
                                                 train_split=predefined_split(valid_ds),
                                                 loss_name='cross_entropy_loss',
                                                 callbacks=[epoch_scoring_precision_train,
@@ -438,12 +461,14 @@ if __name__ == '__main__':
                                                            calc_tp_valid,
                                                            calc_fp_train,
                                                            calc_fp_valid,
-                                                           loss_early_stopping_cp,
-                                                           cp, train_end_cp],
-                                               optimizer=torch.optim.Adam)
+#                                                            loss_early_stopping_cp,
+                                                           loss_best_cp, 
+                                                           train_end_cp],
+                                               optimizer=torch.optim.Adam,
+#                                                optimizer__lr=0.05
+                                                    )
             
             
-#             from IPython import embed; embed()
             logistic_init_clf = logistic_init.fit(x_train_transformed, y_train)
 
             # transfer the weights and to a new instance of SkorchLogisticRegression and train minimizing surrogate loss
@@ -480,20 +505,24 @@ if __name__ == '__main__':
     #                                                        lr_scheduler,
 #                                                            early_stopping_cp,
                                                            cp, train_end_cp],
-                                               optimizer=torch.optim.Adam)
+                                               optimizer=torch.optim.Adam,
+#                                                optimizer__lr=args.lr
+                                               )
 
             logistic.initialize()
+                        
             # load the past history
-            logistic.load_params(checkpoint=cp)
+            logistic.load_params(checkpoint=loss_best_cp)
             
-            # add perturbation to weights ~ NormPDF(0,1)
-            buffer_w = 0.5*torch.randn(D).double()
-            buffer_b = 0.5*torch.randn(1).double()
             
-            # load the weights
-            logistic.module_.linear_transform_layer.weight.data = logistic_init_clf.module_.linear_transform_layer.weight.data + buffer_w
-            logistic.module_.linear_transform_layer.bias.data = logistic_init_clf.module_.linear_transform_layer.bias.data + buffer_b
+            logistic.module_.linear_transform_layer.weight.data = logistic_init_clf.module_.linear_transform_layer.weight.data
+            logistic.module_.linear_transform_layer.bias.data = logistic_init_clf.module_.linear_transform_layer.bias.data
             logistic_clf = logistic.partial_fit(x_train_transformed, y_train)
+            
+            #
+            print('Loading the parameters from checkpoint with best surrogate loss on validation set')
+            logistic_clf.load_params(checkpoint=cp)
+            
         
         else:
             print('Training with surrogate loss with random initialization...')
@@ -531,7 +560,8 @@ if __name__ == '__main__':
             
             logistic_clf = logistic.fit(x_train_transformed, y_train)
 
-        
+            print('Loading the parameters from checkpoint with best surrogate loss on validation set')
+            logistic_clf.load_params(checkpoint=cp)
         
     # save the scaler
     pickle_file = os.path.join(args.output_dir, 'scaler.pkl')

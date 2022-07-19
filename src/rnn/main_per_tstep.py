@@ -122,7 +122,6 @@ def main():
     X_test, y_test = test_vitals.get_batch_data(batch_id=0)
     N,T,F = X_train.shape
     
-#     from IPython import embed; embed()
 #     X_train = (X_train - np.min(X_train))/(np.max(X_train)-np.min(X_train))
 #     X_valid = (X_valid - np.min(X_train))/(np.max(X_train)-np.min(X_train))
 #     X_test = (X_test - np.min(X_train))/(np.max(X_train)-np.min(X_train))
@@ -155,8 +154,18 @@ def main():
         
     print('RNN parameters : '+ output_filename_prefix)
     
-    loss_early_stopping_cp =  EarlyStopping(monitor='valid_loss', patience=15, threshold=0.002, threshold_mode='rel',
-                                            lower_is_better=True)
+    auprc_early_stopping_cp =  EarlyStopping(monitor='auprc_valid', patience=15, threshold=0.002, threshold_mode='rel',
+                                            lower_is_better=False)
+    
+    
+    auprc_best_cp = Checkpoint(monitor='auprc_valid_best',
+                f_history=os.path.join(args.output_dir,
+                                       args.output_filename_prefix+'_auprc_valid_best.json'),
+                f_params=os.path.join(args.output_dir,
+                                      args.output_filename_prefix+'_auprc_valid_best.pt')
+               )
+    
+    
     
     rnn = RNNPerTStepBinaryClassifier(
               max_epochs=100,
@@ -179,8 +188,8 @@ def main():
 #               LRScheduler(policy=ReduceLROnPlateau, mode='max', monitor='aucroc_score_valid', patience=10),
 #                   compute_grad_norm,
 #               GradientNormClipping(gradient_clip_value=0.5, gradient_clip_norm_type=2),
-              loss_early_stopping_cp,
-              Checkpoint(monitor='auprc_valid', f_history=os.path.join(args.output_dir, output_filename_prefix+'.json')),
+              auprc_early_stopping_cp,
+              auprc_best_cp,
               TrainEndCheckpoint(dirname=args.output_dir, fn_prefix=output_filename_prefix),
               ],
 #               criterion=torch.nn.CrossEntropyLoss,
@@ -202,8 +211,11 @@ def main():
 
     clf = rnn.fit(X_train, y_train)
     
+    print('Loading from checkpoint with best validation auprc...')
+    clf.load_params(checkpoint=auprc_best_cp)
+    
     # get threshold with max recall at fixed precision
-    fixed_precision=0.2
+    fixed_precision=0.25
     
     # get predict probas for y=1 on validation set
     keep_inds_va = torch.logical_not(torch.all(torch.isnan(torch.FloatTensor(X_valid)), dim=-1))
