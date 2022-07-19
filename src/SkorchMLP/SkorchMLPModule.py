@@ -32,6 +32,7 @@ class SkorchMLPModule(nn.Module):
 #         self.dropout = nn.Dropout(dropout)
         self.initialization_gain=initialization_gain
         
+
         # Define the neural net layer 
 #         self.hidden_layer = nn.Linear(in_features=n_features,
 #                                  out_features=n_hiddens,
@@ -60,7 +61,8 @@ class SkorchMLPModule(nn.Module):
         nn.init.xavier_uniform_(self.output_layer.weight, gain=initialization_gain)
         
         # setup activation
-#         self.activation = F.relu
+        self.activation = F.relu
+
         
         # Setup to use double-precision floats (like np.float64)
         self.double()
@@ -80,6 +82,7 @@ class SkorchMLPModule(nn.Module):
         y_logproba_N_ : 2D Torch array (n_sequences, 1)
             Each row gives log probability that given example is positive class
         '''
+
 #         # forward pass through NN
 #         y_before_final_layer_N_ = self.activation(self.hidden_layer.forward(x_NF_))
         

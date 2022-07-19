@@ -1,6 +1,6 @@
-
 '''
 featurize_single_time_series.py
+
 Code for producing a flat feature vector from one multivariate time series.
 '''
 
@@ -38,12 +38,14 @@ def featurize_ts(
         Indicates numerical time value at which current window *starts*
     stop_numerictime : float
         Indicates numerical time that current window *stops*
+
     Returns
     -------
     feat_vec_1F : 2D NumPy array, shape (1, F)
         One entry for each combination of {variable, summary op, subwindow slice}
     feat_names : list of strings
         Gives the names (in order) of the collapsed features
+
     Examples
     --------
     >>> time_arr_by_var = {'hr':np.asarray([- 5.0,  0.0,  5.0, 10.0])}
@@ -91,6 +93,7 @@ def featurize_ts(
             # Obtain measurements and times for current window         
             try:
                 cur_feat_arr = val_arr_by_var[var_name].astype('float')
+
                 cur_numerictime_arr = time_arr_by_var[var_name]
 
                 # Keep only the entries whose times occur within current window
@@ -115,7 +118,7 @@ def featurize_ts(
                 # Current variable never measured in provided data
                 cur_numerictime_arr = np.zeros(0)
                 cur_feat_arr = np.zeros(0)
-            
+
             cur_isfinite_arr = np.isfinite(cur_feat_arr)
             for op_ind, op in enumerate(summary_ops):
                 summary_func, empty_val = SUMMARY_OPERATIONS[op]
@@ -187,6 +190,7 @@ def collapse_count(data_arr, timestamp_arr, isfinite_arr, tstart, tstop):
 def collapse_slope(data_arr, timestamp_arr, isfinite_arr, tstart, tstop):
     ''' Compute slope within current window of time
     Treat time as *relative* between 0 and 1 within the window
+
     Examples
     --------
     >>> ts = np.asarray([0., 1., 2., 3.])
@@ -194,6 +198,7 @@ def collapse_slope(data_arr, timestamp_arr, isfinite_arr, tstart, tstop):
     >>> fs = np.ones(4, dtype=np.bool)
     >>> "%.5f" % collapse_slope(ys, ts, fs, 0.0, 3.0)
     '1.00000'
+
     # Verify that slope is invariant to any additive offset to times
     >>> B = 77.7
     >>> "%.5f" % collapse_slope(ys, ts + B, fs, 0.0 + B, 3.0 + B)
@@ -218,6 +223,7 @@ def collapse_slope(data_arr, timestamp_arr, isfinite_arr, tstart, tstop):
 
 def collapse_value_last_measured(data_arr, timestamp_arr, isfinite_arr, tstart, tstop):
     ''' Computes the latest value measured within this window
+
     Example
     -------
     >>> data = np.asarray([0, 1 , np.nan, 4, 5, np.nan, np.nan])
@@ -278,6 +284,7 @@ def make_var_to_minmax_from_spec(var_spec_dict, var_cols):
                 continue
             
             contraints = info_dict['constraints']
+
             min_val_allowed = parse_val(contraints.get('minimum', -np.inf))
             max_val_allowed = parse_val(contraints.get('maximum', +np.inf))
             if min_val_allowed > -np.inf or max_val_allowed < np.inf:

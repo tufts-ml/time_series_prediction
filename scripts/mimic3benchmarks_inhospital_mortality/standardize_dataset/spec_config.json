@@ -1,0 +1,9 @@
+{
+    "spec_gsheet_url_pattern": "https://docs.google.com/spreadsheets/d/{{spec_gsheet_key}}/export?format=csv&gid={{gid}}",
+    "spec_gsheet_key": "1gV-pCUKUX-jdhKoHbKmaNPu0CDiMZ3xYheqT1hpzvxk",
+    "spec_sheet_name_list": ["FeaturesPerTimestep", "OutcomesPerSequence"],
+    "spec_csv_filename_list": ["features_per_tstep.csv", "outcomes_per_seq.csv"],
+    "spec_gid_list": ["101299079", "1517641961"],
+    "output_csv_path_pattern": "Spec_{{sheet_name}}.csv",
+    "output_json_path_pattern": "Spec_{{sheet_name}}.json"
+}

@@ -134,3 +134,4 @@ if __name__ == '__main__':
         print(x_NF[n])
         print("y_logproba[n=%d]" % n)
         print(y_logproba_N[n])
+

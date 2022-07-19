@@ -25,6 +25,7 @@ class CNNBinaryClassifier(skorch.NeuralNet):
     '''
     def on_epoch_begin(self, *args, **kwargs):
         super().on_epoch_begin(*args, **kwargs)
+
     def train_step(self, X, y):
         self.module_.train()
         self.module_.zero_grad()
@@ -35,13 +36,17 @@ class CNNBinaryClassifier(skorch.NeuralNet):
         for p in self.module_.parameters():
             p.data.add_(-self.lr, p.grad.data)
         return {'loss': loss, 'yproba': yproba_N2}
+
     def validation_step(self, X, y):
         self.module_.eval()
         yproba_N2, _ = self.module_.forward(X)
         loss = self.get_loss(yproba_N2, y)
         return {'loss': loss, 'yproba':yproba_N2}
+
     def predict_proba(self, X):
         return super().predict_proba(X)
+
     def predict(self, X):
         return np.argmax(super().predict_proba(X), -1)
     '''
+

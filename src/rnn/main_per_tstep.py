@@ -17,6 +17,8 @@ from RNNPerTStepBinaryClassifier import RNNPerTStepBinaryClassifier
 from feature_transformation import (parse_id_cols, parse_feature_cols)
 from utils import load_data_dict_json
 from joblib import dump
+from split_dataset import Splitter
+
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -37,12 +39,36 @@ from skorch.helper import predefined_split
 def calc_auprc(net, X, y):
     y_pred_probas_NT2 = net.predict_proba(X)
     keep_inds = torch.logical_not(torch.all(torch.isnan(torch.FloatTensor(X.X)), dim=-1))
+    seq_lens_N = torch.sum(keep_inds, axis=1)
+    keep_inds = keep_inds[:, :max(seq_lens_N)]
+    y = y[:, :max(seq_lens_N)]
+
     return average_precision_score(y[keep_inds], y_pred_probas_NT2[keep_inds][:,1].detach().numpy())
 
 def calc_auroc(net, X, y):
     y_pred_probas_NT2 = net.predict_proba(X)
     keep_inds = torch.logical_not(torch.all(torch.isnan(torch.FloatTensor(X.X)), dim=-1))
+    seq_lens_N = torch.sum(keep_inds, axis=1)
+    keep_inds = keep_inds[:, :max(seq_lens_N)]
+    y = y[:, :max(seq_lens_N)]
     return roc_auc_score(y[keep_inds], y_pred_probas_NT2[keep_inds][:,1].detach().numpy())
+
+def calc_precision(net, X, y):
+    keep_inds = torch.logical_not(torch.all(torch.isnan(torch.FloatTensor(X.X)), dim=-1))
+    seq_lens_N = torch.sum(keep_inds, axis=1)
+    keep_inds = keep_inds[:, :max(seq_lens_N)]
+    y_pred_proba_pos = net.predict_proba(X)[keep_inds][:,1].detach().numpy()
+    y_pred = y_pred_proba_pos>=0.5
+    return precision_score(y[keep_inds], y_pred)
+    
+def calc_recall(net, X, y):
+    keep_inds = torch.logical_not(torch.all(torch.isnan(torch.FloatTensor(X.X)), dim=-1))
+    seq_lens_N = torch.sum(keep_inds, axis=1)
+    keep_inds = keep_inds[:, :max(seq_lens_N)]
+    y_pred_proba_pos = net.predict_proba(X)[keep_inds][:,1].detach().numpy()
+    y_pred = y_pred_proba_pos>=0.5
+    return recall_score(y[keep_inds], y_pred)
+
 
 def main():
     parser = argparse.ArgumentParser(description='PyTorch RNN with variable-length numeric sequences wrapper')
@@ -51,6 +77,8 @@ def main():
     parser.add_argument('--valid_csv_files', type=str, required=True)
     parser.add_argument('--test_csv_files', type=str, required=True)
     parser.add_argument('--data_dict_files', type=str, required=True)
+    parser.add_argument('--key_cols_to_group_when_splitting', type=str)
+
     parser.add_argument('--batch_size', type=int, default=1024,
                         help='Number of sequences per minibatch')
     parser.add_argument('--epochs', type=int, default=50,
@@ -67,6 +95,9 @@ def main():
                         help='weight decay for optimizer')
     parser.add_argument('--seed', type=int, default=1111,
                         help='random seed')
+    parser.add_argument('--scoring', type=str, default='cross_entropy_loss',
+                        help='chose between BCE and tight sigmoid for precision-recall control')
+
     parser.add_argument('--validation_size', type=float, default=0.15,
                         help='validation split size')
     parser.add_argument('--is_data_simulated', type=bool, default=False,
@@ -75,6 +106,9 @@ def main():
                         help='directory where trained model and loss curves over epochs are saved')
     parser.add_argument('--output_filename_prefix', type=str, default=None, 
                         help='prefix for the training history jsons and trained classifier')
+    parser.add_argument('--merge_x_y', default=True,
+                                type=lambda x: (str(x).lower() == 'true'), required=False)
+
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
@@ -125,6 +159,7 @@ def main():
 #     X_train = (X_train - np.min(X_train))/(np.max(X_train)-np.min(X_train))
 #     X_valid = (X_valid - np.min(X_train))/(np.max(X_train)-np.min(X_train))
 #     X_test = (X_test - np.min(X_train))/(np.max(X_train)-np.min(X_train))
+
     
     valid_ds = Dataset(X_valid, y_valid) 
     
@@ -139,6 +174,7 @@ def main():
     print('Ratio positive in train : %.2f'%((y_train==1).sum()/len(y_train)))
     print('Ratio positive in test : %.2f'%((y_test==1).sum()/len(y_test)))
     
+
     # callback to compute gradient norm
     compute_grad_norm = ComputeGradientNorm(norm_type=2)
 
@@ -235,27 +271,70 @@ def main():
     
     keep_inds = precision_scores_G>=fixed_precision
 
-    if keep_inds.sum()>0:
-        print('Choosing threshold with precision >= %.3f'%fixed_precision)
-    else:
-        fixed_precision_old = fixed_precision
-        fixed_precision = np.percentile(precision_scores_G, 99)
-        keep_inds = precision_scores_G>=fixed_precision
-        print('Could not find threshold with precision >= %.3f \n Choosing threshold to maximize recall at precision %.3f'%(fixed_precision_old, fixed_precision))
-    
-    thr_grid_G = thr_grid_G[keep_inds]
-    precision_scores_G = precision_scores_G[keep_inds]
-    recall_scores_G = recall_scores_G[keep_inds]
-    thr_perf_df = pd.DataFrame(np.vstack([thr_grid_G[np.newaxis,:],
-                                          precision_scores_G[np.newaxis,:],
-                                          recall_scores_G[np.newaxis, :]]).T, 
-                               columns=['thr', 'precision_score', 'recall_score'])
 
-    print(thr_perf_df)
-    best_ind = np.argmax(recall_scores_G)
-    best_thr = thr_grid_G[best_ind]
-    print('chosen threshold : %.3f'%best_thr)
+        keep_inds = precision_scores_G>=fixed_precision
+
+        if keep_inds.sum()>0:
+            print('Choosing threshold with precision >= %.3f'%fixed_precision)
+        else:
+            fixed_precision_old = fixed_precision
+            fixed_precision = np.percentile(precision_scores_G, 99)
+            keep_inds = precision_scores_G>=fixed_precision
+            print('Could not find threshold with precision >= %.3f \n Choosing threshold to maximize recall at precision %.3f'%(fixed_precision_old, fixed_precision))
+
+        thr_grid_G = thr_grid_G[keep_inds]
+        precision_scores_G = precision_scores_G[keep_inds]
+        recall_scores_G = recall_scores_G[keep_inds]
+        thr_perf_df = pd.DataFrame(np.vstack([thr_grid_G[np.newaxis,:],
+                                              precision_scores_G[np.newaxis,:],
+                                              recall_scores_G[np.newaxis, :]]).T, 
+                                   columns=['thr', 'precision_score', 'recall_score'])
+
+        print(thr_perf_df)
+        best_ind = np.argmax(recall_scores_G)
+        best_thr = thr_grid_G[best_ind]
+        print('chosen threshold : %.3f'%best_thr)
     
+    
+    elif args.scoring=='surrogate_loss_tight':
+        rnn = RNNPerTStepBinaryClassifier(
+                  max_epochs=150,
+                  batch_size=args.batch_size,
+                  device=device,
+                  min_precision=fixed_precision,
+                  scoring=args.scoring,
+                  constraint_lambda=10000,
+                  lr=args.lr,
+                  callbacks=[
+                      EpochScoring(calc_auprc, lower_is_better=False, on_train=True, name='auprc_train'),
+                      EpochScoring(calc_auprc, lower_is_better=False, on_train=False, name='auprc_valid'),
+                      EpochScoring(calc_auroc, lower_is_better=False, on_train=True, name='auroc_train'),
+                      EpochScoring(calc_auroc, lower_is_better=False, on_train=False, name='auroc_valid'),
+                      EpochScoring(calc_precision, lower_is_better=False, on_train=True, name='precision_train'),
+                      EpochScoring(calc_precision, lower_is_better=False, on_train=False, name='precision_valid'),
+                      EpochScoring(calc_recall, lower_is_better=False, on_train=True, name='recall_train'),
+                      EpochScoring(calc_recall, lower_is_better=False, on_train=False, name='recall_valid'),
+    #               LRScheduler(policy=ReduceLROnPlateau, mode='max', monitor='aucroc_score_valid', patience=10),
+    #                   compute_grad_norm,
+    #               GradientNormClipping(gradient_clip_value=0.5, gradient_clip_norm_type=2),
+#                   loss_early_stopping_cp,
+                  Checkpoint(monitor='auprc_valid', f_history=os.path.join(args.output_dir, output_filename_prefix+'.json')),
+                  TrainEndCheckpoint(dirname=args.output_dir, fn_prefix=output_filename_prefix),
+                  ],
+                  train_split=predefined_split(valid_ds),
+                  module__rnn_type='GRU',
+                  module__n_layers=args.hidden_layers,
+                  module__n_hiddens=args.hidden_units,
+                  module__n_inputs=X_train.shape[-1],
+                  module__dropout_proba=args.dropout,
+                  optimizer=torch.optim.Adam,
+                  l2_penalty_weights=args.weight_decay
+                             ) 
+
+        clf = rnn.fit(X_train, y_train) 
+        best_thr=0.5
+        
+
     splits = ['train', 'valid', 'test']
 #     data_splits = ((x_tr, y_tr), (x_va, y_va), (X_test, y_test))
     auroc_per_split,  auprc_per_split, precisions_per_split, recalls_per_split = [np.zeros(len(splits)),
@@ -267,9 +346,8 @@ def main():
     for ii, (X, y) in enumerate([(X_train, y_train), (X_valid, y_valid), (X_test, y_test)]):
         keep_inds = torch.logical_not(torch.all(torch.isnan(torch.FloatTensor(X)), dim=-1))
         y_pred_proba_pos = clf.predict_proba(X)[keep_inds][:,1].detach().numpy()
-#         y_pred_proba_neg, y_pred_proba_pos = zip(*y_pred_proba)
         auroc_per_split[ii] = roc_auc_score(y[keep_inds], y_pred_proba_pos)
-#         y_pred_proba_pos = np.asarray(y_pred_proba_pos)
+
         auprc_per_split[ii] = average_precision_score(y[keep_inds], y_pred_proba_pos)
         y_pred = y_pred_proba_pos>=best_thr
         precisions_per_split[ii] = precision_score(y[keep_inds], y_pred)
@@ -361,3 +439,4 @@ def get_sequence_lengths(X_NTF, pad_val):
 
 if __name__ == '__main__':
     main()
+

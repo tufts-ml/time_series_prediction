@@ -1,0 +1,12 @@
+{
+    "lr": [1e-7],
+    "batch_size": [512],
+    "weight_decay": [1e-5],
+    "scoring" : ["surrogate_loss_hinge_with_wbce_init"],
+    "lamb" : [0.2],
+    "incremental_min_precision" : ["false"],
+    "initialization_gain" : [5.0],
+    "warm_start" : ["false"],
+    "tighten_bounds" : ["false"],
+    "seed" : [5666]
+}

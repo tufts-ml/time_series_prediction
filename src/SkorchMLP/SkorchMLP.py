@@ -219,7 +219,6 @@ class SkorchMLP(skorch.NeuralNet):
         weights_ = torch.cat([weights_, self.module_.output_layer.weight.flatten()])
         bias_ = torch.cat([bias_, self.module_.output_layer.bias])
         
-    
         
         if bounds=='tight':
             fp_upper_bound, tp_lower_bound = self.calc_fp_tp_bounds_better(y_true_, y_est_logits_)
@@ -300,6 +299,7 @@ class SkorchMLP(skorch.NeuralNet):
             
         loss_.backward()
 #         torch.nn.utils.clip_grad_norm_(self.module_.parameters(), self.clip)
+
         self.notify(
             'on_grad_computed',
             named_parameters=TeeGenerator(self.module_.named_parameters()),

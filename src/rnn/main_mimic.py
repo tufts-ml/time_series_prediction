@@ -8,7 +8,7 @@ import skorch
 from sklearn.model_selection import GridSearchCV, cross_validate, ShuffleSplit
 from sklearn.metrics import (roc_curve, accuracy_score, log_loss, 
                              balanced_accuracy_score, confusion_matrix, 
-                             roc_auc_score, make_scorer)
+                             roc_auc_score, make_scorer, average_precision_score)
 from yattag import Doc
 import matplotlib.pyplot as plt
 
@@ -97,21 +97,48 @@ def main():
 
     X_train, y_train = train_vitals.get_batch_data(batch_id=0)
     X_test, y_test = test_vitals.get_batch_data(batch_id=0)
-    _,T,F = X_train.shape
+    N,T,F = X_train.shape
     
     print('number of time points : %s\nnumber of features : %s\n'%(T,F))
     
     # set class weights as 1/(number of samples in class) for each class to handle class imbalance
     class_weights = torch.tensor([1/(y_train==0).sum(),
-                                  1/(y_train==1).sum()]).double()
-
-    # scale features
-#     X_train = standard_scaler_3d(X_train)
-#     X_test = standard_scaler_3d(X_test)
-
+                                  1/(y_train==1).sum()]).float()
+    
+    print('Number of training sequences : %s'%N)
+    print('Number of test sequences : %s'%X_test.shape[0])
+    print('Ratio positive in train : %.2f'%((y_train==1).sum()/len(y_train)))
+    print('Ratio positive in test : %.2f'%((y_test==1).sum()/len(y_test)))
+    
     # callback to compute gradient norm
     compute_grad_norm = ComputeGradientNorm(norm_type=2)
+    
+    
+    
+    epoch_scoring_auprc_train = EpochScoring('average_precision', lower_is_better=False, on_train=True,
+                                                                    name='auprc_train')
+    
+    epoch_scoring_auprc_valid = EpochScoring('average_precision', lower_is_better=False, on_train=False,
+                                                  name='auprc_valid')
+    
 
+    epoch_scoring_auroc_train = EpochScoring('roc_auc', lower_is_better=False, on_train=True, 
+                                             name='aucroc_score_train')
+    
+    
+    epoch_scoring_auroc_valid = EpochScoring('roc_auc', lower_is_better=False, on_train=False, 
+                                             name='aucroc_score_valid')    
+    
+    loss_best_cp = Checkpoint(monitor='auprc_valid_best',
+                f_history=os.path.join(args.output_dir,
+                                       args.output_filename_prefix+'_auprc_best.json'),
+                f_params=os.path.join(args.output_dir,
+                                      args.output_filename_prefix+'_auprc_best.pt')
+               )
+    
+    auprc_early_stopping_cp =  EarlyStopping(monitor='auprc_valid', patience=15, threshold=0.002, threshold_mode='rel',
+                                            lower_is_better=False)
+    
     # LSTM
     if args.output_filename_prefix==None:
         output_filename_prefix = ('hiddens=%s-layers=%s-lr=%s-dropout=%s-weight_decay=%s'%(args.hidden_units, 
@@ -123,68 +150,68 @@ def main():
         
         
     print('RNN parameters : '+ output_filename_prefix)
+    
     rnn = RNNBinaryClassifier(
-              max_epochs=30,
+              max_epochs=100,
+
               batch_size=args.batch_size,
               device=device,
               lr=args.lr,
               callbacks=[
-              EpochScoring('roc_auc', lower_is_better=False, on_train=True, name='aucroc_score_train'),
-              EpochScoring('roc_auc', lower_is_better=False, on_train=False, name='aucroc_score_valid'),
-              EarlyStopping(monitor='aucroc_score_valid', patience=15, threshold=0.002, threshold_mode='rel',
-                                             lower_is_better=False),
-              LRScheduler(policy=ReduceLROnPlateau, mode='max', monitor='aucroc_score_valid', patience=10),
+                  epoch_scoring_auroc_train,
+                  epoch_scoring_auroc_valid,
+                  epoch_scoring_auprc_train,
+                  epoch_scoring_auprc_valid,
+                  auprc_early_stopping_cp,
 #                   compute_grad_norm,
-              GradientNormClipping(gradient_clip_value=0.3, gradient_clip_norm_type=2),
-              Checkpoint(monitor='aucroc_score_valid', f_history=os.path.join(args.output_dir, output_filename_prefix+'.json')),
-              TrainEndCheckpoint(dirname=args.output_dir, fn_prefix=output_filename_prefix),
+                  loss_best_cp,
+#               GradientNormClipping(gradient_clip_value=0.5, gradient_clip_norm_type=2),
+#               Checkpoint(monitor='aucroc_score_valid', 
+#                          f_history=os.path.join(args.output_dir, output_filename_prefix+'.json')),
+                  TrainEndCheckpoint(dirname=args.output_dir, fn_prefix=output_filename_prefix),
+                  auprc_early_stopping_cp
               ],
               criterion=torch.nn.CrossEntropyLoss,
               criterion__weight=class_weights,
               train_split=skorch.dataset.CVSplit(args.validation_size),
-              module__rnn_type='LSTM',
+              module__rnn_type='GRU',
               module__n_layers=args.hidden_layers,
               module__n_hiddens=args.hidden_units,
               module__n_inputs=X_train.shape[-1],
               module__dropout_proba=args.dropout,
               optimizer=torch.optim.Adam,
-              optimizer__weight_decay=args.weight_decay
-                         ) 
+              optimizer__weight_decay=args.weight_decay,
+              optimizer__lr=args.lr) 
+    '''
+    # fit on subset of data
+    print('fitting on subset of data...')
+    n = 500
+    rnd_inds = np.random.permutation(N)[:n]
+    X = X_train[rnd_inds]
+    y = y_train[rnd_inds]
+    clf = rnn.fit(X, y)
+    '''
     
     clf = rnn.fit(X_train, y_train)
     y_pred_proba = clf.predict_proba(X_train)
     y_pred_proba_neg, y_pred_proba_pos = zip(*y_pred_proba)
-    auroc_train_final = roc_auc_score(y_train, y_pred_proba_pos)
-    print('AUROC with LSTM (Train) : %.2f'%auroc_train_final)
+    auprc_train_final = average_precision_score(y_train, y_pred_proba_pos)
+    print('AUPRC with LSTM (Train) : %.2f'%auprc_train_final)
 
     y_pred_proba = clf.predict_proba(X_test)
     y_pred_proba_neg, y_pred_proba_pos = zip(*y_pred_proba)
-    auroc_test_final = roc_auc_score(y_test, y_pred_proba_pos)
-    print('AUROC with LSTM (Test) : %.2f'%auroc_test_final)
-
-
+    auprc_test_final = average_precision_score(y_test, y_pred_proba_pos)
+    print('AUPRC with LSTM (Test) : %.2f'%auprc_test_final)
+    
+    # save the performance on test set
+    test_perf_df = pd.DataFrame(columns={'test_auprc'})
+    test_perf_df = test_perf_df.append({'test_auprc': auprc_test_final}, ignore_index=True)
+    test_perf_csv = os.path.join(args.output_dir, output_filename_prefix+'.csv')
+    test_perf_df.to_csv(test_perf_csv, index=False)
+    
 
 def convert_proba_to_binary(probabilites):
     return [0 if probs[0] > probs[1] else 1 for probs in probabilites]
-
-def standard_scaler_3d(X):
-    # input : X (N, T, F)
-    # ouput : scaled_X (N, T, F)
-    N, T, F = X.shape
-    if T==1:
-        scalers = {}
-        for i in range(X.shape[1]):
-            scalers[i] = StandardScaler()
-            X[:, i, :] = scalers[i].fit_transform(X[:, i, :])
-    else:
-        # zscore across subjects and time points for each feature
-        for i in range(F):
-            mean_across_NT = X[:,:,i].mean()
-            std_across_NT = X[:,:,i].std()            
-            if std_across_NT<0.0001: # handling precision
-                std_across_NT = 0.0001
-            X[:,:,i] = (X[:,:,i]-mean_across_NT)/std_across_NT
-    return X
 
 def get_paramater_gradient_l2_norm(net,**kwargs):
     parameters = [i for  _,i in net.module_.named_parameters()]
@@ -229,6 +256,72 @@ class ComputeGradientNorm(Callback):
                 self.write_to_file(gradient_norm)
             self.batch_num += 1
 
+            
+def get_sequence_lengths(X_NTF, pad_val):
+    N = X_NTF.shape[0]
+    seq_lens_N = np.zeros(N, dtype=np.int64)
+    for n in range(N):
+        bmask_T = np.all(X_NTF[n] == 0, axis=-1)
+        seq_lens_N[n] = np.searchsorted(bmask_T, 1)
+    return seq_lens_N
+    
+
+def get_per_feature_estimates_from_padded_sequences(X_NTF, seq_lens_N):
+    '''
+    normalizes the data using minmax scaling 
+    
+    input : X_NTF N examples, T timepoints, F features 
+            seq_lens_N : lengths of sequences per example
+    
+    output : 1xF vector of means, mins and maxs per feature
+    '''   
+    
+    N, T, F = X_NTF.shape
+    per_feature_means = np.zeros(F)
+    per_feature_min = np.zeros(F)
+    per_feature_max = np.zeros(F)
+    
+    for f in range(F):
+        per_feature_sum = 0
+        for n in range(N):
+            # add up the features at observed time points across all examples
+            per_feature_sum += np.sum(X_NTF[n,:seq_lens_N[n],f])
+            
+            if n==0:
+                curr_min = np.min(X_NTF[n, :seq_lens_N[n], f])
+                curr_max = np.max(X_NTF[n, :seq_lens_N[n], f])
+            else:
+                curr_min = min(np.min(X_NTF[n, :seq_lens_N[n], f]), curr_min)
+                curr_max = max(np.max(X_NTF[n, :seq_lens_N[n], f]), curr_max)
+        
+        # divide by total time points over all sequences
+        per_feature_means[f] = per_feature_sum/(np.sum(seq_lens_N))
+        per_feature_min[f] = curr_min
+        per_feature_max[f] = curr_max
+    
+    return per_feature_means, per_feature_min, per_feature_max
+
+def normalize_data(X_NTF, seq_lens_N, per_feature_mins, per_feature_maxs):
+    '''
+    normalizes the data using minmax scaling 
+    
+    input : X_NTF N examples, T timepoints, F features 
+            per_feature_mins : 1xF mins per feature
+            per_feature_maxs : 1xF maxs per feature
+    
+    output : X_NTF normalized over only the non padded segments in each sequence
+    '''
+    
+    N, T, F = X_NTF.shape
+    
+    # Get the min and max per feature in the non-padded segments of the data 
+    for f in range(F):
+        den = per_feature_maxs[f] - per_feature_mins[f]
+        if den>0:
+            for n in range(N):
+                X_NTF[n, :seq_lens_N[n], f] = (X_NTF[n, :seq_lens_N[n], f] - per_feature_mins[f])/den
+
+    return X_NTF
 
 if __name__ == '__main__':
     main()

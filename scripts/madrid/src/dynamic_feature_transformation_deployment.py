@@ -143,6 +143,7 @@ def featurize_stack_of_many_time_series(
     percentile_slices_to_featurize : list of tuples
         Indicates percentile range of all subwindows we will featurize
         Example: [(0, 100), (0, 50)])
+
     Returns
     -------
     all_feat_df : DataFrame
@@ -153,6 +154,7 @@ def featurize_stack_of_many_time_series(
         One row per featurized window of any patient-stay slice
         Key columns: ids + ['start', 'stop']
         Value columns: just one, the outcome column
+
     Examples
     --------
     >>> args = make_fake_input_data(n_seqs=25, n_features=10, max_duration=50.0)
@@ -186,6 +188,7 @@ def featurize_stack_of_many_time_series(
         raise ValueError("Expected at least one variable with role='time'")
     elif len(time_cols) > 1:
         print("More than one time variable found. Choosing %s" % time_cols[-1])
+
     time_col = time_cols[-1]
 
     # Obtain fenceposts delineating each individual sequence within big stack
@@ -198,8 +201,7 @@ def featurize_stack_of_many_time_series(
             keys_df[col] = keys_df[col].cat.codes
     middle_fence_posts = 1 + np.flatnonzero(
         np.diff(keys_df.values, axis=0).any(axis=1))
-    fp = np.hstack([0, middle_fence_posts, keys_df.shape[0]])
-    
+    fp = np.hstack([0, middle_fence_posts, keys_df.shape[0]])    
     feat_arr_per_seq = list()
     windows_per_seq = list()
     outcomes_per_seq = list()
@@ -207,6 +209,7 @@ def featurize_stack_of_many_time_series(
     missingness_density_per_seq = list()
     ids_per_seq = list()
     
+
     # Total number of features we'll compute in each feature vector
     F = len(percentile_slices_to_featurize) * len(feature_cols) * len(summary_ops)
 
@@ -278,7 +281,6 @@ def featurize_stack_of_many_time_series(
         for ww, window_end in enumerate(window_ends):
             window_starts_stops_W2[ww, 0] = start_time_of_each_sequence
             window_starts_stops_W2[ww, 1] = window_end
-        
             window_features_WF[ww, :], feat_names = featurize_ts(
                 time_arr_by_var, val_arr_by_var, 
                 var_cols=feature_cols,
@@ -312,7 +314,7 @@ def featurize_stack_of_many_time_series(
     ids_df = pd.DataFrame(np.vstack(ids_per_seq), columns=id_cols) 
     windows_df = pd.DataFrame(np.vstack(windows_per_seq), columns=['start', 'stop'])
     all_features_df = pd.concat([ids_df, windows_df, features_df], axis=1)
-    
+
     if outcomes_df is not None:
         durations_df = pd.DataFrame(np.vstack(durations_per_seq), columns=[outcome_seq_duration_col])
         outcomes_df = pd.DataFrame(np.vstack(outcomes_per_seq), columns=[outcome_col])
@@ -323,7 +325,7 @@ def featurize_stack_of_many_time_series(
 
     seq_lengths = np.vstack([a[0] for a in durations_per_seq])
     elapsed_time_sec = time.time() - start_time_sec
-    
+
     if verbose:
         print('-----------------------------------------')
         print('Processed %d sequences of duration %.1f-%.1f in %.1f sec' % (
@@ -340,6 +342,7 @@ def featurize_stack_of_many_time_series(
         print('-----------------------------------------')   
     
     return all_features_df, all_outcomes_df
+
 
 
 def make_fake_input_data(
@@ -495,6 +498,7 @@ def update_data_dict_collapse(data_dict, collapse_range_features, range_pairs):
         new_data_dict['fields'] = new_fields
         
     return new_data_dict
+
 
 if __name__ == '__main__':
     main()

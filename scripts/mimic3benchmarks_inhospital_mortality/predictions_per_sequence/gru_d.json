@@ -1,0 +1,12 @@
+{
+    "hidden_layers": [1],
+    "hidden_units": [1],
+    "lr": [0.005],
+    "batch_size": [64],
+    "dropout": [0], 
+    "scoring":['cross_entropy_loss'],
+    "weight_decay": [0],
+    "param_init_seed" : [46788]
+}
+
+

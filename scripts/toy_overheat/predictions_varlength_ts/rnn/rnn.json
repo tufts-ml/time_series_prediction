@@ -7,3 +7,4 @@
     "weight_decay": [1e-3],
     "param_init_seed" : [1111]
 }
+

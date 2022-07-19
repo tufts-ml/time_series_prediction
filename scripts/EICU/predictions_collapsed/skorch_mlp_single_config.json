@@ -1,0 +1,15 @@
+{
+    "lr": [1e-8],
+    "batch_size": [512],
+    "weight_decay": [1e-4],
+    "n_hiddens" : [8],
+    "n_layers" : [1],
+    "scoring" : ["surrogate_loss_tight"],
+    "incremental_min_precision" : ["false"],
+    "initialization_gain" : [0.25],
+    "warm_start" : ["true"],
+    "lamb" : [0.25], 
+    "tighten_bounds" : ["false"],
+    "seed" : [46788, 23124, 7437, 8577]
+}
+

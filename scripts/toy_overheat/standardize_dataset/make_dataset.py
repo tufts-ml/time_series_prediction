@@ -103,7 +103,7 @@ if __name__ == "__main__":
     parser.add_argument('--max_num_sequences_per_label', type=int,  default=500)
     parser.add_argument('--seed', type=int, default=1111,
                         help='random seed')
-    parser.add_argument('--output_dir', type=str, default='simulated_data/',
+    parser.add_argument('--output_dir', type=str, default='.',
                         help='dir in which to save generated dataset')
     args = parser.parse_args()
     
@@ -248,18 +248,26 @@ if __name__ == "__main__":
     inds_label_0 = np.flatnonzero(y==0)
     inds_label_1 = np.flatnonzero(y==1)
     
-    fontsize = 16
-    f,axs = plt.subplots(2,1)
+    fontsize = 14
+    f, ax = plt.subplots(3, 2, sharex=True, sharey=True, figsize=(6, 6))
 
     # plot time series sequence of example with label 0
-    axs[0].plot(range(Tmax), data_DTN[:,:,inds_label_0[0]].T, '-.')
-    axs[0].set_ylim([-8,8])
-    axs[0].set_ylabel('Temperature (deg C)', fontsize = fontsize)
+    for ii in range(3):
+        if ii == 0:
+            ax[ii,0].set_title("y = 0")
+            ax[ii,1].set_title("y = 1")
 
-    # plot time series sequence of example with label 0
-    axs[1].plot(range(Tmax), data_DTN[:,:,inds_label_1[0]].T, '-.')
-    axs[1].set_ylim([-8,8])
-    axs[1].set_ylabel('Temperature (deg C)', fontsize=fontsize)
-    axs[1].set_xlabel('Timestep (t)', fontsize = fontsize)
-   
+        ax[ii,0].plot(range(Tmax), data_DTN[:,:,inds_label_0[ii]].T, '-.', color='b')
+        ax[ii,0].set_ylim([-8,8])
+        ax[ii,0].set_ylabel('Temp. (deg C)', fontsize = fontsize)
+
+        # plot examples with label 1 (overheated)
+        ax[ii,1].plot(range(Tmax), data_DTN[:,:,inds_label_1[ii]].T, '-.', color='r')
+        ax[ii,1].set_ylim([-8,8])
+        ax[ii,1].set_ylabel('Temp. (deg C)', fontsize=fontsize)
+
+        if ii == 2:
+            ax[ii,0].set_xlabel('time (hr)', fontsize = fontsize)
+            ax[ii,1].set_xlabel('time (hr)', fontsize = fontsize)
+    plt.tight_layout()
     f.savefig(os.path.join(args.output_dir, 'example_pos_and_neg_sequences.png'))

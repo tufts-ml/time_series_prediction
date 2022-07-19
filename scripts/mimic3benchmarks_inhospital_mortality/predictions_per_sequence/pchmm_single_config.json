@@ -1,0 +1,8 @@
+{
+    "lr": [0.1],
+    "seed" : [542],
+    "batch_size" : [-1],
+    "lamb" : [10000],
+    "n_states" : [15],
+    "init_strategy" : ["uniform"]
+}

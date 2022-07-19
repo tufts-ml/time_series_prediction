@@ -14,7 +14,7 @@ class RNNBinaryClassifier(skorch.NeuralNet):
             *args,
             **kwargs,
             ):
-        self.clip = clip
+#         self.clip = clip
         kwargs.update(module=RNNBinaryClassifierModule)
         super(RNNBinaryClassifier, self).__init__(
             criterion=criterion, lr=lr, *args, **kwargs)
