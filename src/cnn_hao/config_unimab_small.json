@@ -1,0 +1,17 @@
+{
+    "data_folder": "../../datasets/DNN_datasets/human_activities/",
+    "bs": 32,
+    "train_lr": 1E-4,
+    "train_l2": 5E-4,
+    "train_epoch": 50,
+    "ts_steps": null,
+    "channels": [3, 3],
+    "kernels": [27],
+    "pools": [4],
+    "strides": [2],
+    "paddings": [1],
+    "linear_layers": [225,64,1],
+    "seq_id": "sequence_id",
+    "x_columns": ["acc_x", "acc_y", "acc_z"],
+    "y_column": "horizontal_motion_binary_label"
+}
